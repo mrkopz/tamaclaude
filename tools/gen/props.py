@@ -154,6 +154,28 @@ def sparkle(phase: float, connected: bool = True) -> RectList:
     return out
 
 
+def crew(phase: float, connected: bool = True) -> RectList:
+    """มาสคอตจิ๋วสองตัวลอยเหนือหัว — conducting (มี subagent กำลังทำงานให้)
+
+    เป็นรูปย่อของมาสคอตเอง ไม่ใช่สัญลักษณ์นามธรรม: สารที่ต้องสื่อคือ "มีอีกหลายตัว
+    ทำงานอยู่" ซึ่งอ่านออกทันทีเมื่อของที่ลอยอยู่หน้าตาเหมือนตัวที่ยืนอยู่ข้างล่าง
+    กระเด้งคนละเฟส (ห่างกันครึ่งลูป) จึงไม่อ่านเป็นก้อนเดียวที่ขยับพร้อมกัน
+    """
+    body = _c(connected, PAL.clay)
+    ink = _c(connected, PAL.ink)
+    out: RectList = []
+    for i in range(2):
+        bob = math.sin(phase * math.pi * 2.0 + i * math.pi) * 0.5
+        x = HEAD_CX + (i * 2 - 1) * 3.5 - 1.5
+        y = -4.4 + bob
+        out.append(Rect(x, y, 3.0, 2.2, body))  # ลำตัว
+        out.append(Rect(x + 0.3, y + 2.2, 0.7, 0.8, body))  # ขาซ้าย
+        out.append(Rect(x + 2.0, y + 2.2, 0.7, 0.8, body))  # ขาขวา
+        out.append(Rect(x + 0.55, y + 0.6, 0.75, 0.75, ink))  # ตา
+        out.append(Rect(x + 1.7, y + 0.6, 0.75, 0.75, ink))
+    return out
+
+
 PROPS: dict[str, Callable[[float, bool], RectList]] = {
     "magnifier": magnifier,
     "pencil": pencil,
@@ -164,4 +186,5 @@ PROPS: dict[str, Callable[[float, bool], RectList]] = {
     "query": query,
     "zzz": zzz,
     "sparkle": sparkle,
+    "crew": crew,
 }

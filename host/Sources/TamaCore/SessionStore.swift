@@ -47,8 +47,13 @@ struct Session {
         switch activity {
         case .failed: return .error
         case .waiting: return .waiting
-        case .tool(let s): return s
-        case .thinking: return .thinking
+        case .tool, .thinking:
+            // การกระจายงานชนะเครื่องมือ: ตอน subagent วิ่ง tool ที่เห็นเป็นของลูกน้อง
+            // ไม่ใช่ของ session หลัก — "กำลังคุมงานอยู่" จึงตรงความจริงกว่า
+            // (แต่แพ้ error กับ waiting ข้างบน: พังกับต้องการมือคน สำคัญกว่า)
+            if subagents > 0 { return .conducting }
+            if case .tool(let s) = activity { return s }
+            return .thinking
         case .idle:
             if let c = celebrateUntil, now < c { return .celebrate }
             // นอนชนะการทวงถาม: ถ้าเงียบมาเป็นนาทีแล้ว ท่ายืนทวงตลอดกาลไม่ได้สื่ออะไรเพิ่ม
@@ -114,11 +119,15 @@ public final class SessionStore {
             s.startedAt = now
             s.activity = .idle
             s.stoppedAt = nil
+            s.subagents = 0
 
         case "UserPromptSubmit":
             s.activity = .thinking
             s.stoppedAt = nil
             s.celebrateUntil = nil
+            // เทิร์นใหม่ = ล้างตัวนับที่ค้างจากเทิร์นก่อน (SubagentStop ที่หายไปตอน
+            // daemon ไม่ได้รัน จะทำให้ session ติดท่า conducting ตลอดกาลถ้าไม่ล้าง)
+            s.subagents = 0
             dismissCards(for: id)
 
         case "PreToolUse":
@@ -154,6 +163,8 @@ public final class SessionStore {
             s.activity = .idle
             s.stoppedAt = now
             s.celebrateUntil = now + timings.celebrate
+            // main loop จบแล้ว จะมี subagent ค้างจริงไม่ได้
+            s.subagents = 0
 
         case "StopFailure", "SubagentStopFailure":
             s.activity = .failed
@@ -171,6 +182,7 @@ public final class SessionStore {
         case "SessionEnd":
             s.endingAt = now
             s.activity = .idle
+            s.subagents = 0
             dismissCards(for: id)
 
         default:

@@ -20,6 +20,9 @@ public enum HookInstaller {
         "PreCompact",
         "Notification",
         "Stop",
+        // ต้องมีคู่กับ SubagentStop เสมอ — ถ้าติดตั้งแต่ Stop ตัวนับจะติดลบไม่ได้
+        // (max(0,·)) แล้วค้างที่ศูนย์ตลอด ท่า conducting จะไม่มีวันโผล่
+        "SubagentStart",
         "SubagentStop",
         "SessionEnd",
     ]

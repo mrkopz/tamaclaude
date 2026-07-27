@@ -71,6 +71,16 @@ notification card · auto-reconnect · RGB LED กระพริบ · macOS me
   ระยะห่างยังคงที่ 80px เสมอ ไม่ยืดหดตามจำนวน
 - **เพิ่มท่าเปลี่ยนผ่าน `entering` / `leaving`** — ตกลงไว้ตั้งแต่แรกว่า session ใหม่เดินเข้ามา
   session จบมุดหายไป แต่ยังไม่มีท่ารองรับ ทั้งคู่ใช้ `phase` เป็นความคืบหน้า 0→1 ไม่ใช่ลูปวน
+- **เพิ่มท่า `conducting` (prop `crew`)** — session ที่กระจายงานให้ subagent มองไม่ออกเลย
+  จากจอ: tool call ของ subagent ยิง hook ด้วย `session_id` เดียวกัน สล็อตพ่อจึงกระพริบ
+  เป็น reading/writing ของงานที่ **ไม่ใช่ของมัน** ตอนนี้ `subagents > 0` ชนะ tool ทั้งหมด
+  (แต่แพ้ `error` กับ `waiting` — พังและต้องการมือคน สำคัญกว่ากำลังยุ่ง)
+  prop เป็นมาสคอตจิ๋วสองตัว ไม่ใช่ไม้กำกับวง: ที่ 3 px/unit ไม้เอียงบางๆ เละเป็นขั้นบันได
+  และสารที่ต้องสื่อคือ "มีหลายตัวทำงานอยู่" ไม่ใช่อุปมาเรื่องวาทยกร
+  `priority = 22` สูงกว่า tool (20) เพราะ session ที่คุม background subagent เงียบสนิท
+  ไม่มี hook ยิงเป็นนาทีๆ ถ้าให้เท่ากันมันจะแพ้ tie-break ที่ `lastActivity` แล้วหลุดจอ
+  ตัวนับต้องรีเซ็ตที่ `Stop`/`SessionStart`/`SessionEnd`/`UserPromptSubmit` — `SubagentStop`
+  ที่หายไปตอน daemon ไม่ได้รัน จะทำให้ท่าค้างตลอดกาลถ้าไม่มีจุดล้าง
 
 ## แผงโควตา (Session / Weekly utilization)
 

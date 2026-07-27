@@ -70,6 +70,7 @@ public enum VisualState: String, Codable, Equatable, Sendable, CaseIterable {
     case error
     case entering
     case leaving
+    case conducting
 
     /// ลำดับความสำคัญตอนเลือกว่า session ไหนได้ slot เมื่อมีเกิน 4 ตัว
     /// ตัวเลขสูง = ได้ก่อน
@@ -78,6 +79,10 @@ public enum VisualState: String, Codable, Equatable, Sendable, CaseIterable {
         case .alert, .error: return 40
         case .waiting: return 30
         case .entering, .leaving: return 25
+        // สูงกว่า tool: session ที่คุม subagent อยู่ *เงียบสนิท* ไม่มี hook ยิงเป็นนาทีๆ
+        // ตัวตัดสินอันดับสองคือ lastActivity ล่าสุดชนะ ถ้าให้เท่ากับ tool มันจะแพ้
+        // session ที่ไถ Read ไปเรื่อยๆ แล้วหลุดจอ ทั้งที่เป็นตัวที่น่าสนใจที่สุด
+        case .conducting: return 22
         case .reading, .writing, .building, .searching, .thinking: return 20
         case .celebrate: return 15
         case .idle: return 10

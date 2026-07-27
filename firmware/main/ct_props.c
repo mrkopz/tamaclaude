@@ -146,6 +146,24 @@ static void sparkle(ct_rects_t *o, float phase, bool connected)
     }
 }
 
+// มาสคอตจิ๋วสองตัวลอยเหนือหัว — conducting (มี subagent กำลังทำงานให้)
+// เป็นรูปย่อของมาสคอตเอง ไม่ใช่สัญลักษณ์นามธรรม และกระเด้งคนละเฟส
+static void crew(ct_rects_t *o, float phase, bool connected)
+{
+    uint16_t body = c(connected, CT_COL_CLAY);
+    uint16_t ink = c(connected, CT_COL_INK);
+    for (int i = 0; i < 2; i++) {
+        float bob = sinf(phase * (float)M_PI * 2.0f + i * (float)M_PI) * 0.5f;
+        float x = CT_HEAD_CX + (i * 2 - 1) * 3.5f - 1.5f;
+        float y = -4.4f + bob;
+        ct_rects_add(o, x, y, 3.0f, 2.2f, body);              // ลำตัว
+        ct_rects_add(o, x + 0.3f, y + 2.2f, 0.7f, 0.8f, body);  // ขาซ้าย
+        ct_rects_add(o, x + 2.0f, y + 2.2f, 0.7f, 0.8f, body);  // ขาขวา
+        ct_rects_add(o, x + 0.55f, y + 0.6f, 0.75f, 0.75f, ink);  // ตา
+        ct_rects_add(o, x + 1.7f, y + 0.6f, 0.75f, 0.75f, ink);
+    }
+}
+
 void ct_prop_build(ct_rects_t *out, ct_prop_t prop, float phase, bool connected)
 {
     switch (prop) {
@@ -158,6 +176,7 @@ void ct_prop_build(ct_rects_t *out, ct_prop_t prop, float phase, bool connected)
         case CT_PROP_QUERY: query(out, phase, connected); break;
         case CT_PROP_ZZZ: zzz(out, phase, connected); break;
         case CT_PROP_SPARKLE: sparkle(out, phase, connected); break;
+        case CT_PROP_CREW: crew(out, phase, connected); break;
         case CT_PROP_NONE:
         default: break;
     }

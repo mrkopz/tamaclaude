@@ -143,6 +143,8 @@ STATES: dict[str, tuple[str, str | None]] = {
     "error":     ("error", None),
     "entering":  ("entering", None),
     "leaving":   ("leaving", None),
+    # ต่อท้ายเสมอ — ลำดับใน dict นี้คือค่าตัวเลขของ enum ใน layout.h
+    "conducting": ("working", "crew"),
 }
 
 

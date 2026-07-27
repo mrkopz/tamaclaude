@@ -56,6 +56,58 @@ func runAllTests() {
         equal(s.snapshot(now: t0 + 2).sessions.first?.project, "tamaclaude", "project name from cwd")
     }
 
+    suite("subagents") {
+        let s = store()
+        s.apply(event("PreToolUse", tool: "Edit"), now: t0)
+        equal(s.snapshot(now: t0).sessions.first?.state, .writing, "tool state before any subagent")
+
+        s.apply(event("SubagentStart"), now: t0 + 1)
+        equal(
+            s.snapshot(now: t0 + 1).sessions.first?.state, .conducting,
+            "a running subagent takes over the mascot")
+
+        // subagent ตัวใน ยิง hook ด้วย session_id เดียวกัน — ท่าต้องไม่กระพริบตามมัน
+        s.apply(event("PreToolUse", tool: "Bash"), now: t0 + 2)
+        equal(
+            s.snapshot(now: t0 + 2).sessions.first?.state, .conducting,
+            "tools fired from inside the subagent do not steal the slot back")
+
+        s.apply(event("SubagentStart"), now: t0 + 3)
+        s.apply(event("SubagentStop"), now: t0 + 4)
+        equal(
+            s.snapshot(now: t0 + 4).sessions.first?.state, .conducting,
+            "one of two finishing is not the end of it")
+        s.apply(event("SubagentStop"), now: t0 + 5)
+        equal(
+            s.snapshot(now: t0 + 5).sessions.first?.state, .thinking,
+            "the last one finishing hands the mascot back")
+    }
+
+    suite("subagents lose to trouble") {
+        let s = store()
+        s.apply(event("SubagentStart"), now: t0)
+        s.apply(event("Notification", message: "allow Bash?"), now: t0 + 1)
+        equal(
+            s.snapshot(now: t0 + 1).sessions.first?.state, .waiting,
+            "needing you beats being busy")
+
+        let f = store()
+        f.apply(event("SubagentStart"), now: t0)
+        f.apply(event("StopFailure"), now: t0 + 1)
+        equal(f.snapshot(now: t0 + 1).sessions.first?.state, .error, "so does breaking")
+    }
+
+    suite("subagent counter never sticks") {
+        // SubagentStop ที่หายไป (daemon ไม่ได้รันตอนนั้น) ต้องไม่ทำให้ท่าค้างตลอดกาล
+        for (name, expected) in [("Stop", VisualState.celebrate), ("UserPromptSubmit", .thinking)] {
+            let s = store()
+            s.apply(event("SubagentStart"), now: t0)
+            s.apply(event("SubagentStart"), now: t0 + 1)
+            s.apply(event(name), now: t0 + 2)
+            equal(s.snapshot(now: t0 + 2).sessions.first?.state, expected, "\(name) clears it")
+        }
+    }
+
     suite("walk in, burrow out") {
         let s = SessionStore()
         s.apply(event("SessionStart"), now: t0)
@@ -331,6 +383,7 @@ func runAllTests() {
         let expected: Set<String> = [
             "idle", "reading", "writing", "building", "searching", "thinking",
             "waiting", "sleeping", "alert", "celebrate", "error", "entering", "leaving",
+            "conducting",
         ]
         equal(Set(VisualState.allCases.map(\.rawValue)), expected, "no state drifted")
     }
