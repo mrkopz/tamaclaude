@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "ct_lcd.h"
 #include "ct_mascot.h"
 #include "ct_rects.h"
 #include "layout.h"
@@ -17,10 +16,6 @@
 // หนึ่งลูปอนิเมชันยาวเท่าไร (ms) — ตรงกับสมมติฐาน "ลูปหนึ่งราว 1 วินาที" ของ mascot.c
 #define LOOP_MS 1000
 #define FRAME_MS 60
-
-// ความสว่างตอนจอว่าง (DESIGN.md) กับตอนมีอะไรให้ดู
-#define BL_IDLE 15
-#define BL_ACTIVE 100
 
 typedef struct {
     lv_obj_t *canvas;  // ตัววาดมาสคอต (วาดเองใน LV_EVENT_DRAW_MAIN)
@@ -609,16 +604,6 @@ static void layout_usage(void)
     }
 }
 
-static bool everything_quiet(void)
-{
-    if (s_snap.card_count > 0) return false;
-    for (int i = 0; i < s_snap.session_count; i++) {
-        ct_state_t st = s_snap.sessions[i].state;
-        if (st != CT_STATE_SLEEPING && st != CT_STATE_IDLE) return false;
-    }
-    return true;
-}
-
 void ct_ui_set_snapshot(const ct_snapshot_t *snap)
 {
     s_snap = *snap;
@@ -640,7 +625,6 @@ void ct_ui_set_snapshot(const ct_snapshot_t *snap)
     layout_cards();
     layout_usage();
     layout_usage_topbar();
-    ct_lcd_set_backlight(everything_quiet() ? BL_IDLE : BL_ACTIVE);
 }
 
 void ct_ui_set_connected(bool connected)

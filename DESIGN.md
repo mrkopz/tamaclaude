@@ -18,7 +18,7 @@
 | ฝั่ง Mac | Swift binary เดียว: `--hook` / `--daemon` / menu bar app |
 | tool → animation | daemon แปล (config file แก้ได้) firmware รู้แค่ enum คงที่ |
 | โปรโตคอล | JSON snapshot ก้อนเดียว เขียนเข้า GATT characteristic |
-| สถานะว่าง | มาสคอตนอน + นาฬิกา + backlight ~15% |
+| สถานะว่าง | มาสคอตนอน + นาฬิกา (ความสว่างคงที่ — ไม่หรี่อัตโนมัติ) |
 | BLE หลุด | มาสคอตเปลี่ยนเป็นสีเทา (ไม่มีไอคอน ไม่มีข้อความ) |
 | เกณฑ์เตือน | `Notification`, `StopFailure`, และ `Stop` ที่เงียบเกิน ~45 วิ |
 | Slot | สูงสุด 4 ระยะห่างคงที่ 80px ยกทั้งกลุ่มไว้กึ่งกลาง เกินนับ "+N" แต่ alert ยังทะลุถึงได้ |
@@ -298,7 +298,7 @@ firmware/main/main.c        ประกอบทุกอย่าง + ลู�
 
 **ยืนยันบนบอร์ดจริงแล้ว**: บูตผ่าน จอ init สำเร็จ NimBLE ขึ้น ไม่มี watchdog
 **ยังไม่ได้ยืนยัน**: ภาพบนจอ (ต้องมองด้วยตา) · BLE จับคู่กับ daemon จริง (ติดสิทธิ์ Bluetooth
-ของ process ที่รัน daemon — ต้องรันจาก Terminal ที่ผู้ใช้อนุญาตได้) · RGB LED · ไฟหลังหรี่
+ของ process ที่รัน daemon — ต้องรันจาก Terminal ที่ผู้ใช้อนุญาตได้) · RGB LED
 
 ## เครื่องมือฝั่ง Python
 
