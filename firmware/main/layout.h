@@ -72,7 +72,8 @@ typedef enum {
     CT_STATE_ENTERING     = 11,
     CT_STATE_LEAVING      = 12,
     CT_STATE_CONDUCTING   = 13,
-    CT_STATE_COUNT             = 14,
+    CT_STATE_BEACON       = 14,
+    CT_STATE_COUNT             = 15,
 } ct_state_t;
 
 static const char *const ct_state_names[CT_STATE_COUNT] = {
@@ -90,4 +91,5 @@ static const char *const ct_state_names[CT_STATE_COUNT] = {
     "entering",
     "leaving",
     "conducting",
+    "beacon",
 };

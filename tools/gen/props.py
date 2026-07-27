@@ -176,6 +176,32 @@ def crew(phase: float, connected: bool = True) -> RectList:
     return out
 
 
+def beacon(phase: float, connected: bool = True) -> RectList:
+    """เสาสัญญาณ — LSP/MCP  (คลื่นแผ่ออกสองข้างเป็นจังหวะ)
+
+    "คุยกับบริการอื่นอยู่" ไม่ใช่ "ค้นหา" จึงไม่ใช้ลูกโลกซ้ำ อ่านออกที่ 3 px/unit
+    เพราะทุกชิ้นตั้งฉาก: เสาตรง ฐานแบน คลื่นเป็นแท่งตั้งที่ถอยห่างออกไป
+    คลื่นสองชุดเดินห่างกันครึ่งลูป จึงไม่อ่านเป็นก้อนเดียวที่ขยับพร้อมกัน
+    """
+    col = _c(connected, PAL.accent)
+    post = _c(connected, PAL.text_dim)
+    cx = (HAND_X + BOX_X1) / 2.0  # กึ่งกลางพื้นที่ prop — คลื่นแผ่ได้เท่ากันสองข้าง
+    out = [
+        Rect(cx - 0.4, HAND_Y + 1.2, 0.8, 3.6, post),  # เสา
+        Rect(cx - 1.5, HAND_Y + 4.8, 3.0, 0.8, post),  # ฐาน
+        Rect(cx - 0.7, HAND_Y, 1.4, 1.2, col),  # ไฟยอดเสา
+    ]
+    for i in range(2):
+        t = (phase + i * 0.5) % 1.0
+        if t > 0.8:  # ดับก่อนถึงขอบ อ่านเป็นคลื่นจางหาย ไม่ใช่คลื่นโดนตัด
+            continue
+        spread = 0.8 + t * 1.2  # กว้างสุด 2.0 — พอดีขอบ BOX_X1 ไม่ล้ำ slot ข้างๆ
+        rise = t * 0.6
+        out.append(Rect(cx - spread - 0.6, HAND_Y - rise, 0.6, 1.6, col))
+        out.append(Rect(cx + spread, HAND_Y - rise, 0.6, 1.6, col))
+    return out
+
+
 PROPS: dict[str, Callable[[float, bool], RectList]] = {
     "magnifier": magnifier,
     "pencil": pencil,
@@ -187,4 +213,5 @@ PROPS: dict[str, Callable[[float, bool], RectList]] = {
     "zzz": zzz,
     "sparkle": sparkle,
     "crew": crew,
+    "beacon": beacon,
 }

@@ -27,8 +27,9 @@ func runAllTests() {
         equal(ToolMap.default.state(for: "Bash"), .building, "Bash is building")
         equal(ToolMap.default.state(for: "WebSearch"), .searching, "WebSearch is searching")
         equal(
-            ToolMap.default.state(for: "mcp__tolaria__search_notes"), .searching,
+            ToolMap.default.state(for: "mcp__tolaria__search_notes"), .beacon,
             "mcp__ prefix rule applies")
+        equal(ToolMap.default.state(for: "LSP"), .beacon, "LSP talks to a service, not the disk")
         equal(ToolMap.default.state(for: "SomethingNew"), .thinking, "unknown tool falls back")
     }
 
@@ -383,7 +384,7 @@ func runAllTests() {
         let expected: Set<String> = [
             "idle", "reading", "writing", "building", "searching", "thinking",
             "waiting", "sleeping", "alert", "celebrate", "error", "entering", "leaving",
-            "conducting",
+            "conducting", "beacon",
         ]
         equal(Set(VisualState.allCases.map(\.rawValue)), expected, "no state drifted")
     }

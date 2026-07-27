@@ -85,6 +85,7 @@ static const struct {
     [CT_STATE_ENTERING]  = {MOOD_ENTERING,  CT_PROP_NONE},
     [CT_STATE_LEAVING]   = {MOOD_LEAVING,   CT_PROP_NONE},
     [CT_STATE_CONDUCTING] = {MOOD_WORKING,  CT_PROP_CREW},
+    [CT_STATE_BEACON]    = {MOOD_WORKING,   CT_PROP_BEACON},
 };
 
 // --- ตา ---------------------------------------------------------------------

@@ -164,6 +164,29 @@ static void crew(ct_rects_t *o, float phase, bool connected)
     }
 }
 
+// เสาสัญญาณ — LSP/MCP (คลื่นแผ่ออกสองข้างเป็นจังหวะ)
+// "คุยกับบริการอื่นอยู่" ไม่ใช่ "ค้นหา" จึงไม่ใช้ลูกโลกซ้ำ ทุกชิ้นตั้งฉากจึงอ่านออกที่ 3 px/unit
+static void beacon(ct_rects_t *o, float phase, bool connected)
+{
+    uint16_t col = c(connected, CT_COL_ACCENT);
+    uint16_t post = c(connected, CT_COL_TEXT_DIM);
+    // กึ่งกลางพื้นที่ prop — คลื่นแผ่ได้เท่ากันสองข้าง
+    float cx = (CT_HAND_X + CT_BOX_X1) / 2.0f;
+    ct_rects_add(o, cx - 0.4f, CT_HAND_Y + 1.2f, 0.8f, 3.6f, post);  // เสา
+    ct_rects_add(o, cx - 1.5f, CT_HAND_Y + 4.8f, 3.0f, 0.8f, post);  // ฐาน
+    ct_rects_add(o, cx - 0.7f, CT_HAND_Y, 1.4f, 1.2f, col);          // ไฟยอดเสา
+
+    for (int i = 0; i < 2; i++) {
+        float t = fmodf(phase + i * 0.5f, 1.0f);
+        // ดับก่อนถึงขอบ อ่านเป็นคลื่นจางหาย ไม่ใช่คลื่นโดนตัด
+        if (t > 0.8f) continue;
+        float spread = 0.8f + t * 1.2f;  // กว้างสุด 2.0 — พอดีขอบ CT_BOX_X1
+        float rise = t * 0.6f;
+        ct_rects_add(o, cx - spread - 0.6f, CT_HAND_Y - rise, 0.6f, 1.6f, col);
+        ct_rects_add(o, cx + spread, CT_HAND_Y - rise, 0.6f, 1.6f, col);
+    }
+}
+
 void ct_prop_build(ct_rects_t *out, ct_prop_t prop, float phase, bool connected)
 {
     switch (prop) {
@@ -177,6 +200,7 @@ void ct_prop_build(ct_rects_t *out, ct_prop_t prop, float phase, bool connected)
         case CT_PROP_ZZZ: zzz(out, phase, connected); break;
         case CT_PROP_SPARKLE: sparkle(out, phase, connected); break;
         case CT_PROP_CREW: crew(out, phase, connected); break;
+        case CT_PROP_BEACON: beacon(out, phase, connected); break;
         case CT_PROP_NONE:
         default: break;
     }

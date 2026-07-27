@@ -18,7 +18,6 @@ public struct ToolMap: Sendable {
             "Grep": .reading,
             "Glob": .reading,
             "NotebookRead": .reading,
-            "LSP": .reading,
 
             "Edit": .writing,
             "Write": .writing,
@@ -37,9 +36,15 @@ public struct ToolMap: Sendable {
             "Agent": .thinking,
             "Workflow": .thinking,
             "Skill": .thinking,
+
+            // คุยกับบริการนอกตัว ไม่ใช่อ่านไฟล์หรือค้นเว็บ — ควรแยกให้เห็นว่ารออีกฝั่งอยู่
+            "LSP": .beacon,
+            "ListMcpResourcesTool": .beacon,
+            "ReadMcpResourceTool": .beacon,
+            "ReadMcpResourceDirTool": .beacon,
         ],
         prefixes: [
-            "mcp__": .searching,
+            "mcp__": .beacon,
         ],
         fallback: .thinking
     )

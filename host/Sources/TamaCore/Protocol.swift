@@ -71,6 +71,7 @@ public enum VisualState: String, Codable, Equatable, Sendable, CaseIterable {
     case entering
     case leaving
     case conducting
+    case beacon
 
     /// ลำดับความสำคัญตอนเลือกว่า session ไหนได้ slot เมื่อมีเกิน 4 ตัว
     /// ตัวเลขสูง = ได้ก่อน
@@ -83,7 +84,7 @@ public enum VisualState: String, Codable, Equatable, Sendable, CaseIterable {
         // ตัวตัดสินอันดับสองคือ lastActivity ล่าสุดชนะ ถ้าให้เท่ากับ tool มันจะแพ้
         // session ที่ไถ Read ไปเรื่อยๆ แล้วหลุดจอ ทั้งที่เป็นตัวที่น่าสนใจที่สุด
         case .conducting: return 22
-        case .reading, .writing, .building, .searching, .thinking: return 20
+        case .reading, .writing, .building, .searching, .thinking, .beacon: return 20
         case .celebrate: return 15
         case .idle: return 10
         case .sleeping: return 0

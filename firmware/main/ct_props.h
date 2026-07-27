@@ -16,6 +16,7 @@ typedef enum {
     CT_PROP_ZZZ,
     CT_PROP_SPARKLE,
     CT_PROP_CREW,
+    CT_PROP_BEACON,
 } ct_prop_t;
 
 #define CT_HEAD_CX 8.0f  // กึ่งกลางลำตัวในแนวนอน
