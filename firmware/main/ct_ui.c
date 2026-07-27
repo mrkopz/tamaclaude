@@ -540,7 +540,7 @@ void ct_ui_set_connected(bool connected)
     if (connected == s_connected) return;
     s_connected = connected;
     lv_obj_set_style_bg_color(s_dot, ct_color(connected ? CT_COL_GOOD : CT_COL_GRAY), 0);
-    lv_label_set_text(s_link, connected ? "claude" : "no link");
+    lv_label_set_text(s_link, connected ? "tamaclaude" : "no link");
     lv_obj_set_style_text_color(s_link,
                                 ct_color(connected ? CT_COL_TEXT : CT_COL_TEXT_DIM), 0);
     layout_slots();

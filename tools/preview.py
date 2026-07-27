@@ -73,7 +73,7 @@ SCENES: dict[str, screen.Screen] = {
         overflow=2,
         cards=[
             screen.Card("tamaclaude", "needs permission to run git push", "alert"),
-            screen.Card("infra-scripts", "Stopped — waiting for your reply", "info"),
+            screen.Card("infra-scripts", "Stopped - waiting for your reply", "info"),
             screen.Card("sprite-gen", "Build finished, 0 warnings", "done"),
         ],
         usage=[

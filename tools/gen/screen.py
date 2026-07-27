@@ -24,11 +24,30 @@ def font(size: int) -> ImageFont.FreeTypeFont:
     return _FONTS[size]
 
 
+def _ascii_only(**fields: str) -> None:
+    """กันข้อความสาธิตที่ฟอนต์บนบอร์ดวาดไม่ได้ — จะได้กล่องสี่เหลี่ยมแทน
+
+    ข้อความจริงผ่าน Text.sanitize ฝั่ง daemon (host/Sources/TamaCore/Text.swift)
+    มาแล้ว จอจึงเห็นแค่ ASCII 0x20..0x7E เสมอ ถ้า preview ยอมให้ใส่ em dash ได้
+    ภาพที่ออกมาจะสวยกว่าของจริง ซึ่งแย่กว่าการพังตรงนี้
+    """
+    for name, value in fields.items():
+        bad = sorted({c for c in value if not (" " <= c <= "~")})
+        if bad:
+            raise ValueError(
+                f"{name}={value!r} มีอักขระนอก ASCII พิมพ์ได้: {bad} "
+                f"— daemon จะแทนที่ให้ก่อนส่ง ใส่ตัวที่แทนแล้วมาตรงนี้"
+            )
+
+
 @dataclass(slots=True)
 class Session:
     project: str
     state: str = "idle"
     phase_offset: float = 0.0
+
+    def __post_init__(self) -> None:
+        _ascii_only(project=self.project)
 
 
 @dataclass(slots=True)
@@ -36,6 +55,9 @@ class Card:
     title: str
     body: str
     kind: str = "info"  # info | alert | done
+
+    def __post_init__(self) -> None:
+        _ascii_only(title=self.title, body=self.body)
 
 
 @dataclass(slots=True)
@@ -80,7 +102,7 @@ def _topbar(draw: ImageDraw.ImageDraw, s: Screen) -> None:
     draw.rectangle([0, 0, L.screen.width - 1, h - 1], fill=quantize565(PAL.bg_slot))
     dot = PAL.good if s.connected else PAL.gray
     draw.rectangle([6, h // 2 - 3, 11, h // 2 + 2], fill=quantize565(dot))
-    label = "claude" if s.connected else "no link"
+    label = "tamaclaude" if s.connected else "no link"
     draw.text((17, h // 2), label, font=font(11),
               fill=quantize565(PAL.text if s.connected else PAL.text_dim), anchor="lm")
     # นาฬิกาบนแถบโผล่เมื่อพื้นที่ล่างถูกยึดไป (card หรือ usage) — ไม่ใช่ "เมื่อมี card"
