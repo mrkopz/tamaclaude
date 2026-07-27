@@ -37,6 +37,9 @@ typedef struct {
 
 typedef struct {
     lv_obj_t *percent;  // ตัวเลขใหญ่ — สิ่งเดียวที่ต้องอ่านออกจากอีกฝั่งห้อง
+    // LVGL ไม่มี montserrat ตัวหนา — ซ้อนป้ายเดิมเยื้อง 1px แทน (เทียบเท่า
+    // stroke_width=1 ของ Pillow ฝั่ง preview) ต้องอัปเดตข้อความ/สีคู่กันเสมอ
+    lv_obj_t *percent_bold;
     lv_obj_t *pill;     // ป้ายบอกว่าเป็นหน้าต่างไหน สีคงที่ ไม่ตามระดับ
     lv_obj_t *pill_text;
     lv_obj_t *track;  // รางแถบ
@@ -228,6 +231,8 @@ static void build_cards(lv_obj_t *scr)
 static const char *const USAGE_LABELS[CT_USAGE_ROWS] = {"Current", "Weekly"};
 static const int USAGE_WINDOWS[CT_USAGE_ROWS] = {CT_USAGE_SESSION_WINDOW,
                                                  CT_USAGE_WEEKLY_WINDOW};
+// สี pill แยกตามหน้าต่าง — สีคือสิ่งที่บอกว่ากำลังอ่านแถวไหนก่อนอ่านตัวอักษร
+static const uint16_t USAGE_PILL_COLORS[CT_USAGE_ROWS] = {CT_COL_CLAY, CT_COL_GOOD};
 
 static void build_usage(lv_obj_t *scr)
 {
@@ -235,28 +240,34 @@ static void build_usage(lv_obj_t *scr)
         int y = CT_CARD_TOP + CT_CARD_PAD + i * (CT_USAGE_ROW_H + CT_USAGE_GAP);
         usage_row_t *u = &s_usage[i];
 
-        u->percent = plain_label(scr, &lv_font_montserrat_28, CT_COL_GOOD);
-        lv_obj_set_pos(u->percent, USAGE_X0, y);
+        u->percent_bold = plain_label(scr, &lv_font_montserrat_24, CT_COL_GOOD);
+        lv_obj_set_pos(u->percent_bold, USAGE_X0 + 1, y + 2);
+        u->percent = plain_label(scr, &lv_font_montserrat_24, CT_COL_GOOD);
+        lv_obj_set_pos(u->percent, USAGE_X0, y + 2);
 
         // pill วาดด้วย obj โค้งมุม ไม่ใช่ label ที่มีพื้นหลัง เพราะต้องกำหนดความกว้าง
         // จากความยาวข้อความเองตอน build (ข้อความคงที่ ไม่เปลี่ยนตามข้อมูล)
         u->pill = plain_obj(scr, 62, 18);
-        lv_obj_set_style_bg_color(u->pill, ct_color(CT_COL_GRAY_DARK), 0);
+        lv_obj_set_style_bg_color(u->pill, ct_color(USAGE_PILL_COLORS[i]), 0);
         lv_obj_set_style_bg_opa(u->pill, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(u->pill, 9, 0);
         lv_obj_set_pos(u->pill, USAGE_X1 - 62, y + 5);
 
-        u->pill_text = plain_label(u->pill, &lv_font_montserrat_12, CT_COL_TEXT);
+        // ตัวอักษรสีหมึกบนพื้น pill สว่าง — สีข้อความเดิมจมกับพื้นส้ม/เขียว
+        u->pill_text = plain_label(u->pill, &lv_font_montserrat_12, CT_COL_INK);
         lv_label_set_text(u->pill_text, USAGE_LABELS[i]);
         lv_obj_center(u->pill_text);
 
+        // รางต้องสว่างกว่าพื้นจอพอให้เห็นความยาวเต็มของแถบตอนใช้ไปน้อย
         u->track = plain_obj(scr, USAGE_W, CT_USAGE_BAR_H);
-        lv_obj_set_style_bg_color(u->track, ct_color(CT_COL_BG_SLOT), 0);
+        lv_obj_set_style_bg_color(u->track, ct_color(CT_COL_GRAY_DARK), 0);
         lv_obj_set_style_bg_opa(u->track, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(u->track, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_pos(u->track, USAGE_X0, y + 30);
 
         u->fill = plain_obj(u->track, USAGE_W, CT_USAGE_BAR_H);
         lv_obj_set_style_bg_opa(u->fill, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(u->fill, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_pos(u->fill, 0, 0);
 
         u->pace = plain_obj(scr, 1, CT_USAGE_BAR_H + 4);
@@ -268,6 +279,7 @@ static void build_usage(lv_obj_t *scr)
         lv_obj_set_pos(u->reset, USAGE_X0, y + 41);
 
         lv_obj_add_flag(u->percent, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(u->percent_bold, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(u->pill, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(u->track, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(u->pace, LV_OBJ_FLAG_HIDDEN);
@@ -373,6 +385,21 @@ static uint16_t usage_color(int percent)
     return CT_COL_GOOD;
 }
 
+// สีของแถบ — แดงทันทีที่ใช้เร็วกว่าเวลาที่ผ่านไปในหน้าต่าง ไม่ต้องรอถึงเกณฑ์ %
+// "60% ตอนเหลือเวลาอีกครึ่ง" เป็นปัญหาคนละแบบกับ "60% ตอนหมดเวลาพอดี"
+// ต้องตรงกับ usage_bar_color ใน tools/gen/screen.py
+static uint16_t usage_bar_color(const ct_usage_t *u, int window)
+{
+    if (u->percent < 0) return CT_COL_TEXT_DIM;
+    if (u->remaining > 0 && window > 0) {
+        int elapsed = window - u->remaining;
+        if (elapsed < 0) elapsed = 0;
+        if (elapsed > window) elapsed = window;
+        if ((int64_t)u->percent * window > (int64_t)elapsed * 100) return CT_COL_ALERT;
+    }
+    return usage_color(u->percent);
+}
+
 // วินาทีที่เหลือ -> ข้อความสั้นที่สุดที่ยังบอกได้ว่าควรรีบไหม
 // ต้องตรงกับ fmt_remaining ใน tools/gen/screen.py
 static void usage_reset_text(const ct_usage_t *u, char *out, size_t cap)
@@ -447,6 +474,7 @@ static void layout_usage(void)
         usage_row_t *row = &s_usage[i];
         if (!show) {
             lv_obj_add_flag(row->percent, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(row->percent_bold, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row->pill, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row->track, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row->pace, LV_OBJ_FLAG_HIDDEN);
@@ -454,19 +482,23 @@ static void layout_usage(void)
             continue;
         }
         const ct_usage_t *u = &s_snap.usage[i];
-        uint16_t col = usage_color(u->percent);
+        uint16_t col = usage_bar_color(u, USAGE_WINDOWS[i]);
 
         lv_obj_remove_flag(row->percent, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(row->percent_bold, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(row->pill, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(row->track, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(row->reset, LV_OBJ_FLAG_HIDDEN);
 
         if (u->percent < 0) {
             lv_label_set_text(row->percent, "--%");
+            lv_label_set_text(row->percent_bold, "--%");
         } else {
             lv_label_set_text_fmt(row->percent, "%d%%", u->percent);
+            lv_label_set_text_fmt(row->percent_bold, "%d%%", u->percent);
         }
         lv_obj_set_style_text_color(row->percent, ct_color(col), 0);
+        lv_obj_set_style_text_color(row->percent_bold, ct_color(col), 0);
 
         // เปอร์เซ็นต์ที่ไม่รู้ = แถบว่าง ไม่ใช่แถบศูนย์ที่ดูเหมือนข้อมูลจริง
         int pct = u->percent;

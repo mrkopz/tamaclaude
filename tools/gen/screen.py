@@ -231,35 +231,60 @@ def usage_color(pct: int | None) -> str:
     return PAL.good
 
 
+def usage_bar_color(u: Usage) -> str:
+    """แดงทันทีที่ใช้เร็วกว่าเวลาที่ผ่านไปในหน้าต่าง ไม่ต้องรอถึงเกณฑ์ %
+
+    "60% ตอนเหลือเวลาอีกครึ่ง" เป็นปัญหาคนละแบบกับ "60% ตอนหมดเวลาพอดี"
+    ต้องตรงกับ usage_bar_color ใน firmware/main/ct_ui.c
+    """
+    if u.pct is None:
+        return PAL.text_dim
+    if u.remaining is not None and u.remaining > 0 and u.window > 0:
+        elapsed = max(0, min(u.window, u.window - u.remaining))
+        if u.pct * u.window > elapsed * 100:
+            return PAL.alert
+    return usage_color(u.pct)
+
+
+# สี pill แยกตามหน้าต่าง — สีคือสิ่งที่บอกว่ากำลังอ่านแถวไหนก่อนอ่านตัวอักษร
+_PILL_COLORS = {"Current": PAL.clay, "Weekly": PAL.good}
+
+
 def _usage_row(draw: ImageDraw.ImageDraw, u: Usage, y: int) -> None:
     pad, w = L.card.pad, L.screen.width
     x0, x1 = pad + 8, w - pad - 8
-    col = usage_color(u.pct)
+    col = usage_bar_color(u)
 
     # เปอร์เซ็นต์ตัวใหญ่ — สิ่งเดียวที่ต้องอ่านออกจากอีกฝั่งห้อง
-    # 28 ตรงกับ lv_font_montserrat_28 บนบอร์ด — ฟอนต์คนละตัวแต่ขนาดต้องไม่หลุดกัน
+    # 24 ตรงกับ lv_font_montserrat_24 บนบอร์ด — ฟอนต์คนละตัวแต่ขนาดต้องไม่หลุดกัน
+    # stroke_width=1 = ป้ายซ้อนเยื้อง 1px ฝั่ง LVGL ซึ่งไม่มี montserrat ตัวหนา
     big = "--%" if u.pct is None else f"{u.pct}%"
-    draw.text((x0, y + 14), big, font=font(28),
-              fill=quantize565(col if u.pct is not None else PAL.text_dim), anchor="lm")
+    big_col = quantize565(col if u.pct is not None else PAL.text_dim)
+    draw.text((x0, y + 16), big, font=font(24), fill=big_col, anchor="lm",
+              stroke_width=1, stroke_fill=big_col)
 
-    # ป้ายชื่อหน้าต่างชิดขวา — สีคงที่เป็นกลาง ไม่ตามระดับ
+    # ป้ายชื่อหน้าต่างชิดขวา — สีคงที่ต่อหน้าต่าง ไม่ตามระดับการใช้
     # ป้ายบอก *ว่านี่คือหน้าต่างไหน* ซึ่งไม่เคยเปลี่ยน การให้มันเปลี่ยนสีตาม %
     # ทำให้แถวทั้งแถวเป็นสีเดียวตอนวิกฤต แล้วสีหยุดเป็นสัญญาณ กลายเป็นพื้นหลัง
     fl = font(11)
     lw = draw.textlength(u.label, font=fl)
     px0 = x1 - lw - 14
-    draw.rounded_rectangle([px0, y + 5, x1, y + 23], radius=9, fill=quantize565(PAL.gray_dark))
+    draw.rounded_rectangle([px0, y + 5, x1, y + 23], radius=9,
+                           fill=quantize565(_PILL_COLORS.get(u.label, PAL.gray_dark)))
     draw.text(((px0 + x1) / 2, y + 14), u.label, font=fl,
-              fill=quantize565(PAL.text), anchor="mm")
+              fill=quantize565(PAL.ink), anchor="mm")
 
-    # แถบ
+    # แถบ — รางต้องสว่างกว่าพื้นจอพอให้เห็นความยาวเต็มตอนใช้ไปน้อย
     bh = L.usage.bar_h
     by = y + 30
-    draw.rectangle([x0, by, x1, by + bh - 1], fill=quantize565(PAL.bg_slot))
+    r = bh // 2
+    draw.rounded_rectangle([x0, by, x1, by + bh - 1], radius=r,
+                           fill=quantize565(PAL.gray_dark))
     if u.pct is not None:
         fill_w = round((x1 - x0) * min(max(u.pct, 0), 100) / 100)
         if fill_w > 0:
-            draw.rectangle([x0, by, x0 + fill_w, by + bh - 1], fill=quantize565(col))
+            draw.rounded_rectangle([x0, by, x0 + fill_w, by + bh - 1], radius=r,
+                                   fill=quantize565(col))
 
     # ขีด pace — "ควรใช้ถึงไหนแล้ว" ตามเวลาที่ผ่านไปในหน้าต่าง
     # ขีดอยู่ขวาของเนื้อแถบ = ใช้ช้ากว่าเวลา · อยู่ซ้าย = ใช้เร็วเกินไป
