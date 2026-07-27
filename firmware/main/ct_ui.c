@@ -55,6 +55,7 @@ static bool s_connected = false;
 #define USAGE_TOP_W 34
 #define USAGE_TOP_H 6
 
+static lv_obj_t *s_stroll;  // มาสคอตเดินข้ามจอตอนไม่มี session — กินแถบ slot ทั้งแถบ
 static lv_obj_t *s_dot, *s_link, *s_clock_small, *s_overflow, *s_usage_top;
 static lv_obj_t *s_usage_track, *s_usage_fill;
 static lv_obj_t *s_clock_big, *s_date;
@@ -80,6 +81,28 @@ static int slot_x(int i, int n)
 }
 
 // --- การวาดมาสคอต ------------------------------------------------------------
+static void draw_mascot_rects(lv_layer_t *layer, const ct_rects_t *rects, float ox, float oy)
+{
+    const float px = CT_SLOTS_UNIT_PX;
+    lv_draw_rect_dsc_t dsc;
+    lv_draw_rect_dsc_init(&dsc);
+    dsc.bg_opa = LV_OPA_COVER;
+    dsc.border_width = 0;
+    dsc.radius = 0;
+
+    for (int i = 0; i < rects->count; i++) {
+        const ct_rect_t *r = &rects->items[i];
+        int x0 = (int)lroundf(ox + r->x * px);
+        int y0 = (int)lroundf(oy + r->y * px);
+        int x1 = (int)lroundf(ox + (r->x + r->w) * px);
+        int y1 = (int)lroundf(oy + (r->y + r->h) * px);
+        if (x1 <= x0 || y1 <= y0) continue;  // ชิ้นที่บางกว่าหนึ่งพิกเซลหายไปเลย
+        dsc.bg_color = ct_color(r->color);
+        lv_area_t a = {.x1 = x0, .y1 = y0, .x2 = x1 - 1, .y2 = y1 - 1};
+        lv_draw_rect(layer, &dsc, &a);
+    }
+}
+
 static void slot_draw_cb(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target_obj(e);
@@ -102,24 +125,61 @@ static void slot_draw_cb(lv_event_t *e)
     ct_rects_t rects;
     ct_mascot_build_centered(&rects, s_snap.sessions[slot->index].state, phase, s_connected,
                              s_cycle + slot->index);
+    draw_mascot_rects(layer, &rects, ox, oy);
+}
 
-    lv_draw_rect_dsc_t dsc;
-    lv_draw_rect_dsc_init(&dsc);
-    dsc.bg_opa = LV_OPA_COVER;
-    dsc.border_width = 0;
-    dsc.radius = 0;
+// ท่าที่หยุดทำกลางทาง วนไปตามรอบ — ต้องตรงกับ STROLL_ACTS ใน tools/gen/screen.py
+static const ct_state_t STROLL_ACTS[] = {CT_STATE_CELEBRATE, CT_STATE_THINKING,
+                                         CT_STATE_SEARCHING, CT_STATE_WAITING};
+// ตำแหน่งหยุดเป็นสัดส่วนของเส้นทาง — วนคนละความยาวกับ ACTS เพื่อไม่ให้จับคู่ซ้ำ
+static const float STROLL_PAUSE_AT[] = {0.34f, 0.5f, 0.66f};
+#define STROLL_TRAVEL (CT_SCREEN_WIDTH + 2 * CT_STROLL_PAD_PX)
 
-    for (int i = 0; i < rects.count; i++) {
-        const ct_rect_t *r = &rects.items[i];
-        int x0 = (int)lroundf(ox + r->x * px);
-        int y0 = (int)lroundf(oy + r->y * px);
-        int x1 = (int)lroundf(ox + (r->x + r->w) * px);
-        int y1 = (int)lroundf(oy + (r->y + r->h) * px);
-        if (x1 <= x0 || y1 <= y0) continue;  // ชิ้นที่บางกว่าหนึ่งพิกเซลหายไปเลย
-        dsc.bg_color = ct_color(r->color);
-        lv_area_t a = {.x1 = x0, .y1 = y0, .x2 = x1 - 1, .y2 = y1 - 1};
-        lv_draw_rect(layer, &dsc, &a);
+// เวลาสัมบูรณ์ (วินาที) -> ท่า + x ของขอบซ้ายกรอบวาด
+// เที่ยวหนึ่ง = เดินจากนอกจอซ้ายไปนอกจอขวา โดยหยุดทำท่าหนึ่งครั้งกลางทาง
+// ต้องตรงกับ stroll_pose ใน tools/gen/screen.py
+static void stroll_pose(float t, ct_state_t *state, float *x)
+{
+    const float walk_s = (float)STROLL_TRAVEL / (float)CT_STROLL_SPEED_PX_S;
+    const float trip_s = walk_s + CT_STROLL_PAUSE_S;
+    int trip = (int)floorf(t / trip_s);
+    float u = t - trip * trip_s;
+    float hold_at = walk_s * STROLL_PAUSE_AT[trip % (int)(sizeof(STROLL_PAUSE_AT) /
+                                                         sizeof(STROLL_PAUSE_AT[0]))];
+    float walked;
+
+    if (u < hold_at) {
+        walked = u;
+        *state = CT_STATE_ENTERING;
+    } else if (u < hold_at + CT_STROLL_PAUSE_S) {
+        walked = hold_at;
+        *state = STROLL_ACTS[trip % (int)(sizeof(STROLL_ACTS) / sizeof(STROLL_ACTS[0]))];
+    } else {
+        walked = u - CT_STROLL_PAUSE_S;
+        *state = CT_STATE_ENTERING;
     }
+    *x = -(float)CT_STROLL_PAD_PX + walked * CT_STROLL_SPEED_PX_S;
+}
+
+static void stroll_draw_cb(lv_event_t *e)
+{
+    if (s_snap.session_count > 0) return;
+
+    lv_obj_t *obj = lv_event_get_target_obj(e);
+    lv_layer_t *layer = lv_event_get_layer(e);
+    lv_area_t coords;
+    lv_obj_get_coords(obj, &coords);
+
+    ct_state_t state;
+    float x;
+    stroll_pose((float)s_cycle + s_phase, &state, &x);
+
+    const float px = CT_SLOTS_UNIT_PX;
+    float foot = coords.y1 + CT_SLOTS_HEIGHT - CT_SLOTS_BASELINE_PAD;
+
+    ct_rects_t rects;
+    ct_mascot_build(&rects, state, s_phase, s_connected, s_cycle);
+    draw_mascot_rects(layer, &rects, coords.x1 + x - CT_BOX_X0 * px, foot - CT_BOX_Y1 * px);
 }
 
 // --- ตัวช่วยสร้าง widget ------------------------------------------------------
@@ -193,6 +253,16 @@ static void build_slots(lv_obj_t *scr)
         lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
         s_slots[i].label = l;
     }
+}
+
+// แถบ slot ที่ว่างเปล่าอ่านได้ว่า "อุปกรณ์ค้าง" — ให้มาสคอตเดินผ่านแทน
+// ผืนเดียวเต็มความกว้างจอ ไม่ใช่ slot เพราะตัวนี้ข้ามขอบ slot ตลอดเวลา
+static void build_stroll(lv_obj_t *scr)
+{
+    s_stroll = plain_obj(scr, CT_SCREEN_WIDTH, CT_SLOTS_HEIGHT);
+    lv_obj_set_pos(s_stroll, 0, CT_SLOTS_TOP);
+    lv_obj_add_event_cb(s_stroll, stroll_draw_cb, LV_EVENT_DRAW_MAIN, NULL);
+    lv_obj_add_flag(s_stroll, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void build_cards(lv_obj_t *scr)
@@ -310,6 +380,7 @@ void ct_ui_init(void)
 
     build_topbar(scr);
     build_slots(scr);
+    build_stroll(scr);
     build_cards(scr);
     build_usage(scr);
     build_idle_clock(scr);
@@ -320,6 +391,11 @@ void ct_ui_init(void)
 static void layout_slots(void)
 {
     int n = s_snap.session_count;
+    if (n == 0) {
+        lv_obj_remove_flag(s_stroll, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(s_stroll, LV_OBJ_FLAG_HIDDEN);
+    }
     for (int i = 0; i < CT_SLOTS_COUNT; i++) {
         slot_t *s = &s_slots[i];
         if (i >= n) {
@@ -577,6 +653,7 @@ void ct_ui_set_connected(bool connected)
                                 ct_color(connected ? CT_COL_TEXT : CT_COL_TEXT_DIM), 0);
     layout_slots();
     for (int i = 0; i < CT_SLOTS_COUNT; i++) lv_obj_invalidate(s_slots[i].canvas);
+    lv_obj_invalidate(s_stroll);
 }
 
 void ct_ui_tick(void)
@@ -591,6 +668,7 @@ void ct_ui_tick(void)
     for (int i = 0; i < s_snap.session_count; i++) {
         lv_obj_invalidate(s_slots[i].canvas);
     }
+    if (s_snap.session_count == 0) lv_obj_invalidate(s_stroll);
 
     // countdown เดินด้วยนาฬิกาของบอร์ดเอง ไม่ใช่ snapshot — เวลารีเซ็ตเป็นค่าสัมบูรณ์
     // BLE หลุดแล้วตัวเลขนี้ยังจริง ส่วนเปอร์เซ็นต์หยุดนิ่ง (ซึ่งถูก มันหยุดจริง)

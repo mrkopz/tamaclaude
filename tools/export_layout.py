@@ -51,7 +51,7 @@ def build_header() -> str:
         "#pragma once",
         "",
     ]
-    for section in ("screen", "topbar", "slots", "card", "usage", "mascot"):
+    for section in ("screen", "topbar", "slots", "card", "usage", "stroll", "mascot"):
         out += _emit_section(section, _raw[section])
         out.append("")
 

@@ -174,6 +174,46 @@ def _slot(draw: ImageDraw.ImageDraw, i: int, sess: Session | None, s: Screen,
               fill=quantize565(PAL.text if s.connected else PAL.text_dim), anchor="mm")
 
 
+# --- มาสคอตเดินเล่นตอนไม่มี session ------------------------------------------
+# ท่าที่หยุดทำกลางทาง วนไปตามรอบ — ต้องตรงกับ STROLL_ACTS ใน firmware/main/ct_ui.c
+STROLL_ACTS = ("celebrate", "thinking", "searching", "waiting")
+# ตำแหน่งหยุดเป็นสัดส่วนของเส้นทาง — วนคนละความยาวกับ ACTS เพื่อไม่ให้จับคู่ซ้ำ
+STROLL_PAUSE_AT = (0.34, 0.5, 0.66)
+STROLL_TRAVEL = L.screen.width + 2 * L.stroll.pad_px
+
+
+def stroll_pose(t: float) -> tuple[str, float]:
+    """เวลาสัมบูรณ์ (วินาที) -> (state, x ของขอบซ้ายกรอบวาด)
+
+    เที่ยวหนึ่ง = เดินจากนอกจอซ้ายไปนอกจอขวา โดยหยุดทำท่าหนึ่งครั้งกลางทาง
+    ต้องตรงกับ stroll_pose ใน firmware/main/ct_ui.c
+    """
+    walk_s = STROLL_TRAVEL / L.stroll.speed_px_s
+    trip_s = walk_s + L.stroll.pause_s
+    trip = int(t // trip_s)
+    u = t - trip * trip_s
+    hold_at = walk_s * STROLL_PAUSE_AT[trip % len(STROLL_PAUSE_AT)]
+
+    if u < hold_at:
+        walked = u
+        state = "entering"
+    elif u < hold_at + L.stroll.pause_s:
+        walked = hold_at
+        state = STROLL_ACTS[trip % len(STROLL_ACTS)]
+    else:
+        walked = u - L.stroll.pause_s
+        state = "entering"
+    return state, -L.stroll.pad_px + walked * L.stroll.speed_px_s
+
+
+def _stroll(draw: ImageDraw.ImageDraw, s: Screen, phase: float, cycle: int) -> None:
+    state, x = stroll_pose(cycle + phase)
+    px = L.slots.unit_px
+    foot_px = L.slots.top + L.slots.height - L.slots.baseline_pad
+    draw_rects(draw, mascot.build(state, phase, s.connected, cycle), px,
+               x - BOX_X0 * px, foot_px - BOX_Y1 * px)
+
+
 CARD_H = 36
 CARD_GAP = 4
 CARD_MAX = 3
@@ -325,6 +365,9 @@ def render(s: Screen, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     draw = ImageDraw.Draw(img)
     _topbar(draw, s)
     n = min(len(s.sessions), L.slots.count)
+    if n == 0:
+        # แถบ slot ที่ว่างเปล่าอ่านได้ว่า "อุปกรณ์ค้าง" — ให้มาสคอตเดินผ่านแทน
+        _stroll(draw, s, phase, cycle)
     for i in range(n):
         _slot(draw, i, s.sessions[i], s, phase, cycle, n)
     # ลำดับความสำคัญของพื้นที่ล่าง: การเตือน > โควตา > นาฬิกา

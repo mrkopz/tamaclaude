@@ -26,6 +26,10 @@
 #define CT_USAGE_WARN_PCT            60
 #define CT_USAGE_CRIT_PCT            85
 
+#define CT_STROLL_SPEED_PX_S         34
+#define CT_STROLL_PAUSE_S            2.5f
+#define CT_STROLL_PAD_PX             76
+
 #define CT_MASCOT_GRID_W             16
 #define CT_MASCOT_GRID_H             11.2f
 #define CT_MASCOT_OUTLINE            0.34f

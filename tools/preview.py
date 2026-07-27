@@ -26,6 +26,8 @@ SESSION_WINDOW = L.usage.session_window
 WEEKLY_WINDOW = L.usage.weekly_window
 FRAMES = 12  # เฟรมต่อหนึ่งลูป (~1 วินาที)
 LOOPS = 4  # GIF ยาวหลายลูป ไม่งั้นจะไม่มีวันเห็นการกะพริบตา
+# ฉากมาสคอตเดินเล่น: หนึ่งเที่ยว = (320 + 2*76) / 34 + 2.5 ~ 16 วินาที
+STROLL_LOOPS = 17
 
 
 def _cell(state: str, phase: float, px: int, connected: bool = True,
@@ -129,6 +131,16 @@ SCENES: dict[str, screen.Screen] = {
         ],
         connected=False,
     ),
+    # ไม่มี session เลย — มาสคอตเดินข้ามแถบ slot ที่ว่างอยู่
+    "empty": screen.Screen(
+        sessions=[],
+        clock="14:22",
+        date="Mon 27 Jul",
+        usage=[
+            screen.Usage("Current", SESSION_WINDOW, 35, 3 * 3600 + 5 * 60),
+            screen.Usage("Weekly", WEEKLY_WINDOW, 48, 31 * 3600),
+        ],
+    ),
     "waiting": screen.Screen(
         sessions=[
             screen.Session("esp32-claude-bt", "waiting", 0.0),
@@ -169,9 +181,12 @@ def main() -> None:
         img.save(OUT / f"screen_{name}.png")
         big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
         big.save(OUT / f"screen_{name}@{args.scale}x.png")
+        # ฉากที่ไม่มี session ใช้ลูปยาวกว่า — เที่ยวเดินหนึ่งรอบกินเวลาหลายสิบวินาที
+        # ถ้าตัดที่ 4 ลูปเหมือนฉากอื่นจะเห็นแค่มาสคอตขยับทีละไม่กี่พิกเซล
+        loops = STROLL_LOOPS if not sc.sessions else LOOPS
         frames = [
             screen.render(sc, (f % FRAMES) / FRAMES, f // FRAMES)
-            for f in range(FRAMES * LOOPS)
+            for f in range(FRAMES * loops)
         ]
         frames[0].save(OUT / f"screen_{name}.gif", save_all=True,
                        append_images=frames[1:], duration=90, loop=0)
