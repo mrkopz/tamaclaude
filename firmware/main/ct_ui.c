@@ -418,7 +418,9 @@ static void layout_usage_topbar(void)
     // หลบ "+N" เมื่อมันโผล่ ไม่งั้นทับกัน
     int right = s_snap.overflow > 0 ? -70 : -44;
     lv_obj_align(s_usage_top, LV_ALIGN_RIGHT_MID, right, 0);
-    lv_obj_align(s_usage_track, LV_ALIGN_RIGHT_MID, right - 30 - USAGE_TOP_W, 0);
+    // align จัดที่ *ขอบขวา* ของ track ให้เอง — ไม่ต้องหักความกว้างแถบออกอีก
+    // (ฝั่ง Pillow ต้องหักเองเพราะวาดจากมุมซ้ายบน) ตรงกับ tools/gen/screen.py:_topbar
+    lv_obj_align(s_usage_track, LV_ALIGN_RIGHT_MID, right - 30, 0);
 
     if (u->percent < 0) {
         lv_obj_add_flag(s_usage_fill, LV_OBJ_FLAG_HIDDEN);
