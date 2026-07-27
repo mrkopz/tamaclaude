@@ -80,13 +80,16 @@ public final class SessionStore {
     public var toolMap: ToolMap
     public var timings: Timings
     /// จำนวน slot บนจอ ที่เหลือถูกนับเป็น "+N"
+    ///
+    /// ต้องตรงกับ `[slots] count` ใน tools/layout.toml เสมอ — ส่งเกินไปแล้วบอร์ดตัดทิ้งเงียบๆ
+    /// (ct_model.c) และ "+N" จะนับต่ำกว่าจริง คือโกหกว่ามองเห็นครบทุก session
     public let slotCount: Int
 
     private var order: [String] = []  // ลำดับซ้าย->ขวา ต้องนิ่ง = ลำดับที่ session เกิด
     private var sessions: [String: Session] = [:]
     private var cards: [StoredCard] = []
 
-    public init(toolMap: ToolMap = .default, timings: Timings = Timings(), slotCount: Int = 4) {
+    public init(toolMap: ToolMap = .default, timings: Timings = Timings(), slotCount: Int = 3) {
         self.toolMap = toolMap
         self.timings = timings
         self.slotCount = slotCount

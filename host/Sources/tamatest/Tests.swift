@@ -154,14 +154,14 @@ func runAllTests() {
 
     suite("slot order") {
         let s = store()
-        for i in 1...4 {
+        for i in 1...3 {
             s.apply(
                 event("PreToolUse", "s\(i)", tool: "Read", cwd: "/tmp/p\(i)"),
                 now: t0 + Double(i))
         }
         s.apply(event("PreToolUse", "s1", tool: "Bash", cwd: "/tmp/p1"), now: t0 + 10)
         equal(
-            s.snapshot(now: t0 + 10).sessions.map(\.project), ["p1", "p2", "p3", "p4"],
+            s.snapshot(now: t0 + 10).sessions.map(\.project), ["p1", "p2", "p3"],
             "left-to-right order never shuffles")
     }
 
@@ -172,9 +172,9 @@ func runAllTests() {
         }
         s.apply(event("Notification", "s5", cwd: "/tmp/p5", message: "look"), now: t0 + 1)
         let snap = s.snapshot(now: t0 + 1)
-        equal(snap.overflow, 1, "the fifth session is counted, not drawn")
+        equal(snap.overflow, 2, "sessions past the slot count are counted, not drawn")
         equal(
-            snap.sessions.map(\.project), ["p2", "p3", "p4", "p5"],
+            snap.sessions.map(\.project), ["p3", "p4", "p5"],
             "the urgent one keeps its slot")
 
         let s2 = store()

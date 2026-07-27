@@ -26,8 +26,8 @@ SESSION_WINDOW = L.usage.session_window
 WEEKLY_WINDOW = L.usage.weekly_window
 FRAMES = 12  # เฟรมต่อหนึ่งลูป (~1 วินาที)
 LOOPS = 4  # GIF ยาวหลายลูป ไม่งั้นจะไม่มีวันเห็นการกะพริบตา
-# ฉากมาสคอตเดินเล่น: หนึ่งเที่ยว = (320 + 2*76) / 34 + 2.5 ~ 16 วินาที
-STROLL_LOOPS = 17
+# ฉากมาสคอตเดินเล่น: หนึ่งเที่ยว = (320 + 2*96) / 34 + 2.5 ~ 17.6 วินาที
+STROLL_LOOPS = 18
 
 
 def _cell(state: str, phase: float, px: int, connected: bool = True,
@@ -70,9 +70,8 @@ SCENES: dict[str, screen.Screen] = {
             screen.Session("esp32-claude-bt", "writing", 0.0),
             screen.Session("tamaclaude", "building", 0.3),
             screen.Session("sprite-gen", "reading", 0.6),
-            screen.Session("docs", "thinking", 0.15),
         ],
-        overflow=2,
+        overflow=3,
         cards=[
             screen.Card("tamaclaude", "needs permission to run git push", "alert"),
             screen.Card("infra-scripts", "Stopped - waiting for your reply", "info"),

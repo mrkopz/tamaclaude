@@ -7,18 +7,18 @@
 
 #define CT_TOPBAR_HEIGHT             22
 
-#define CT_SLOTS_COUNT               4
-#define CT_SLOTS_WIDTH               80
+#define CT_SLOTS_COUNT               3
+#define CT_SLOTS_WIDTH               106
 #define CT_SLOTS_TOP                 22
-#define CT_SLOTS_HEIGHT              86
-#define CT_SLOTS_UNIT_PX             3
+#define CT_SLOTS_HEIGHT              90
+#define CT_SLOTS_UNIT_PX             4
 #define CT_SLOTS_BASELINE_PAD        19
 
-#define CT_CARD_TOP                  112
-#define CT_CARD_HEIGHT               128
+#define CT_CARD_TOP                  116
+#define CT_CARD_HEIGHT               124
 #define CT_CARD_PAD                  6
 
-#define CT_USAGE_ROW_H               56
+#define CT_USAGE_ROW_H               40
 #define CT_USAGE_GAP                 4
 #define CT_USAGE_BAR_H               7
 #define CT_USAGE_SESSION_WINDOW      18000
@@ -28,7 +28,7 @@
 
 #define CT_STROLL_SPEED_PX_S         34
 #define CT_STROLL_PAUSE_S            2.5f
-#define CT_STROLL_PAD_PX             76
+#define CT_STROLL_PAD_PX             96
 
 #define CT_MASCOT_GRID_W             16
 #define CT_MASCOT_GRID_H             11.2f

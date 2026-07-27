@@ -299,16 +299,24 @@ static const int USAGE_WINDOWS[CT_USAGE_ROWS] = {CT_USAGE_SESSION_WINDOW,
 // สี pill แยกตามหน้าต่าง — สีคือสิ่งที่บอกว่ากำลังอ่านแถวไหนก่อนอ่านตัวอักษร
 static const uint16_t USAGE_PILL_COLORS[CT_USAGE_ROWS] = {CT_COL_CLAY, CT_COL_GOOD};
 
+// y ของขอบบนแถว i — แผงเตี้ยกว่าพื้นที่ที่มี จึงจัดกลางแนวตั้ง ไม่ชิดบน
+// ต้องตรงกับ _usage ใน tools/gen/screen.py
+static int usage_row_y(int i)
+{
+    int block = 2 * CT_USAGE_ROW_H + CT_USAGE_GAP;
+    return CT_CARD_TOP + (CT_CARD_HEIGHT - block) / 2 + i * (CT_USAGE_ROW_H + CT_USAGE_GAP);
+}
+
 static void build_usage(lv_obj_t *scr)
 {
     for (int i = 0; i < CT_USAGE_ROWS; i++) {
-        int y = CT_CARD_TOP + CT_CARD_PAD + i * (CT_USAGE_ROW_H + CT_USAGE_GAP);
+        int y = usage_row_y(i);
         usage_row_t *u = &s_usage[i];
 
         u->percent_bold = plain_label(scr, &lv_font_montserrat_24, CT_COL_GOOD);
-        lv_obj_set_pos(u->percent_bold, USAGE_X0 + 1, y + 2);
+        lv_obj_set_pos(u->percent_bold, USAGE_X0 + 1, y + 1);
         u->percent = plain_label(scr, &lv_font_montserrat_24, CT_COL_GOOD);
-        lv_obj_set_pos(u->percent, USAGE_X0, y + 2);
+        lv_obj_set_pos(u->percent, USAGE_X0, y);
 
         // pill วาดด้วย obj โค้งมุม ไม่ใช่ label ที่มีพื้นหลัง เพราะต้องกำหนดความกว้าง
         // จากความยาวข้อความเองตอน build (ข้อความคงที่ ไม่เปลี่ยนตามข้อมูล)
@@ -328,7 +336,7 @@ static void build_usage(lv_obj_t *scr)
         lv_obj_set_style_bg_color(u->track, ct_color(CT_COL_GRAY_DARK), 0);
         lv_obj_set_style_bg_opa(u->track, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(u->track, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_pos(u->track, USAGE_X0, y + 30);
+        lv_obj_set_pos(u->track, USAGE_X0, y + 28);
 
         u->fill = plain_obj(u->track, USAGE_W, CT_USAGE_BAR_H);
         lv_obj_set_style_bg_opa(u->fill, LV_OPA_COVER, 0);
@@ -338,10 +346,15 @@ static void build_usage(lv_obj_t *scr)
         u->pace = plain_obj(scr, 1, CT_USAGE_BAR_H + 4);
         lv_obj_set_style_bg_color(u->pace, ct_color(CT_COL_OUTLINE), 0);
         lv_obj_set_style_bg_opa(u->pace, LV_OPA_COVER, 0);
-        lv_obj_set_pos(u->pace, USAGE_X0, y + 28);
+        lv_obj_set_pos(u->pace, USAGE_X0, y + 26);
 
+        // เวลารีเซ็ตอยู่บรรทัดเดียวกับเลข % ไม่ใช่ชั้นใต้แถบ — ประหยัด 16px ต่อแถว
+        // โดยไม่ต้องลดขนาดเลข %
+        //
+        // เกาะขอบขวาของป้ายเลข % ไม่ใช่พิกัดตายตัวที่กันที่ไว้ให้ "100%" ซึ่งทำให้
+        // เลขสองหลักดูห่างจนไม่เป็นก้อนเดียวกัน ตำแหน่งจริงคำนวณใน layout_usage
+        // หลังตั้งข้อความ — lv_obj_align_to คิดครั้งเดียวตอนเรียก ไม่ตามความกว้างใหม่เอง
         u->reset = plain_label(scr, &lv_font_montserrat_12, CT_COL_TEXT_DIM);
-        lv_obj_set_pos(u->reset, USAGE_X0, y + 41);
 
         lv_obj_add_flag(u->percent, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(u->percent_bold, LV_OBJ_FLAG_HIDDEN);
@@ -590,7 +603,7 @@ static void layout_usage(void)
             int elapsed = USAGE_WINDOWS[i] - u->remaining;
             if (elapsed < 0) elapsed = 0;
             if (elapsed > USAGE_WINDOWS[i]) elapsed = USAGE_WINDOWS[i];
-            int y = CT_CARD_TOP + CT_CARD_PAD + i * (CT_USAGE_ROW_H + CT_USAGE_GAP) + 28;
+            int y = usage_row_y(i) + 26;
             lv_obj_set_pos(row->pace,
                            USAGE_X0 + (int)((int64_t)USAGE_W * elapsed / USAGE_WINDOWS[i]), y);
             lv_obj_remove_flag(row->pace, LV_OBJ_FLAG_HIDDEN);
@@ -601,6 +614,11 @@ static void layout_usage(void)
         char text[24];
         usage_reset_text(u, text, sizeof(text));
         lv_label_set_text(row->reset, text);
+
+        // ความกว้างของป้ายเลข % เพิ่งเปลี่ยนตามข้อความ ("100%" กว้างกว่า "35%" ~13px)
+        // ต้องบังคับให้ LVGL คิดขนาดใหม่ก่อน ไม่งั้นจัดชิดกับความกว้างของเฟรมก่อนหน้า
+        lv_obj_update_layout(row->percent);
+        lv_obj_align_to(row->reset, row->percent, LV_ALIGN_OUT_RIGHT_MID, 12, 0);
     }
 }
 

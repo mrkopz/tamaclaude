@@ -300,8 +300,17 @@ def _usage_row(draw: ImageDraw.ImageDraw, u: Usage, y: int) -> None:
     # stroke_width=1 = ป้ายซ้อนเยื้อง 1px ฝั่ง LVGL ซึ่งไม่มี montserrat ตัวหนา
     big = "--%" if u.pct is None else f"{u.pct}%"
     big_col = quantize565(col if u.pct is not None else PAL.text_dim)
-    draw.text((x0, y + 16), big, font=font(24), fill=big_col, anchor="lm",
+    draw.text((x0, y + 14), big, font=font(24), fill=big_col, anchor="lm",
               stroke_width=1, stroke_fill=big_col)
+
+    # เวลารีเซ็ตอยู่บรรทัดเดียวกับเลข % ไม่ใช่ชั้นใต้แถบ — เกาะขอบขวาของเลขจริง
+    # ไม่ใช่พิกัดตายตัวที่กันที่ไว้ให้ "100%" ซึ่งทำให้เลขสองหลักดูห่างจนไม่เป็นก้อนเดียวกัน
+    # "resetting" / "no data" ยืนลำพัง — เติม "Resets in" ข้างหน้าแล้วอ่านไม่เป็นภาษา
+    left = fmt_remaining(u.remaining)
+    txt = f"Resets in {left}" if u.remaining and u.remaining > 0 else left
+    big_w = draw.textlength(big, font=font(24)) + 2  # +2 = stroke_width ทั้งสองข้าง
+    draw.text((x0 + big_w + 12, y + 14), txt, font=font(11),
+              fill=quantize565(PAL.text_dim), anchor="lm")
 
     # ป้ายชื่อหน้าต่างชิดขวา — สีคงที่ต่อหน้าต่าง ไม่ตามระดับการใช้
     # ป้ายบอก *ว่านี่คือหน้าต่างไหน* ซึ่งไม่เคยเปลี่ยน การให้มันเปลี่ยนสีตาม %
@@ -316,7 +325,7 @@ def _usage_row(draw: ImageDraw.ImageDraw, u: Usage, y: int) -> None:
 
     # แถบ — รางต้องสว่างกว่าพื้นจอพอให้เห็นความยาวเต็มตอนใช้ไปน้อย
     bh = L.usage.bar_h
-    by = y + 30
+    by = y + 28
     r = bh // 2
     draw.rounded_rectangle([x0, by, x1, by + bh - 1], radius=r,
                            fill=quantize565(PAL.gray_dark))
@@ -333,14 +342,12 @@ def _usage_row(draw: ImageDraw.ImageDraw, u: Usage, y: int) -> None:
         mx = x0 + round((x1 - x0) * elapsed / u.window)
         draw.rectangle([mx, by - 2, mx, by + bh + 1], fill=quantize565(PAL.outline))
 
-    # "resetting" / "--" ยืนลำพัง — เติม "Resets in" ข้างหน้าแล้วอ่านไม่เป็นภาษา
-    left = fmt_remaining(u.remaining)
-    txt = f"Resets in {left}" if u.remaining and u.remaining > 0 else left
-    draw.text((x0, y + 47), txt, font=font(11), fill=quantize565(PAL.text_dim), anchor="lm")
-
 
 def _usage(draw: ImageDraw.ImageDraw, rows: list[Usage]) -> None:
-    y = L.card.top + L.card.pad
+    # แผงเตี้ยกว่าพื้นที่ที่มี — จัดกลางแนวตั้ง ไม่ชิดบน ไม่งั้นก้นจอโล่งเป็นแถบ
+    # แล้วอ่านเป็น "ของหาย" แทนที่จะเป็นการตัดสินใจ
+    block = 2 * L.usage.row_h + L.usage.gap
+    y = L.card.top + (L.card.height - block) // 2
     for u in rows[:2]:
         _usage_row(draw, u, y)
         y += L.usage.row_h + L.usage.gap
