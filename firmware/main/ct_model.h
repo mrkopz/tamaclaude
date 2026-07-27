@@ -1,0 +1,73 @@
+// snapshot ที่ daemon ส่งมา — firmware ไม่เก็บสถานะเอง วาดจากก้อนนี้อย่างเดียว
+//
+// รูปแบบบนสาย (คีย์สั้นเพราะต้องพอดี 1 MTU):
+//   {"c":"14:32","d":"Mon 27 Jul","o":0,
+//    "s":[{"p":"tamaclaude","s":"building"}],
+//    "n":[{"t":"tamaclaude","b":"allow Bash?","k":"alert"}],
+//    "u":[[35,10800],[48,111600]]}
+#pragma once
+
+#include <stdbool.h>
+
+#include "layout.h"
+
+#define CT_MAX_CARDS 3
+#define CT_PROJECT_LEN 20
+#define CT_TITLE_LEN 40
+#define CT_BODY_LEN 52
+#define CT_CLOCK_LEN 8
+#define CT_DATE_LEN 16
+
+typedef enum {
+    CT_CARD_INFO = 0,
+    CT_CARD_ALERT,
+    CT_CARD_DONE,
+} ct_card_kind_t;
+
+typedef struct {
+    char project[CT_PROJECT_LEN];
+    ct_state_t state;
+} ct_session_t;
+
+typedef struct {
+    char title[CT_TITLE_LEN];
+    char body[CT_BODY_LEN];
+    ct_card_kind_t kind;
+} ct_card_t;
+
+// โควตาหนึ่งหน้าต่าง — คู่ [percent, วินาทีที่เหลือ] ที่ daemon ส่งมาใน "u"
+//
+// -1 แปลว่า "ไม่รู้" ไม่ใช่ศูนย์ — ศูนย์เป็นค่าจริง เปอร์เซ็นต์ที่ไม่รู้ต้องวาดเป็น "--"
+// ห้ามเดาจากอะไรทั้งสิ้น
+#define CT_USAGE_UNKNOWN (-1)
+#define CT_USAGE_ROWS 2
+
+typedef struct {
+    int percent;
+    int remaining;  // วินาที — บอร์ดนับถอยลงเอง ระหว่างที่ยังไม่มี snapshot ใหม่
+} ct_usage_t;
+
+typedef struct {
+    char clock[CT_CLOCK_LEN];
+    char date[CT_DATE_LEN];
+    int overflow;
+    int session_count;
+    ct_session_t sessions[CT_SLOTS_COUNT];
+    int card_count;
+    ct_card_t cards[CT_MAX_CARDS];
+    // false = ไม่เคยได้ข้อมูลโควตาเลย -> จอถอยไปเป็นนาฬิกาตั้งโต๊ะ ไม่ใช่วาดโครงเปล่า
+    bool has_usage;
+    ct_usage_t usage[CT_USAGE_ROWS];
+} ct_snapshot_t;
+
+// เดินนาฬิกาถอยหลังไป `secs` วินาที — เรียกจากลูปหลัก ไม่ใช่ตอนรับ snapshot
+//
+// countdown เดินบนบอร์ดเพราะเวลารีเซ็ตเป็นค่าสัมบูรณ์: BLE หลุดแล้วเวลายังจริงอยู่
+// ส่วนเปอร์เซ็นต์หยุดนิ่ง (ซึ่งถูก — มันหยุดจริง) และกลายเป็น "ไม่รู้" เมื่อถึง 0
+void ct_model_tick_usage(ct_snapshot_t *s, int secs);
+
+// แปลง JSON หนึ่งก้อนเป็น snapshot — คืน false เมื่อ JSON ใช้ไม่ได้ (ของเดิมต้องไม่ถูกแตะ)
+bool ct_model_parse(const char *json, int len, ct_snapshot_t *out);
+
+// snapshot ว่าง: ไม่มี session ไม่มีการ์ด นาฬิกาเป็นขีด
+void ct_model_clear(ct_snapshot_t *s);

@@ -1,0 +1,86 @@
+import Foundation
+
+/// ตัว daemon: socket -> store -> snapshot -> transports
+///
+/// ทุกอย่างวิ่งบนคิวเดียว (`work`) สถานะจึงไม่ต้องล็อก
+public final class Daemon {
+    private let store: SessionStore
+    private let work = DispatchQueue(label: "tamaclaude.daemon")
+    private var server: SocketServer?
+    private var transports: [Transport]
+    private var timer: DispatchSourceTimer?
+    private var lastSent: Data?
+
+    /// ทุกกี่วินาทีที่คำนวณ snapshot ใหม่ — สถานะหลายอย่างเกิดจากเวลาผ่านไปเฉยๆ
+    /// (นอน, เกณฑ์เตือน 45 วิ, นาฬิกาเปลี่ยนนาที) ไม่ใช่จากเหตุการณ์
+    private let tick: TimeInterval = 1.0
+
+    /// เรียกทุกครั้งที่ภาพเปลี่ยน — เมนูบาร์ใช้แสดงว่ากำลังเกิดอะไรอยู่
+    /// ถูกเรียกจากคิวของ daemon ไม่ใช่เธรดหลัก
+    public var onPublish: ((Snapshot) -> Void)?
+
+    public init(store: SessionStore, transports: [Transport]) {
+        self.store = store
+        self.transports = transports
+    }
+
+    public func start() throws {
+        Paths.ensureStateDir()
+
+        for t in transports {
+            t.onConnect = { [weak self] in
+                // บอร์ดเพิ่งกลับมา — มันไม่จำอะไรเลย ต้องบังคับส่งใหม่ทั้งก้อน
+                self?.work.async { self?.lastSent = nil }
+            }
+            t.start()
+        }
+
+        let server = SocketServer(path: Paths.socket) { [weak self] line in
+            self?.handle(line)
+        }
+        try server.start()
+        self.server = server
+        Log.info("listening on \(Paths.socket.path)")
+
+        let t = DispatchSource.makeTimerSource(queue: work)
+        t.schedule(deadline: .now(), repeating: tick)
+        t.setEventHandler { [weak self] in self?.publish() }
+        timer = t
+        t.resume()
+    }
+
+    public func stop() {
+        timer?.cancel()
+        timer = nil
+        server?.stop()
+        server = nil
+    }
+
+    private func handle(_ line: Data) {
+        work.async { [weak self] in
+            guard let self else { return }
+            do {
+                let event = try JSONDecoder().decode(HookEvent.self, from: line)
+                Log.debug("event \(event.hookEventName) \(event.toolName ?? "")")
+                self.store.apply(event, now: Date())
+                self.publish()
+            } catch {
+                Log.debug("bad event: \(error)")
+            }
+        }
+    }
+
+    /// ส่งเมื่อภาพเปลี่ยนจริงเท่านั้น — ไม่งั้นบอร์ดโดนยิงทุกวินาทีโดยเปล่าประโยชน์
+    private func publish() {
+        let now = Date()
+        var snapshot = store.snapshot(now: now)
+        snapshot.usage = UsageReader.read(now: now)
+        guard let data = try? snapshot.encoded() else { return }
+        guard data != lastSent else { return }
+        lastSent = data
+        for t in transports where t.isConnected {
+            t.send(data)
+        }
+        onPublish?(snapshot)
+    }
+}

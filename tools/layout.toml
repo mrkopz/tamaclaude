@@ -1,0 +1,64 @@
+# ต้นทางเดียวของค่าคงที่ layout
+# generate เป็น tools/gen/_layout_gen.py (Python) และ firmware/main/layout.h (C)
+# ห้ามแก้ไฟล์ที่ generate ออกมา — แก้ที่นี่แล้วรัน `python3 tools/export_layout.py`
+
+[screen]
+width = 320
+height = 240
+
+[topbar]
+height = 22
+
+[slots]
+count = 4
+width = 80
+top = 22
+# แถบมาสคอตสูงพอดีตัว (~50px) + ป้ายชื่อ ที่เหลือยกให้ card ซึ่งแบกข้อความสำคัญ
+height = 86
+# กรอบวาด 22.5 x 16.8 unit -> 3px ต่อ unit = 67.5 x 50.4 px ใน slot 80px
+unit_px = 3
+# ระยะจากขอบล่างของ slot ถึงฝ่าเท้ามาสคอต
+baseline_pad = 19
+
+[card]
+top = 112
+height = 128
+pad = 6
+
+[usage]
+# แผง utilization กินพื้นที่เดียวกับนาฬิกาใหญ่ — โผล่เมื่อไม่มี card และมีข้อมูลจริง
+# 128px - pad บนล่าง 6 - ช่องว่างกลาง 4 = 56px ต่อแถว
+row_h = 56
+gap = 4
+bar_h = 7
+# ความยาวหน้าต่างเป็นวินาที — ใช้คำนวณขีด pace (elapsed = window - remaining)
+# ค่าคงที่ทั้งคู่ ไม่ได้ส่งมากับ snapshot
+session_window = 18000
+weekly_window = 604800
+# ขั้นสี 3 ระดับ — มากกว่านี้แยกไม่ออกจากระยะโต๊ะ
+warn_pct = 60
+crit_pct = 85
+
+[mascot]
+# ตารางหน่วยมาตรฐานของมาสคอต (ไม่ใช่พิกเซล) — ซิลลูเอ็ตกว้าง 19 สูง 14
+# ที่เหลือทางขวาถึง x=26 สงวนไว้ให้ prop ที่ถืออยู่ ไม่ให้ทับลำตัว
+grid_w = 16
+grid_h = 11.2
+# ความหนาขอบเป็น unit — 1/3 unit = 1px พอดีที่ unit_px = 3
+outline = 0.34
+
+[palette]
+bg          = "#14100E"
+bg_slot     = "#1B1613"
+clay        = "#D97757"
+clay_dark   = "#A85639"
+clay_sleep  = "#7A4630"
+gray        = "#5C5C5C"
+gray_dark   = "#3D3D3D"
+ink         = "#17140F"
+outline     = "#FFFFFF"
+text        = "#E8E0D8"
+text_dim    = "#8A817A"
+accent      = "#E8B84B"
+alert       = "#D9564F"
+good        = "#5FA85F"

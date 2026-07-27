@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+"""เรนเดอร์ทุกสถานะและจอทั้งใบเป็น PNG/GIF — dev loop ที่ไม่ต้องแตะบอร์ด
+
+    python3 tools/preview.py           สร้างทุกอย่างลง out/
+    python3 tools/preview.py --sheet   เฉพาะ contact sheet
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from pathlib import Path
+
+from PIL import Image, ImageDraw
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from gen import mascot, screen  # noqa: E402
+from gen.config import L, PAL, REPO_DIR  # noqa: E402
+from gen.props import BOX_X0, BOX_X1, BOX_Y0, BOX_Y1  # noqa: E402
+from gen.render import quantize565, render_rects  # noqa: E402
+
+OUT = REPO_DIR / "out"
+BOX = (BOX_X0, BOX_Y0, BOX_X1, BOX_Y1)
+SESSION_WINDOW = L.usage.session_window
+WEEKLY_WINDOW = L.usage.weekly_window
+FRAMES = 12  # เฟรมต่อหนึ่งลูป (~1 วินาที)
+LOOPS = 4  # GIF ยาวหลายลูป ไม่งั้นจะไม่มีวันเห็นการกะพริบตา
+
+
+def _cell(state: str, phase: float, px: int, connected: bool = True,
+          cycle: int = 0) -> Image.Image:
+    return render_rects(
+        mascot.build_centered(state, phase, connected, cycle), px, BOX, PAL.bg_slot
+    )
+
+
+def contact_sheet(px: int = 7, cols: int = 6) -> Image.Image:
+    """ทุกสถานะเรียงในภาพเดียว — ใช้ตัดสินว่ามาสคอตสื่ออารมณ์ได้จริงไหม"""
+    states = mascot.all_states()
+    cw = round((BOX_X1 - BOX_X0) * px)
+    ch = round((BOX_Y1 - BOX_Y0) * px)
+    pad, label_h = 8, 16
+    rows = (len(states) + cols - 1) // cols
+    W = cols * (cw + pad) + pad
+    H = rows * (ch + label_h + pad) + pad
+    sheet = Image.new("RGB", (W, H), quantize565(PAL.bg))
+    draw = ImageDraw.Draw(sheet)
+    for i, st in enumerate(states):
+        cx = pad + (i % cols) * (cw + pad)
+        cy = pad + (i // cols) * (ch + label_h + pad)
+        sheet.paste(_cell(st, 0.25, px), (cx, cy))
+        draw.text((cx + cw / 2, cy + ch + label_h / 2), st, font=screen.font(12),
+                  fill=quantize565(PAL.text), anchor="mm")
+    return sheet
+
+
+def state_gif(state: str, px: int = 7, connected: bool = True) -> list[Image.Image]:
+    return [
+        _cell(state, (f % FRAMES) / FRAMES, px, connected, f // FRAMES)
+        for f in range(FRAMES * LOOPS)
+    ]
+
+
+SCENES: dict[str, screen.Screen] = {
+    "busy": screen.Screen(
+        sessions=[
+            screen.Session("esp32-claude-bt", "writing", 0.0),
+            screen.Session("tamaclaude", "building", 0.3),
+            screen.Session("sprite-gen", "reading", 0.6),
+            screen.Session("docs", "thinking", 0.15),
+        ],
+        overflow=2,
+        cards=[
+            screen.Card("tamaclaude", "needs permission to run git push", "alert"),
+            screen.Card("infra-scripts", "Stopped — waiting for your reply", "info"),
+            screen.Card("sprite-gen", "Build finished, 0 warnings", "done"),
+        ],
+        usage=[
+            screen.Usage("Current", SESSION_WINDOW, 88, 42 * 60),
+            screen.Usage("Weekly", WEEKLY_WINDOW, 61, 3 * 86400),
+        ],
+    ),
+    "idle": screen.Screen(
+        sessions=[screen.Session("esp32-claude-bt", "sleeping", 0.0)],
+        clock="02:14",
+    ),
+    # โควตาปกติ — สภาพที่จอจะเป็นเกือบตลอดเวลาที่ไม่มีอะไรต้องเตือน
+    "usage": screen.Screen(
+        sessions=[
+            screen.Session("esp32-claude-bt", "writing", 0.0),
+            screen.Session("docs", "reading", 0.4),
+        ],
+        clock="17:04",
+        usage=[
+            screen.Usage("Current", SESSION_WINDOW, 35, 3 * 3600 + 5 * 60),
+            screen.Usage("Weekly", WEEKLY_WINDOW, 48, 31 * 3600),
+        ],
+    ),
+    # ใกล้เต็มทั้งคู่ + ใช้เร็วกว่าเวลา (ขีด pace อยู่ซ้ายของเนื้อแถบ)
+    "usage_hot": screen.Screen(
+        sessions=[screen.Session("esp32-claude-bt", "building", 0.0)],
+        clock="09:41",
+        usage=[
+            screen.Usage("Current", SESSION_WINDOW, 92, 4 * 3600 + 20 * 60),
+            screen.Usage("Weekly", WEEKLY_WINDOW, 71, 2 * 86400 + 5 * 3600),
+        ],
+    ),
+    # หน้าต่างหมุนไปแล้ว + weekly หายไปทั้งตัว — ทั้งคู่ต้องเป็น `--` ห้ามเดา
+    "usage_unknown": screen.Screen(
+        sessions=[screen.Session("esp32-claude-bt", "idle", 0.0)],
+        clock="06:20",
+        usage=[
+            screen.Usage("Current", SESSION_WINDOW, None, 0),
+            screen.Usage("Weekly", WEEKLY_WINDOW, None, None),
+        ],
+    ),
+    "done": screen.Screen(
+        sessions=[
+            screen.Session("esp32-claude-bt", "celebrate", 0.0),
+            screen.Session("docs", "idle", 0.4),
+        ],
+        cards=[screen.Card("esp32-claude-bt", "Build finished, 0 warnings", "done")],
+    ),
+    "offline": screen.Screen(
+        sessions=[
+            screen.Session("esp32-claude-bt", "idle", 0.0),
+            screen.Session("docs", "idle", 0.5),
+        ],
+        connected=False,
+    ),
+    "waiting": screen.Screen(
+        sessions=[
+            screen.Session("esp32-claude-bt", "waiting", 0.0),
+            screen.Session("tamaclaude", "searching", 0.5),
+            screen.Session("sprite-gen", "alert", 0.25),
+        ],
+        cards=[
+            screen.Card("sprite-gen", "Stopped: test suite failed (3 failing)", "alert"),
+            screen.Card("esp32-claude-bt", "needs permission to write layout.h", "info"),
+        ],
+    ),
+}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--sheet", action="store_true", help="เฉพาะ contact sheet")
+    ap.add_argument("--scale", type=int, default=3, help="ขยายภาพจอตอน export")
+    args = ap.parse_args()
+
+    OUT.mkdir(exist_ok=True)
+    (OUT / "anim").mkdir(exist_ok=True)
+
+    sheet = contact_sheet()
+    sheet.save(OUT / "states.png")
+    print(f"states.png            {sheet.width}x{sheet.height}  {len(mascot.all_states())} states")
+    if args.sheet:
+        return
+
+    for st in mascot.all_states():
+        frames = state_gif(st)
+        frames[0].save(OUT / "anim" / f"{st}.gif", save_all=True,
+                       append_images=frames[1:], duration=90, loop=0)
+    print(f"anim/*.gif            {len(mascot.all_states())} ไฟล์")
+
+    for name, sc in SCENES.items():
+        img = screen.render(sc, 0.25)
+        img.save(OUT / f"screen_{name}.png")
+        big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
+        big.save(OUT / f"screen_{name}@{args.scale}x.png")
+        frames = [
+            screen.render(sc, (f % FRAMES) / FRAMES, f // FRAMES)
+            for f in range(FRAMES * LOOPS)
+        ]
+        frames[0].save(OUT / f"screen_{name}.gif", save_all=True,
+                       append_images=frames[1:], duration=90, loop=0)
+    print(f"screen_*.png/gif      {len(SCENES)} ฉาก  (320x240)")
+    print(f"\nout/ -> {OUT}")
+
+
+if __name__ == "__main__":
+    main()

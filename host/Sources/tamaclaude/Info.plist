@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key>
+  <string>com.tamaclaude.daemon</string>
+  <key>CFBundleName</key>
+  <string>tamaclaude</string>
+  <key>CFBundleExecutable</key>
+  <string>tamaclaude</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <!-- ไม่มีไอคอนใน Dock — ตัวนี้เป็น daemon เบื้องหลัง (เมนูบาร์จะมาทีหลัง) -->
+  <key>LSUIElement</key>
+  <true/>
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+  <!-- ขาดคีย์นี้แล้ว TCC ไม่ได้ปฏิเสธเฉยๆ แต่ยิง SIGABRT ใส่ทั้งโปรเซส -->
+  <key>NSBluetoothAlwaysUsageDescription</key>
+  <string>tamaclaude talks to the desk display over Bluetooth LE.</string>
+</dict>
+</plist>

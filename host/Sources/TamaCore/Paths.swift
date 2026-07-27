@@ -1,0 +1,82 @@
+import Foundation
+
+/// ที่อยู่ไฟล์ทั้งหมดของฝั่ง Mac
+public enum Paths {
+    public static var home: URL {
+        URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+    }
+
+    public static var stateDir: URL {
+        home.appendingPathComponent(".tamaclaude", isDirectory: true)
+    }
+
+    /// Unix socket ที่ hook คุยกับ daemon
+    /// sun_path จำกัด 104 ไบต์ พาธนี้สั้นพอเสมอเพราะอยู่ใต้ home
+    public static var socket: URL {
+        stateDir.appendingPathComponent("daemon.sock")
+    }
+
+    public static var toolConfig: URL {
+        stateDir.appendingPathComponent("tools.json")
+    }
+
+    public static var log: URL {
+        stateDir.appendingPathComponent("daemon.log")
+    }
+
+    /// สคริปต์ที่เรายึดช่อง `statusLine.command` ไว้ — เขียน cache แล้วส่งงานวาดต่อ
+    public static var statusline: URL {
+        stateDir.appendingPathComponent("statusline.sh")
+    }
+
+    /// cache โควตาที่ statusline เขียน — ที่อยู่เดิมของ Claude Usage.app
+    /// ใช้ที่เดียวกันเพื่อให้ statusline เดิมของผู้ใช้อ่านต่อได้โดยไม่ต้องแก้อะไร
+    public static var usageCache: URL {
+        home
+            .appendingPathComponent(".claude", isDirectory: true)
+            .appendingPathComponent(".statusline-usage-cache")
+    }
+
+    @discardableResult
+    public static func ensureStateDir() -> Bool {
+        (try? FileManager.default.createDirectory(
+            at: stateDir, withIntermediateDirectories: true)) != nil
+    }
+}
+
+/// log แบบง่ายที่สุดที่ยังใช้งานได้ — เขียน stderr เสมอ
+///
+/// เขียนลงไฟล์ด้วยเมื่อเปิด `toFile` เพราะตอนถูกปล่อยผ่าน LaunchServices (`open`)
+/// ไม่มีใครเห็น stderr เลย ซึ่งเป็นวิธีเดียวที่ขอสิทธิ์ Bluetooth ได้สำเร็จ
+public enum Log {
+    public nonisolated(unsafe) static var verbose = false
+    public nonisolated(unsafe) static var toFile = false
+
+    private static let lock = NSLock()
+
+    public static func info(_ msg: @autoclosure () -> String) {
+        let line = "[tamaclaude] \(msg())\n"
+        FileHandle.standardError.write(Data(line.utf8))
+        guard toFile else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        let url = Paths.log
+        // ตัดทิ้งเมื่อโตเกิน 1MB — log ที่โตไม่หยุดคือปัญหาถัดไปที่ไม่อยากได้
+        if let size = try? FileManager.default.attributesOfItem(atPath: url.path)[.size]
+            as? Int, size > 1 << 20 {
+            try? FileManager.default.removeItem(at: url)
+        }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: url)
+        }
+    }
+
+    public static func debug(_ msg: @autoclosure () -> String) {
+        guard verbose else { return }
+        info(msg())
+    }
+}
