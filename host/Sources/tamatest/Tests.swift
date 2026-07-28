@@ -683,6 +683,11 @@ func runAllTests() {
               "a window without a figure is unknown, never 0%")
         equal(cards?[1].level, .unknown, "and unknown has a colour of its own, not green")
         equal(cards?[1].reset, "No reset time yet", "with nothing to count down to")
+        // ป้ายแทนบรรทัดคำอธิบายบนใบ weekly — ทั้งสองอย่างพร้อมกันคือการพูดซ้ำ
+        expect(cards?[0].pill == nil && cards?[0].subtitle.isEmpty == false,
+               "the session card explains itself in a line under its name")
+        equal(cards?[1].pill, "Weekly", "the weekly card says which window in a pill instead")
+        expect(cards?[1].subtitle.isEmpty == true, "and then has no line to repeat it in")
 
         // สามขั้นของบอร์ด — แต่ pace แซงเมื่อไรเป็นแดงทันทีแม้ยังไม่ถึง 85
         equal(QuotaCard.level(percent: 10, pace: 50), .good, "well behind the clock is fine")
@@ -699,15 +704,16 @@ func runAllTests() {
 
         // สัมพัทธ์ตอบ "อีกนานไหม" สัมบูรณ์ตอบ "ตอนนั้นคือเมื่อไรของวัน"
         equal(QuotaCard.resetLine(remaining: 8640, now: now, calendar: utc),
-              "Resets in 2h24m (Tomorrow 00:37)",
+              "Resets in 2h 24m (Tomorrow 00:37)",
               "both readings on one line, and midnight is tomorrow")
         equal(QuotaCard.resetLine(remaining: 2700, now: now, calendar: utc),
               "Resets in 45m (Today 22:58)", "under an hour drops the hours")
         equal(QuotaCard.resetLine(remaining: 30, now: now, calendar: utc),
               "Resets in 1m (Today 22:13)", "under a minute rounds up — 0m reads as over")
+        // ชื่อวันภายในหนึ่งสัปดาห์กำกวมพอๆ กับไม่มี — "Fri" ไหน ศุกร์นี้หรือศุกร์หน้า
         equal(QuotaCard.resetLine(remaining: 3 * 86_400, now: now, calendar: utc),
-              "Resets in 3d0h (Fri 22:13)",
-              "a weekly reset days out needs the day name, not just a clock time")
+              "Resets in 3d 0h (Nov 17, 22:13)",
+              "a weekly reset days out needs a date, not just a clock time")
         equal(QuotaCard.resetLine(remaining: 0, now: now, calendar: utc), "Resetting now",
               "a countdown at zero is a rolled window, not a reset in zero minutes")
         equal(

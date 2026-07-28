@@ -22,7 +22,11 @@ public struct QuotaCard: Equatable, Sendable {
     /// ชื่อหน้าต่าง — สิ่งที่ตอบว่า "นี่คือโควตาก้อนไหน"
     public var title: String
     /// คำอธิบายสั้น — ตอบว่าหน้าต่างนี้นับอะไร ซึ่งชื่ออย่างเดียวไม่ได้บอก
+    /// ว่างได้เมื่อ pill บอกไปแล้ว — คำอธิบายที่พูดซ้ำกับป้ายข้างบนคือบรรทัดที่เสียเปล่า
     public var subtitle: String
+    /// ป้ายเล็กข้างชื่อ — มีเฉพาะหน้าต่างที่ชื่อไม่ได้บอกว่ามันยาวแค่ไหน
+    /// (ภาษาเดียวกับ pill บนแผงของบอร์ด)
+    public var pill: String?
     /// `UsageSnap.unknown` = ไม่รู้ ซึ่งไม่ใช่ศูนย์ (ADR-0001)
     public var percent: Int
     /// เวลาในหน้าต่างเดินไปกี่เปอร์เซ็นต์ = ตำแหน่งของขีดบนแถบ
@@ -32,10 +36,12 @@ public struct QuotaCard: Equatable, Sendable {
     public var reset: String
 
     public init(
-        title: String, subtitle: String, percent: Int, pace: Int, level: Level, reset: String
+        title: String, subtitle: String, pill: String? = nil, percent: Int, pace: Int,
+        level: Level, reset: String
     ) {
         self.title = title
         self.subtitle = subtitle
+        self.pill = pill
         self.percent = percent
         self.pace = pace
         self.level = level
@@ -55,21 +61,23 @@ public struct QuotaCard: Equatable, Sendable {
         let weekly = usage.count > 1 ? usage[1] : UsageSnap()
         return [
             card(
-                session, title: "Session", subtitle: "5 hour window",
+                session, title: "Session usage", subtitle: "5-hour rolling window",
                 window: UsageReader.sessionWindow, now: now, calendar: calendar),
+            // ป้าย `Weekly` แทนบรรทัดคำอธิบาย — "All models" กับ "Weekly" ต่อกัน
+            // เป็นประโยคเดียวอยู่แล้ว บรรทัดที่สามจะพูดซ้ำสิ่งที่ป้ายพูดไปแล้ว
             card(
-                weekly, title: "Weekly", subtitle: "All usage on the account",
+                weekly, title: "All models", subtitle: "", pill: "Weekly",
                 window: UsageReader.weeklyWindow, now: now, calendar: calendar),
         ]
     }
 
     static func card(
-        _ snap: UsageSnap, title: String, subtitle: String, window: Int, now: Date,
-        calendar: Calendar
+        _ snap: UsageSnap, title: String, subtitle: String, pill: String? = nil, window: Int,
+        now: Date, calendar: Calendar
     ) -> QuotaCard {
         let pace = UsageReader.elapsedPercent(remaining: snap.remaining, window: window)
         return QuotaCard(
-            title: title, subtitle: subtitle, percent: snap.percent, pace: pace,
+            title: title, subtitle: subtitle, pill: pill, percent: snap.percent, pace: pace,
             level: level(percent: snap.percent, pace: pace),
             reset: resetLine(remaining: snap.remaining, now: now, calendar: calendar))
     }
@@ -101,16 +109,17 @@ public struct QuotaCard: Equatable, Sendable {
         let days = seconds / 86_400
         let hours = (seconds % 86_400) / 3600
         let minutes = (seconds % 3600) / 60
-        if days > 0 { return "\(days)d\(hours)h" }
-        if hours > 0 { return "\(hours)h\(String(format: "%02d", minutes))m" }
+        if days > 0 { return "\(days)d \(hours)h" }
+        if hours > 0 { return "\(hours)h \(String(format: "%02d", minutes))m" }
         // ต่ำกว่าหนึ่งนาทีปัดขึ้นเป็น 1m ไม่ใช่ 0m — "0m" อ่านเหมือนหมดแล้ว
         return "\(max(1, minutes))m"
     }
 
-    /// วันนี้/พรุ่งนี้เรียกด้วยชื่อ ไกลกว่านั้นใช้ชื่อวัน แล้วค่อยเป็นวันที่เต็ม
+    /// วันนี้/พรุ่งนี้เรียกด้วยชื่อ ไกลกว่านั้นเป็นวันที่
     ///
     /// weekly รีเซ็ตได้ไกลถึงเจ็ดวัน ซึ่ง "Today/Tomorrow" ตอบไม่ได้ และ `23:00`
-    /// เปล่าๆ ของวันที่ไม่รู้ว่าวันไหนคือเวลาที่อ่านผิดได้ทั้งบรรทัด
+    /// เปล่าๆ ของวันที่ไม่รู้ว่าวันไหนคือเวลาที่อ่านผิดได้ทั้งบรรทัด · ไม่ใช้ชื่อวัน
+    /// ("Thu") เพราะภายในเจ็ดวันชื่อวันกำกวมพอๆ กับไม่มี — พฤหัสไหน อาทิตย์นี้หรือหน้า
     static func clock(_ date: Date, now: Date, calendar: Calendar) -> String {
         let time = formatter("HH:mm", calendar: calendar).string(from: date)
         let days = calendar.dateComponents(
@@ -119,8 +128,7 @@ public struct QuotaCard: Equatable, Sendable {
         switch days {
         case ...0: return "Today \(time)"
         case 1: return "Tomorrow \(time)"
-        case 2...6: return "\(formatter("EEE", calendar: calendar).string(from: date)) \(time)"
-        default: return "\(formatter("d MMM", calendar: calendar).string(from: date)) \(time)"
+        default: return "\(formatter("MMM d", calendar: calendar).string(from: date)), \(time)"
         }
     }
 
