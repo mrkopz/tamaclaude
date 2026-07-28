@@ -96,6 +96,7 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/SocketServer.swift` / `HookClient.swift` | Unix socket between `--hook` and the daemon |
 | `TamaCore/BLETransport.swift` | CoreBluetooth central + auto-reconnect |
 | `TamaCore/Usage{Reader,Writer}.swift` | the `.statusline-usage-cache` contract |
+| `TamaCore/UsagePoll.swift` | `--usage-poll`: one claude.ai quota fetch, then exit |
 | `TamaCore/{Hook,Statusline}Installer.swift` | writes into `~/.claude/settings.json` |
 | `TamaCore/Daemon.swift` | wires it together + 1 s tick |
 | `tamaclaude/MenuBarApp.swift` | the menu bar app **is** the daemon (Bluetooth TCC is per-`.app`) |

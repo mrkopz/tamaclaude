@@ -458,6 +458,90 @@ func runAllTests() {
         expect(!FileManager.default.fileExists(atPath: tmp.path), "no temp file is left behind")
     }
 
+    suite("the session key file is refused unless only its owner can read it") {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("key-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        func keyFile(_ text: String, mode: Int) throws -> URL {
+            let url = dir.appendingPathComponent("key-\(mode)-\(UUID().uuidString)")
+            try Data(text.utf8).write(to: url)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: mode], ofItemAtPath: url.path)
+            return url
+        }
+
+        func code(_ url: URL) -> Int32? {
+            do {
+                _ = try UsagePoll.readKey(at: url)
+                return nil
+            } catch let failure as UsagePoll.Failure {
+                return failure.code
+            } catch {
+                return -1
+            }
+        }
+
+        let good = try keyFile("sk-secret\n", mode: 0o600)
+        equal(try UsagePoll.readKey(at: good), "sk-secret",
+              "a 600 file gives its key back, trimmed")
+
+        // credential เต็มบัญชี — บิตของ group หรือ other ติดบิตเดียวก็ไม่ใช่ของเราคนเดียวแล้ว
+        for mode in [0o640, 0o604, 0o644, 0o660, 0o666] {
+            equal(code(try keyFile("sk-secret", mode: mode)), UsagePoll.Failure.unusableKeyFile,
+                  "mode \(String(mode, radix: 8)) is readable by someone else")
+        }
+
+        equal(code(try keyFile("", mode: 0o600)), UsagePoll.Failure.unusableKeyFile,
+              "an empty file is not a key")
+        equal(code(try keyFile("  \n\t ", mode: 0o600)), UsagePoll.Failure.unusableKeyFile,
+              "neither is a file of whitespace")
+        equal(code(dir.appendingPathComponent("nothing-here")),
+              UsagePoll.Failure.unusableKeyFile, "a missing file says how to make one")
+
+        // symlink มีสิทธิ์ 0o755 เสมอ — ถ้าดูสิทธิ์ของ link แทนของไฟล์ปลายทาง ผู้ใช้ที่
+        // เก็บ key ไว้ที่อื่นแล้ว link มาจะโดนปฏิเสธพร้อมคำแนะนำ chmod ที่แก้อะไรไม่ได้
+        let link = dir.appendingPathComponent("link-\(UUID().uuidString)")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: good)
+        equal(try UsagePoll.readKey(at: link), "sk-secret",
+              "a symlink to a 600 file is the file's permissions, not the link's")
+
+        // ทุกข้อความต้องบอกวิธีแก้ และต้องไม่พา key ติดออกไปด้วย
+        do {
+            _ = try UsagePoll.readKey(at: try keyFile("sk-secret", mode: 0o644))
+            expect(false, "a 644 key file must be refused, not read")
+        } catch let failure as UsagePoll.Failure {
+            expect(failure.message.contains("chmod 600"), "the message says how to fix it")
+            expect(!failure.message.contains("sk-secret"), "and never carries the key itself")
+        }
+    }
+
+    suite("an org id is parsed out of the response and still not trusted") {
+        func parsed(_ json: String) -> String? {
+            try? UsagePoll.organizationID(from: Data(json.utf8))
+        }
+
+        equal(parsed(#"[{"uuid":"abc-123","id":"legacy"}]"#), "abc-123", "uuid wins")
+        equal(parsed(#"[{"id":"legacy-77"}]"#), "legacy-77", "id is the fallback")
+        equal(parsed(#"[{"uuid":"first"},{"uuid":"second"}]"#), "first",
+              "the first org is the one we mean")
+
+        for junk in ["[]", "{}", "not json", #"[{"name":"no id here"}]"#, #"[{"uuid":""}]"#,
+                     #"["a string, not an object"]"#] {
+            expect(parsed(junk) == nil, "no org id in: \(junk)")
+        }
+
+        // id ที่เปลี่ยน path ได้ ต้องตายตั้งแต่ในมือเรา ไม่ว่าจะมาจาก response ของเราเอง
+        // หรือจาก env ที่ผู้ใช้ตั้งไว้ — ปลายทางเป็นของคนอื่น ทุกค่าจึงเป็นค่าภายนอก
+        for bad in ["../../admin", "a/b", "/", "..", "x/../../y", ""] {
+            expect((try? UsagePoll.validated(bad)) == nil, "rejected as an org id: \(bad)")
+            expect(parsed(#"[{"uuid":"\#(bad)"}]"#) == nil,
+                   "and rejected just the same when it arrives in a response: \(bad)")
+        }
+        equal(try UsagePoll.validated("abc-123"), "abc-123", "an ordinary uuid passes through")
+    }
+
     suite("usage reader turns the cache into board-ready rows") {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("usage-\(UUID().uuidString)")
