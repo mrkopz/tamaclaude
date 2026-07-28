@@ -1073,6 +1073,128 @@ func runAllTests() {
               "Updated 0s ago", "a stamp from the future is not a negative age")
     }
 
+    suite("the head of the popover names the org the figures came from") {
+        let orgs = [UsagePoll.Org(id: "o-1", name: "Personal"),
+                    UsagePoll.Org(id: "o-2", name: "Acme Corp")]
+        equal(PanelText.heading(orgs: orgs, current: "o-2", hasKey: true), "Acme Corp",
+              "the org being polled is what the head says")
+        // ยังไม่ได้ตั้ง key = ยังไม่เคยถามใครว่ามี org อะไรบ้าง ชื่อแอปจึงจริงกว่าชื่อ org
+        equal(PanelText.heading(orgs: orgs, current: "o-2", hasKey: false), "tamaclaude",
+              "no key means no org to speak of, whatever is left in the list")
+        equal(PanelText.heading(orgs: [], current: nil, hasKey: true), "tamaclaude",
+              "before the first round comes back there is still nothing to name")
+        // ตัวที่เลือกไว้แล้วหายไปจากบัญชีถูกถอยเป็นตัวแรกโดย `currentOrg` ก่อนถึงตรงนี้แล้ว
+        // ที่นี่จึงเจอ id ที่ไม่มีในรายการได้เฉพาะตอนรายการยังไม่มา
+        equal(PanelText.heading(orgs: orgs, current: "gone", hasKey: true), "tamaclaude",
+              "an id we cannot name is not a name")
+
+        expect(!PanelText.canSwitchOrg(orgs: [orgs[0]]), "one org is not a choice")
+        expect(PanelText.canSwitchOrg(orgs: orgs), "two are")
+    }
+
+    suite("the refresh button is the way out, not the way of life") {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        func at(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(seconds) }
+
+        let ready = RefreshControl.state(running: false, hasKey: true, finished: nil, now: now)
+        expect(ready.enabled, "with nothing in the way the button is a button")
+        expect(!ready.spinning, "and it is not pretending to work")
+
+        let busy = RefreshControl.state(running: true, hasKey: true, finished: nil, now: now)
+        expect(!busy.enabled, "a round already in flight cannot be asked for twice")
+        expect(busy.spinning, "and the panel says so while it is in flight")
+
+        // เย็นตัว 10 วินาที — endpoint นี้ไม่มีเอกสาร ปุ่มที่กดรัวได้ทำลายเหตุผลที่เราตัด
+        // ตัวเลือก 30 วินาทีทิ้งไปทั้งหมด
+        let cooling = RefreshControl.state(
+            running: false, hasKey: true, finished: now, now: at(4))
+        expect(!cooling.enabled, "straight after a round it stays down")
+        expect(!cooling.spinning, "cooling down is not the same picture as working")
+        expect(cooling.tooltip.contains("6s"), "and it says how long: \(cooling.tooltip)")
+        expect(RefreshControl.state(running: false, hasKey: true, finished: now, now: at(10))
+                .enabled, "ten seconds later it is a button again")
+        // นาฬิกาเครื่องเดินถอยหลังได้ (sleep, NTP) — ต้องไม่กลายเป็นการเย็นตัวชั่วนิรันดร์
+        expect(!RefreshControl.state(running: false, hasKey: true, finished: at(60), now: now)
+                .enabled, "a finish stamped in the future still cools down")
+        expect(RefreshControl.state(running: false, hasKey: true, finished: at(60), now: at(70))
+                .enabled, "but only for the ten seconds it is owed")
+
+        expect(!RefreshControl.state(running: false, hasKey: false, finished: nil, now: now)
+                .enabled, "with no key there is nothing the button could ask for")
+
+        // เปิดแผงคือสัญญาณความตั้งใจที่ชัดพอจะยิงเอง — แต่เฉพาะตอนค่าที่มีเก่ากว่ารอบที่ตั้งไว้
+        expect(RefreshControl.wantsPoll(interval: .minute, stamp: nil, now: now),
+               "no figures at all is as stale as it gets")
+        expect(!RefreshControl.wantsPoll(interval: .minute, stamp: at(-30), now: now),
+               "a figure younger than the round is what the round would have fetched anyway")
+        expect(RefreshControl.wantsPoll(interval: .minute, stamp: at(-90), now: now),
+               "past the round, opening the panel fetches")
+        expect(!RefreshControl.wantsPoll(interval: .fiveMinutes, stamp: at(-90), now: now),
+               "the same figure is fresh when the round the user chose is longer")
+        // `Off` คือคำสั่งว่าอย่ายิงเอง — การเปิดแผงยังเป็นการยิงเอง ปุ่มต่างหากที่ไม่ใช่
+        expect(!RefreshControl.wantsPoll(interval: .off, stamp: nil, now: now),
+               "Off means the app never polls on its own, opening the panel included")
+    }
+
+    suite("a hand on the button beats Off and beats a key that is spent") {
+        final class Fake {
+            var launches = 0
+            var done: ((UsagePoller.Outcome) -> Void)?
+            var hasKey = true
+
+            func launcher() -> UsagePoller.Launcher {
+                { [self] _, done in
+                    launches += 1
+                    self.done = done
+                    return {}
+                }
+            }
+
+            func finish(_ code: Int32, _ output: String = "") {
+                let done = self.done
+                self.done = nil
+                done?(UsagePoller.Outcome(code: code, output: output))
+            }
+        }
+
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        func at(_ seconds: TimeInterval) -> Date { t0.addingTimeInterval(seconds) }
+
+        let fake = Fake()
+        let poller = UsagePoller(interval: .off, hasKey: { fake.hasKey }, launch: fake.launcher())
+
+        // การหยุด polling ไม่ได้แปลว่าห้ามดูค่าใหม่
+        poller.refreshNow(now: t0)
+        equal(fake.launches, 1, "Off stops the rounds, it does not take the button away")
+        poller.refreshNow(now: at(1))
+        equal(fake.launches, 1, "but a round in flight is still one round at a time")
+
+        fake.finish(UsagePoll.Failure.rejectedKey, "claude.ai rejected the session key")
+        equal(poller.blocked, .expiredKey, "a rejected key still blocks the rounds")
+        poller.pollNow(now: at(2))
+        equal(fake.launches, 1, "so nothing goes out by itself")
+        // ผู้ใช้อาจเพิ่งไปเอา key ใหม่มาแปะข้างนอก การกดปุ่มคือวิธีถามว่า "ได้หรือยัง"
+        poller.refreshNow(now: at(3))
+        equal(fake.launches, 2, "the button asks anyway — the key may have been replaced")
+        fake.finish(UsagePoll.Failure.rejectedKey, "claude.ai rejected the session key")
+        equal(poller.blocked, .expiredKey, "and if it was not, the answer is the same as before")
+
+        // ไม่มีไฟล์ key = ไม่มีอะไรให้ถาม ต่อให้กดก็ไม่มีคำถามจะยิง
+        fake.hasKey = false
+        poller.refreshNow(now: at(4))
+        equal(fake.launches, 2, "with no key at all there is nothing to ask with")
+
+        // ยิงเองแล้วรอบถัดไปต้องนับหนึ่งใหม่ ไม่ใช่ยิงซ้ำทันทีเพราะรอบเดิมครบพอดี
+        fake.hasKey = true
+        poller.interval = .minute
+        poller.refreshNow(now: at(100))
+        fake.finish(0, "session 5%")
+        poller.tick(now: at(140))
+        equal(fake.launches, 3, "a manual round resets the clock on the automatic one")
+        poller.tick(now: at(161))
+        equal(fake.launches, 4, "which then carries on as usual")
+    }
+
     suite("the cache says how old its figures are") {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("stamp-\(UUID().uuidString)")

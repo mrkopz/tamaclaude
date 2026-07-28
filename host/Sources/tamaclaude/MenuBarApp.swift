@@ -40,10 +40,16 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let keyItem = NSMenuItem(
         title: "Set session key…", action: #selector(setSessionKey), keyEquivalent: "")
     private let refreshItem = NSMenuItem(title: "Refresh quota", action: nil, keyEquivalent: "")
-    /// รายการ org โผล่ต่อเมื่อมีมากกว่าหนึ่ง — บัญชีปกติมีอันเดียวและไม่มีอะไรให้เลือก
-    private let orgItem = NSMenuItem(title: "Organization", action: nil, keyEquivalent: "")
     private let brightness = NSSlider(value: 100, minValue: 5, maxValue: 100, target: nil,
                                       action: nil)
+
+    /// รอบที่ปุ่ม refresh เป็นคนสั่ง — ต่างจากรอบของนาฬิกา
+    ///
+    /// การเย็นตัวเป็นวินัยของ *ปุ่ม* ไม่ใช่ของ poller: รอบอัตโนมัติที่เพิ่งจบไปเมื่อครู่
+    /// ไม่ควรทำให้ปุ่มกดไม่ได้ ไม่งั้นที่ 60 วินาที ปุ่มจะตายหนึ่งในหกของเวลาทั้งหมด
+    /// โดยไม่มีใครเข้าใจว่าทำไม
+    private var manualRefresh = false
+    private var refreshFinished: Date?
 
     /// ภาพที่วาดไปแล้ว — ไฮไลต์เป็นส่วนหนึ่งของภาพ ไม่ใช่แค่ค่าโควตา
     private struct Drawn: Equatable {
@@ -63,6 +69,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItem.button?.action = #selector(togglePanel)
 
         panel.onGear = { [weak self] button in self?.showGearMenu(from: button) }
+        panel.onOrgs = { [weak self] button in self?.showOrgMenu(from: button) }
+        panel.onRefresh = { [weak self] in self?.refreshQuota() }
         // บรรทัด "key หมดอายุ" กดได้เอง — ที่ที่บอกว่าพังคือที่ที่ควรแก้ได้
         panel.onKeyProblem = { [weak self] in self?.setSessionKey() }
         popover.contentViewController = panel
@@ -101,7 +109,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             preferredOrg: UserDefaults.standard.string(forKey: Self.orgKey),
             launch: PollProcess.launcher())
         poller.onChange = { [weak self] in self?.redrawQuota() }
-        showQuotaMenus()
+        showIntervals()
 
         // เครื่องหลับไปสองชั่วโมงแล้วตื่นมาเจอตัวเลขเมื่อสองชั่วโมงที่แล้ว คือหน้าจอที่โกหก
         // รอบถัดไปยังอีกไกล ยิงทันทีหนึ่งรอบตรงนี้จึงเป็นการซ่อมที่ถูกเวลาที่สุด
@@ -141,11 +149,13 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         keyItem.target = self
         menu.addItem(keyItem)
 
-        // เมนูย่อยสองอันนี้เป็นของ `showIntervals`/`showOrgs` — ที่นี่แค่หาที่ให้มันยืน
+        // เมนูย่อยของ `refreshItem` เป็นของ `showIntervals` — ที่นี่แค่หาที่ให้มันยืน
         // การ `= NSMenu()` ตรงนี้จะล้างรายการที่เพิ่งเติมไปเมื่อครู่ เพราะเมนูถูกสร้าง
         // แบบ lazy คือ *หลัง* การเติมครั้งแรกเสมอ
+        //
+        // ตัวสลับ org ไม่อยู่ในเมนูนี้แล้ว — มันอยู่หลังลูกศรข้างชื่อ org ที่หัวแผง ซึ่งเป็น
+        // ที่เดียวกับที่ชื่อที่ใช้อยู่แสดงอยู่ ที่สลับสองที่แปลว่าผู้ใช้ต้องจำว่าอันไหนคืออันจริง
         menu.addItem(refreshItem)
-        menu.addItem(orgItem)
         menu.addItem(.separator())
 
         hooksItem.target = self
@@ -268,19 +278,14 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         refreshItem.submenu = menu
     }
 
-    /// org ที่ยิงอยู่ — ซ่อนทั้งอันเมื่อมีอันเดียว เพราะไม่มีอะไรให้ตัดสินใจ
+    /// รายการ org หลังลูกศรข้างชื่อที่หัวแผง — สร้างใหม่ทุกครั้งที่กด
     ///
     /// ติ๊กอ่านจากตัวที่ *ยิงจริง* ไม่ใช่จากค่าที่จำไว้ ตัวที่จำไว้แล้วหายไปจากบัญชี
     /// จะทำให้ไม่มีติ๊กสักอันทั้งที่กำลังยิงอยู่ตัวหนึ่ง
-    private func showOrgs() {
-        let orgs = poller.orgs
-        orgItem.isHidden = orgs.count < 2
+    private func showOrgMenu(from button: NSButton) {
         let current = poller.currentOrg
-        orgItem.title = "Organization: \(orgs.first(where: { $0.id == current })?.name ?? "—")"
-
-        let menu = orgItem.submenu ?? NSMenu()
-        menu.removeAllItems()
-        for org in orgs {
+        let menu = NSMenu()
+        for org in poller.orgs {
             let item = NSMenuItem(
                 title: org.name, action: #selector(chooseOrg(_:)), keyEquivalent: "")
             item.target = self
@@ -288,7 +293,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             item.state = org.id == current ? .on : .off
             menu.addItem(item)
         }
-        orgItem.submenu = menu
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: -2), in: button)
     }
 
     /// แผงท้ายมีสองบรรทัดที่พูดคนละเรื่อง — ท่อพัง กับ ค่าเก่าแค่ไหน
@@ -298,13 +303,21 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// รบกวนไปวางไว้ตรงหน้าตลอดเวลา
     private func redrawQuota() {
         redrawPanel()
-        showQuotaMenus()
+        showIntervals()
     }
 
     /// เฉพาะแผง ไม่แตะเมนู — นาฬิกาวินาทีเรียกตัวนี้ เพราะรายการในเมนูเฟืองมาจากสถานะ
     /// ของ poller ซึ่งไม่ได้ขยับทุกวินาที และการสร้าง submenu ใหม่ขณะที่ผู้ใช้กางเมนูอยู่
     /// ทำให้แถบไฮไลต์ที่เขากำลังเลื่อนหลุด
     private func redrawPanel() {
+        noteRefreshFinished()
+        let hasKey = SessionKeyFile.isUsable()
+        panel.showHeading(
+            PanelText.heading(orgs: poller.orgs, current: poller.currentOrg, hasKey: hasKey),
+            switchable: PanelText.canSwitchOrg(orgs: poller.orgs))
+        panel.showRefresh(
+            RefreshControl.state(
+                running: poller.isRunning, hasKey: hasKey, finished: refreshFinished))
         panel.showQuota(
             problem: PanelText.keyProblem(poller.blocked),
             age: PanelText.updated(stamp: UsageReader.stamp()),
@@ -312,10 +325,14 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             detail: poller.status)
     }
 
-    /// สองเมนูนี้เปลี่ยนพร้อมกันเสมอ — ทั้งคู่วาดจากสถานะของ poller ก้อนเดียวกัน
-    private func showQuotaMenus() {
-        showIntervals()
-        showOrgs()
+    /// รอบของปุ่มจบเมื่อไร การเย็นตัวเริ่มเมื่อนั้น
+    ///
+    /// นับจากตอน *จบ* ไม่ใช่ตอนเริ่ม ไม่งั้นรอบที่ใช้เวลาสิบวินาทีจะพ้นการเย็นตัวไปแล้ว
+    /// ตั้งแต่วินาทีที่มันคืนค่า ซึ่งแปลว่าไม่มีการเย็นตัวเลยสำหรับรอบที่ช้า
+    private func noteRefreshFinished() {
+        guard manualRefresh, !poller.isRunning else { return }
+        manualRefresh = false
+        refreshFinished = Date()
     }
 
     // MARK: - popover เปิด/ปิด
@@ -328,6 +345,12 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let button = statusItem.button else { return }
         // แอปที่ไม่มี Dock ไม่ได้ active เองตอนคลิกแถบเมนู ปุ่มในแผงจะกดไม่ติด
         NSApp.activate(ignoringOtherApps: true)
+        // การเปิดแผงคือสัญญาณความตั้งใจที่ชัดพอจะยิงเอง ไม่ต้องรอให้ผู้ใช้กดปุ่มเพื่อบอก
+        // สิ่งที่เขาบอกไปแล้วด้วยการเปิด — แต่ยิงเฉพาะตอนค่าที่มีเก่ากว่ารอบที่เขาตั้งไว้
+        // ไม่งั้นทุกครั้งที่ชำเลืองดูจะกลายเป็นการยิงหนึ่งรอบ
+        if RefreshControl.wantsPoll(interval: poller.interval, stamp: UsageReader.stamp()) {
+            poller.pollNow()
+        }
         // อายุของค่ากับ countdown เดินตลอดเวลาแต่ไม่มีใครเห็นตอนแผงปิด — คิดใหม่ตอนเปิด
         // แล้วเดินทุกวินาทีตราบใดที่ยังเปิดอยู่ ดีกว่าอ่าน cache จากดิสก์ทุกวินาที
         // ตลอดเวลาเพื่อข้อความที่ไม่มีใครมอง
@@ -381,7 +404,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
         // ไฟล์ key แก้จากข้างนอกได้เหมือนกัน — อ่านสภาพจริงทุกครั้งที่เมนูเด้ง
         keyItem.title = SessionKeyFile.isUsable() ? "Replace session key…" : "Set session key…"
-        showQuotaMenus()
+        showIntervals()
         gearMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: -2), in: button)
     }
 
@@ -411,8 +434,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let id = sender.representedObject as? String else { return }
         poller.preferredOrg = id
         UserDefaults.standard.set(id, forKey: Self.orgKey)
-        poller.pollNow()
-        showOrgs()
+        // เลือก org แล้วต้องเห็นตัวเลขของ org นั้น ไม่ใช่ตัวเลขของ org เดิมค้างอยู่จนครบรอบ
+        // — และไม่ใช่ค้างตลอดกาลเมื่อรอบเป็น `Off`
+        poller.refreshNow()
+        manualRefresh = poller.isRunning
+        redrawPanel()
     }
 
     /// ช่องกรอกแบบปิดบังตัวอักษร แล้วแอปเขียนไฟล์ mode 600 ให้เอง
@@ -448,6 +474,18 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         // ตั้ง key ใหม่แล้วกลับมายิงเองทันที ไม่ต้องปิดเปิดแอป
         poller.keyWasSet()
+    }
+
+    /// ปุ่ม refresh ที่หัวแผง — ทางออกฉุกเฉิน ไม่ใช่ทางปกติ
+    ///
+    /// `refreshNow` ข้าม `Off` และข้ามล็อก key หมดอายุ (เหตุผลอยู่ที่นั่น) วินัยที่เหลือ
+    /// คือการเย็นตัว ซึ่งอยู่ที่ `RefreshControl` · `manualRefresh` อ่านจาก `isRunning`
+    /// ไม่ใช่ตั้งเป็น `true` ดื้อๆ — รอบที่ไม่ได้เริ่มจริง (ไม่มี key) จะทำให้ปุ่มค้าง
+    /// รอรอบที่ไม่มีวันจบ
+    @objc private func refreshQuota() {
+        poller.refreshNow()
+        manualRefresh = poller.isRunning
+        redrawPanel()
     }
 
     @objc private func woke() {
