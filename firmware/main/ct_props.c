@@ -309,16 +309,35 @@ static void globe(ct_rects_t *o, float phase, bool connected)
     }
 }
 
-// จุดคิด — thinking (ไล่สว่างทีละจุด)
+// ฟองข้อความเหนือหัว — thinking (จุดในฟองไล่สว่างทีละจุด)
+// ฟองทึบสีสว่าง จุดเป็นสีเข้ม — อ่านออกที่ 12px กว่าจุดลอยเปล่าๆ ซึ่งดูเหมือนเศษ noise
+// หางฟองเป็นบันไดชี้ลงหาหัว บอกว่าความคิดนี้เป็นของมาสคอต ไม่ใช่ของ slot ข้างๆ
 static void dots(ct_rects_t *o, float phase, bool connected)
 {
-    uint16_t col = c(connected, CT_COL_TEXT);
+    // ตอนหลุดการเชื่อมต่อฟองต้องหรี่เป็นเทา แต่ยังต้องเข้มพอให้จุดข้างในไม่จม
+    uint16_t skin = connected ? CT_COL_TEXT : CT_COL_GRAY;
+    // จุดฟ้า: ทั้งสามใช้ฟ้าเทาเข้ม (steel) ตัวเดียวกัน ต่างกันแค่ขนาด
+    // (ถ้าให้จุดที่ยังไม่ติดเป็นฟ้าอ่อน มันจะจมหายไปกับฟองสว่างเมื่อย่อลงเหลือ ~4px/unit)
+    uint16_t dot = connected ? CT_COL_STEEL : CT_COL_GRAY_DARK;
+
+    float bob = 0.3f * (0.5f + 0.5f * sinf(phase * (float)M_PI * 2.0f));  // ลงอย่างเดียว กันล้นขอบบน
+    float x = CT_HEAD_CX - CT_BUB_W / 2.0f, y = -5.4f + bob;
+    float cut = 0.8f;  // มุมที่ตัดออก ทำให้ฟองมนไม่ใช่กล่อง
+    ct_rects_add(o, x + cut, y, CT_BUB_W - 2 * cut, cut, skin);
+    ct_rects_add(o, x, y + cut, CT_BUB_W, CT_BUB_H - 2 * cut, skin);
+    ct_rects_add(o, x + cut, y + CT_BUB_H - cut, CT_BUB_W - 2 * cut, cut, skin);
+
+    // หางบันไดสองขั้น — เยื้องซ้ายของฟอง ชี้ลงหาหัวที่ y=0
+    float ty = y + CT_BUB_H;
+    ct_rects_add(o, x + 2.4f, ty, 1.7f, 0.7f, skin);
+    ct_rects_add(o, x + 2.4f, ty + 0.7f, 0.9f, 0.6f, skin);
+
     int lit = (int)(phase * 3.0f) % 3;
     for (int i = 0; i < 3; i++) {
-        float s = (i == lit) ? 2.2f : 1.4f;
-        float cx = CT_HEAD_CX + (i - 1) * 3.4f;
-        float cy = -2.7f - ((i == lit) ? 0.5f : 0.0f);
-        ct_rects_add(o, cx - s / 2, cy - s / 2, s, s, col);
+        float s = (i == lit) ? 1.7f : 1.0f;
+        float cx = CT_HEAD_CX + (i - 1) * 2.6f;
+        float cy = y + CT_BUB_H / 2.0f;
+        ct_rects_add(o, cx - s / 2, cy - s / 2, s, s, dot);
     }
 }
 

@@ -374,16 +374,42 @@ def globe(phase: float, connected: bool = True) -> RectList:
     return out
 
 
+BUB_W, BUB_H = 9.4, 3.9
+
+
 def dots(phase: float, connected: bool = True) -> RectList:
-    """จุดคิด — thinking  (ไล่สว่างทีละจุด)"""
-    col = _c(connected, PAL.text)
+    """ฟองข้อความเหนือหัว — thinking  (จุดในฟองไล่สว่างทีละจุด)
+
+    ฟองทึบสีสว่าง จุดเป็นสีเข้ม — อ่านออกที่ 12px กว่าจุดลอยเปล่าๆ ซึ่งดูเหมือนเศษ noise
+    หางฟองเป็นบันไดชี้ลงหาหัว บอกว่าความคิดนี้เป็นของมาสคอต ไม่ใช่ของ slot ข้างๆ
+    """
+    # ตอนหลุดการเชื่อมต่อฟองต้องหรี่เป็นเทา แต่ยังต้องเข้มพอให้จุดข้างในไม่จม
+    skin = PAL.text if connected else PAL.gray
+    # จุดฟ้า: ทั้งสามใช้ฟ้าเทาเข้ม (steel) ตัวเดียวกัน ต่างกันแค่ขนาด
+    # (ถ้าให้จุดที่ยังไม่ติดเป็นฟ้าอ่อน มันจะจมหายไปกับฟองสว่างเมื่อย่อลงเหลือ ~4px/unit)
+    dark = PAL.steel if connected else PAL.gray_dark
+    dim = PAL.steel if connected else PAL.gray_dark
+
+    bob = 0.3 * (0.5 + 0.5 * math.sin(phase * math.pi * 2.0))  # ลงอย่างเดียว กันล้นขอบบน
+    x, y = HEAD_CX - BUB_W / 2.0, -5.4 + bob
+    cut = 0.8  # มุมที่ตัดออก ทำให้ฟองมนไม่ใช่กล่อง
+    out: RectList = [
+        Rect(x + cut, y, BUB_W - 2 * cut, cut, skin),
+        Rect(x, y + cut, BUB_W, BUB_H - 2 * cut, skin),
+        Rect(x + cut, y + BUB_H - cut, BUB_W - 2 * cut, cut, skin),
+    ]
+
+    # หางบันไดสองขั้น — เยื้องซ้ายของฟอง ชี้ลงหาหัวที่ y=0
+    ty = y + BUB_H
+    out.append(Rect(x + 2.4, ty, 1.7, 0.7, skin))
+    out.append(Rect(x + 2.4, ty + 0.7, 0.9, 0.6, skin))
+
     lit = int(phase * 3.0) % 3
-    out: RectList = []
     for i in range(3):
-        s = 2.2 if i == lit else 1.4
-        cx = HEAD_CX + (i - 1) * 3.4
-        cy = -2.7 - (0.5 if i == lit else 0.0)
-        out.append(Rect(cx - s / 2, cy - s / 2, s, s, col))
+        s = 1.7 if i == lit else 1.0
+        cx = HEAD_CX + (i - 1) * 2.6
+        cy = y + BUB_H / 2.0
+        out.append(Rect(cx - s / 2, cy - s / 2, s, s, dark if i == lit else dim))
     return out
 
 

@@ -44,6 +44,10 @@ typedef enum {
 #define CT_LAP_Y 9.9f   // ฐานจบพอดีระดับฝ่าเท้า (11.2) — แล็ปท็อปบังขาหมดทั้งสี่
 #define CT_LAP_H 1.3f
 
+// ฟองข้อความเหนือหัว — thinking
+#define CT_BUB_W 9.4f
+#define CT_BUB_H 3.9f
+
 #define CT_LENS_S 8.0f  // ขนาดเลนส์แว่นขยาย
 #define CT_LENS_T 0.9f  // ความหนาของขอบเลนส์
 
