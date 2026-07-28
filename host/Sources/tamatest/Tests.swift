@@ -335,6 +335,124 @@ func runAllTests() {
         expect(text.contains("UTILIZATION=3"), "a new window may legitimately drop the percent")
     }
 
+    suite("the /usage payload lands in the same cache through the same rules") {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("usage-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // shape A — ตัวเลขอยู่ระดับบนสุด และเป็น float
+        let topLevel = """
+            {"five_hour":{"utilization":16.6,"resets_at":"2023-11-15T03:00:00Z"},
+             "seven_day":{"utilization":42.0,"resets_at":"2023-11-20T00:00:00Z"},
+             "limits":[{"kind":"session","percent":3,"resets_at":"2023-11-15T03:00:00Z"}]}
+            """
+        let line = UsageWriter.ingestAPI(Data(topLevel.utf8), now: t0, to: url)
+        var text = try String(contentsOf: url, encoding: .utf8)
+        expect(line?.contains("5h 17%") == true, "16.6 rounds up, it does not truncate to 16")
+        expect(text.contains("UTILIZATION=17"), "the top-level pair wins over the limits array")
+        expect(text.contains("WEEKLY_UTILIZATION=42"), "weekly comes from seven_day")
+        expect(text.contains("RESETS_AT=2023-11-15T03:00:00Z"), "reset time is ISO8601")
+        expect(text.contains("WEEKLY_RESETS_AT=2023-11-20T00:00:00Z"), "weekly reset time too")
+
+        // shape B — ต้องได้ตัวเลขเดียวกับ shape A ไม่ต่างกันหนึ่งจุด
+        try? FileManager.default.removeItem(at: url)
+        let array = """
+            {"limits":[{"kind":"session","percent":17,"resets_at":"2023-11-15T03:00:00Z"},
+                       {"kind":"weekly_all","percent":42,"resets_at":"2023-11-20T00:00:00Z"},
+                       {"kind":"weekly_scoped","percent":99,"resets_at":"2023-11-20T00:00:00Z"}]}
+            """
+        UsageWriter.ingestAPI(Data(array.utf8), now: t0, to: url)
+        text = try String(contentsOf: url, encoding: .utf8)
+        expect(text.contains("UTILIZATION=17"), "the array path agrees with the top-level path")
+        expect(text.contains("WEEKLY_UTILIZATION=42"), "weekly_all is the account-wide window")
+        expect(!text.contains("99"), "weekly_scoped is per-model and is never read as weekly")
+
+        // weekly_scoped อย่างเดียวไม่ใช่ weekly — ต้องไม่มีคีย์ weekly เลย ไม่ใช่เขียนเป็น 0
+        try? FileManager.default.removeItem(at: url)
+        let scopedOnly = """
+            {"limits":[{"kind":"session","percent":5,"resets_at":"2023-11-15T03:00:00Z"},
+                       {"kind":"weekly_scoped","percent":70,"resets_at":"2023-11-20T00:00:00Z"}]}
+            """
+        UsageWriter.ingestAPI(Data(scopedOnly.utf8), now: t0, to: url)
+        text = try String(contentsOf: url, encoding: .utf8)
+        expect(text.contains("UTILIZATION=5"), "the session window still lands")
+        expect(!text.contains("WEEKLY_"), "an absent weekly window writes no keys at all")
+
+        // ชื่อคีย์ weekly ที่เคยเจอในสนามจริงต้องอ่านได้เหมือนกัน
+        try? FileManager.default.removeItem(at: url)
+        let altKey = #"{"weekly":{"utilization":12,"resets_at":"2023-11-20T00:00:00Z"}}"#
+        UsageWriter.ingestAPI(Data(altKey.utf8), now: t0, to: url)
+        text = try String(contentsOf: url, encoding: .utf8)
+        expect(text.contains("WEEKLY_UTILIZATION=12"), "\"weekly\" is another name for seven_day")
+    }
+
+    suite("both entrances agree on what a window is") {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("usage-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        // เศษวินาทีต้องไม่ทำให้สตริงเวลาต่างกัน ไม่งั้น merge จะนึกว่าหน้าต่างหมุนแล้ว
+        let fractional = #"{"five_hour":{"utilization":54,"resets_at":"2023-11-15T03:00:00.482Z"}}"#
+        UsageWriter.ingestAPI(Data(fractional.utf8), now: t0, to: url)
+        var text = try String(contentsOf: url, encoding: .utf8)
+        expect(text.contains("RESETS_AT=2023-11-15T03:00:00Z"),
+               "fractional seconds normalise to the same string as whole seconds")
+
+        // statusline ให้ epoch ของหน้าต่างเดียวกันมา ค่าที่ต่ำกว่าจึงเป็นค่าเก่า
+        let stale = #"{"rate_limits":{"five_hour":{"used_percentage":40,"resets_at":1700017200}}}"#
+        UsageWriter.ingest(Data(stale.utf8), now: t0, to: url)
+        text = try String(contentsOf: url, encoding: .utf8)
+        expect(text.contains("UTILIZATION=54"), "the API entrance and the statusline share one window")
+
+        // แล้วสลับทางกลับ — ทาง API ก็ต้องถอยหลังไม่ได้เหมือนกัน
+        let backwards = #"{"five_hour":{"utilization":11,"resets_at":"2023-11-15T03:00:00Z"}}"#
+        UsageWriter.ingestAPI(Data(backwards.utf8), now: t0, to: url)
+        text = try String(contentsOf: url, encoding: .utf8)
+        expect(text.contains("UTILIZATION=54"), "a lower percent in the same window is stale either way")
+
+        // หน้าต่างหมุนแล้ว ค่าที่ลดลงกลายเป็นค่าที่ถูก
+        let rolled = #"{"five_hour":{"utilization":2,"resets_at":"2023-11-15T08:00:00Z"}}"#
+        UsageWriter.ingestAPI(Data(rolled.utf8), now: t0, to: url)
+        text = try String(contentsOf: url, encoding: .utf8)
+        expect(text.contains("UTILIZATION=2"), "a new window may legitimately drop the percent")
+    }
+
+    suite("a payload we cannot read leaves the cache alone") {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("usage-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let before = """
+            UTILIZATION=54
+            RESETS_AT=2023-11-15T03:00:00Z
+            COST_TOTAL=12.34
+            PROFILE_NAME=ThaiTop
+            """
+        try Data(before.utf8).write(to: url)
+
+        for junk in ["not json at all", "[]", "{}", #"{"limits":[]}"#,
+                     #"{"limits":[{"kind":"weekly_scoped","percent":9}]}"#,
+                     #"{"five_hour":{"resets_at":"2023-11-15T03:00:00Z"}}"#] {
+            expect(UsageWriter.ingestAPI(Data(junk.utf8), now: t0, to: url) == nil,
+                   "nothing to record in: \(junk)")
+        }
+        equal(try String(contentsOf: url, encoding: .utf8), before,
+              "a failed parse never touches the file, let alone deletes it")
+
+        // เจ้าของร่วมของไฟล์ต้องรอดผ่านทางเข้าใหม่เหมือนที่รอดผ่านทางเข้าเดิม
+        let good = #"{"five_hour":{"utilization":80,"resets_at":"2023-11-15T03:00:00Z"}}"#
+        UsageWriter.ingestAPI(Data(good.utf8), now: t0, to: url)
+        let after = try String(contentsOf: url, encoding: .utf8)
+        expect(after.contains("PROFILE_NAME=ThaiTop"), "keys owned by other writers survive")
+        expect(after.contains("COST_TOTAL=12.34"), "including the cost keys")
+        expect(after.contains("TIMESTAMP=\(Int(t0.timeIntervalSince1970))"), "the write is stamped")
+
+        // temp + rename — ไม่มีไฟล์ค้างให้ใครอ่านเจอครึ่งทาง
+        let tmp = url.deletingLastPathComponent()
+            .appendingPathComponent(".\(url.lastPathComponent).tamaclaude.tmp")
+        expect(!FileManager.default.fileExists(atPath: tmp.path), "no temp file is left behind")
+    }
+
     suite("usage reader turns the cache into board-ready rows") {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("usage-\(UUID().uuidString)")

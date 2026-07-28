@@ -51,6 +51,82 @@ public enum UsageWriter {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
+    /// อ่าน payload ของ `/api/organizations/<org>/usage` แล้วเขียน cache เดียวกัน
+    ///
+    /// ทางเข้าที่สอง ไม่ใช่ module ที่สอง — กฎ "ภายในหน้าต่างเดียวกัน เปอร์เซ็นต์เพิ่ม
+    /// อย่างเดียว" ต้องมีเจ้าของคนเดียว ถ้าแยกไปเขียน cache จากที่อื่น กฎจะมีสองสำเนา
+    /// แล้ววันหนึ่งจะไม่ตรงกัน — ทั้งสองทางจึงลง `merge`/`write` ตัวเดียวกัน
+    @discardableResult
+    public static func ingestAPI(
+        _ data: Data, now: Date = Date(), to url: URL = Paths.usageCache
+    ) -> String? {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+
+        var fields: [(String, String)] = []
+        var parts: [String] = []
+
+        // ชื่อคีย์ weekly มีหลายแบบที่เคยเจอในสนามจริง ส่วน `weekly_scoped` เป็น limit
+        // ราย model ไม่ใช่ของทั้งบัญชี จึงไม่อยู่ในรายการ kind ที่ยอมรับ
+        for (keys, kinds, pctKey, resetKey, label) in [
+            (["five_hour"], ["session"], "UTILIZATION", "RESETS_AT", "5h"),
+            (["seven_day", "weekly", "week", "seven_days"], ["weekly_all"],
+             "WEEKLY_UTILIZATION", "WEEKLY_RESETS_AT", "7d"),
+        ] {
+            guard let found = window(root, keys: keys, kinds: kinds) else { continue }
+            fields.append((pctKey, String(found.percent)))
+            parts.append("\(label) \(found.percent)%")
+            // เวลาต้องผ่าน formatter ตัวเดียวกับทางเข้าเดิมเสมอ ไม่ใช่ส่ง ISO ดิบลงไฟล์ —
+            // "…:00Z" กับ "…:00.482Z" คือหน้าต่างเดียวกัน แต่เป็นคนละสตริง แล้ว merge
+            // จะเข้าใจว่าหน้าต่างหมุนแล้วและปล่อยให้เปอร์เซ็นต์ถอยหลัง
+            if let date = found.resetsAt.flatMap(parseISO) {
+                fields.append((resetKey, iso(date)))
+            }
+        }
+
+        guard !fields.isEmpty else { return nil }
+
+        var merged = merge(fields, into: url)
+        merged.append(("TIMESTAMP", String(Int(now.timeIntervalSince1970))))
+
+        let text = merged.map { "\($0)=\($1)" }.joined(separator: "\n") + "\n"
+        write(text, to: url)
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    /// หาหน้าต่างหนึ่งบานจาก payload — ระดับบนสุดก่อน แล้วค่อย `limits` array
+    ///
+    /// payload พก​ตัวเลขชุดเดียวกันมาสองที่ ระดับบนสุดกำกวมน้อยกว่า (คีย์บอกชนิด
+    /// ตรงตัว) จึงอ่านก่อน `utilization` เป็น float ส่วน `percent` เป็น int —
+    /// ปัดทั้งคู่ ไม่ตัดทิ้ง ไม่งั้นสองทางจะต่างกันหนึ่งจุดที่ค่าอย่าง 16.6
+    static func window(
+        _ root: [String: Any], keys: [String], kinds: [String]
+    ) -> (percent: Int, resetsAt: String?)? {
+        for key in keys {
+            guard let entry = root[key] as? [String: Any],
+                let pct = (entry["utilization"] as? NSNumber)?.doubleValue
+            else { continue }
+            return (Int(pct.rounded()), entry["resets_at"] as? String)
+        }
+
+        for case let entry as [String: Any] in root["limits"] as? [Any] ?? [] {
+            guard let kind = entry["kind"] as? String, kinds.contains(kind),
+                let pct = (entry["percent"] as? NSNumber)?.doubleValue
+            else { continue }
+            return (Int(pct.rounded()), entry["resets_at"] as? String)
+        }
+        return nil
+    }
+
+    /// ISO8601 ที่มีเศษวินาทีบ้างไม่มีบ้าง — ลองทั้งสองแบบ
+    static func parseISO(_ text: String) -> Date? {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = f.date(from: text) { return date }
+        f.formatOptions = [.withInternetDateTime]
+        return f.date(from: text)
+    }
+
     /// รวมกับค่าที่มีอยู่ในไฟล์ แทนที่จะเขียนทับดื้อๆ
     ///
     /// `rate_limits` ที่ Claude Code ป้อนมาคือค่าจาก **API response ล่าสุดของ session นี้**
