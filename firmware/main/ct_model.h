@@ -3,7 +3,7 @@
 // รูปแบบบนสาย (คีย์สั้นเพราะต้องพอดี 1 MTU):
 //   {"c":"14:32","d":"Mon 27 Jul","o":0,
 //    "s":[{"p":"tamaclaude","s":"building"}],
-//    "n":[{"t":"tamaclaude","b":"allow Bash?","k":"alert"}],
+//    "n":[{"t":"tamaclaude","b":"allow Bash?","k":"alert"}],"m":0,
 //    "u":[[35,10800],[48,111600]]}
 #pragma once
 
@@ -11,7 +11,7 @@
 
 #include "layout.h"
 
-#define CT_MAX_CARDS 3
+#define CT_MAX_CARDS CT_CARD_MAX
 #define CT_PROJECT_LEN 20
 #define CT_TITLE_LEN 40
 #define CT_BODY_LEN 52
@@ -55,6 +55,9 @@ typedef struct {
     ct_session_t sessions[CT_SLOTS_COUNT];
     int card_count;
     ct_card_t cards[CT_MAX_CARDS];
+    // การ์ดที่มีอยู่จริงแต่ไม่ได้ส่งมา — จอบอกเป็น "+N" ใต้ใบล่างสุด
+    // การเตือนที่หายไปเงียบๆ แย่กว่าการเตือนที่อ่านไม่ครบ
+    int card_overflow;
     // false = ไม่เคยได้ข้อมูลโควตาเลย -> จอถอยไปเป็นนาฬิกาตั้งโต๊ะ ไม่ใช่วาดโครงเปล่า
     bool has_usage;
     ct_usage_t usage[CT_USAGE_ROWS];

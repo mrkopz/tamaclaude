@@ -328,13 +328,16 @@ public final class SessionStore {
             date: date,
             overflow: max(0, live.count - chosen.count),
             sessions: snaps,
-            cards: cards.prefix(3).map {
+            // จอวาดได้ 2 ใบ (CT_CARD_MAX ใน tools/layout.toml) — ส่งเกินมาก็ถูกทิ้ง
+            // แล้วยังกิน MTU ของสิ่งที่จอใช้จริง ที่เหลือไปโผล่เป็น "+N" แทน
+            cards: cards.prefix(2).map {
                 CardSnap(
                     title: Text.fit($0.title, to: Text.Limit.cardTitle),
                     body: Text.fit($0.body, to: Text.Limit.cardBody),
                     kind: $0.kind
                 )
-            }
+            },
+            cardOverflow: max(0, cards.count - 2)
         )
     }
 

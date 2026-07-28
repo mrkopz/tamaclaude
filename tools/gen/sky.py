@@ -1,6 +1,6 @@
 """ท้องฟ้าตามช่วงเวลา — ฉากเต็มจอใต้แถบบน
 
-ฟ้าอยู่ 22..93 แล้วพื้นดินยาวลงไปถึงก้นจอ: card วาดพื้นทึบของตัวเองอยู่แล้ว
+ฟ้าอยู่ 22..119 แล้วพื้นดินยาวลงไปถึงก้นจอ: card วาดพื้นทึบของตัวเองอยู่แล้ว
 ส่วนแผงโควตากับนาฬิกาใหญ่วางตัวอักษรลงบนพื้นดินตรงๆ สีพื้นดินทุกช่วงจึงต้องเข้ม
 (luminance ~0.04) ไม่ใช่สีหญ้าจริง ความเขียวไปอยู่ที่กอหญ้าเล็กๆ บนเส้นขอบฟ้าแทน
 
@@ -20,7 +20,9 @@ from PIL import ImageDraw
 from .config import L, PAL
 from .render import quantize565
 
-SKY_TOP = L.slots.top
+# ฟ้าเริ่มใต้แถบบน ไม่ใช่ที่ขอบบนของแถบมาสคอต — แถบมาสคอตนั่งต่ำกว่านั้นลงมามาก
+# ที่ว่างเหนือหัวคือท้องฟ้าที่ดวงอาทิตย์เดินผ่าน
+SKY_TOP = L.topbar.height
 HORIZON = L.sky.horizon
 GROUND_BOTTOM = L.screen.height
 
@@ -173,10 +175,12 @@ def _draw_grass(draw_ctx: ImageDraw.ImageDraw, phase: str) -> None:
     y = HORIZON - 1  # แถวบนสุดของหญ้าอยู่เหนือเส้นขอบฟ้าหนึ่งพิกเซล = โคนติดพื้นพอดี
     for i, x in enumerate(L.sky.grass_x):
         # ความสูงวนตามลำดับกอ — กอสูงเท่ากันหมดอ่านเป็นรั้ว ไม่ใช่หญ้า
-        main, side = 2 + i % 4, 1 + i % 3
-        draw_ctx.rectangle([x, y - main, x, y], fill=color)
-        draw_ctx.rectangle([x - 2, y - side, x - 2, y], fill=color)
-        draw_ctx.rectangle([x + 2, y - (side + 1) % 3, x + 2, y], fill=color)
+        main, side = 3 + i % 4, 2 + i % 3
+        # ก้านหนา 2px เว้นช่อง 1px — ก้าน 1px หายไปเลยบนแผงจริง (ต่างจาก preview
+        # ที่ขยาย 3 เท่า) และช่องว่าง 1px คือสิ่งที่ทำให้ยังอ่านเป็นกอ ไม่ใช่แถบทึบ
+        draw_ctx.rectangle([x, y - main, x + 1, y], fill=color)
+        draw_ctx.rectangle([x - 3, y - side, x - 2, y], fill=color)
+        draw_ctx.rectangle([x + 3, y - (2 + (side + 1) % 3), x + 4, y], fill=color)
 
 
 def draw(draw_ctx: ImageDraw.ImageDraw, clock: str, connected: bool, t: float) -> None:

@@ -177,6 +177,9 @@ public struct Snapshot: Codable, Equatable, Sendable {
     public var overflow: Int
     public var sessions: [SessionSnap]
     public var cards: [CardSnap]
+    /// จำนวน card ที่มีอยู่จริงแต่ไม่ได้ส่ง — จอวาดได้แค่ 2 ใบ
+    /// การ์ดที่หายไปเงียบๆ คือการเตือนที่หายไป ต้องเหลือร่องรอยว่ายังมีอีก
+    public var cardOverflow: Int
     /// `[session, weekly]` เสมอเมื่อมี — `nil` แปลว่าไม่เคยได้ข้อมูลเลย
     /// ซึ่งบอร์ดตีความว่า "ถอยไปเป็นนาฬิกาตั้งโต๊ะ" ไม่ใช่ "วาดโครงเปล่า"
     public var usage: [UsageSnap]?
@@ -187,6 +190,7 @@ public struct Snapshot: Codable, Equatable, Sendable {
         case overflow = "o"
         case sessions = "s"
         case cards = "n"
+        case cardOverflow = "m"
         case usage = "u"
     }
 
@@ -196,6 +200,7 @@ public struct Snapshot: Codable, Equatable, Sendable {
         overflow: Int = 0,
         sessions: [SessionSnap] = [],
         cards: [CardSnap] = [],
+        cardOverflow: Int = 0,
         usage: [UsageSnap]? = nil
     ) {
         self.clock = clock
@@ -203,6 +208,7 @@ public struct Snapshot: Codable, Equatable, Sendable {
         self.overflow = overflow
         self.sessions = sessions
         self.cards = cards
+        self.cardOverflow = cardOverflow
         self.usage = usage
     }
 }
@@ -247,6 +253,9 @@ extension Snapshot {
         }
         while !copy.cards.isEmpty {
             copy.cards.removeLast()
+            // ใบที่ถูกตัดเพราะ MTU ล้นก็ยังต้องนับ — จอต้องบอกได้ว่ามีอีกกี่ใบ
+            // ไม่ว่ามันหายไปเพราะจอวาดไม่พอหรือเพราะสายส่งไม่พอ
+            copy.cardOverflow += 1
             data = try encoder.encode(copy)
             if data.count <= maxBytes { return data }
         }

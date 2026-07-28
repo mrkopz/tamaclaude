@@ -86,6 +86,8 @@ class Screen:
     connected: bool = True
     # ใหม่สุดอยู่บน — session ที่เกิน 4 ตัวไม่มีมาสคอต แต่การเตือนยังมาโผล่ตรงนี้
     cards: list[Card] = field(default_factory=list)
+    # การ์ดที่มีอยู่จริงแต่ไม่ได้ส่ง/วาดไม่พอ — daemon นับมาให้ (คีย์ "m" บนสาย)
+    card_overflow: int = 0
     # None = ไม่เคยได้ข้อมูลเลย -> ถอยไปเป็นนาฬิกาตั้งโต๊ะ ไม่ใช่โครงเปล่าที่ดูเหมือนพัง
     usage: list[Usage] | None = None
 
@@ -248,7 +250,7 @@ def _stroll(draw: ImageDraw.ImageDraw, s: Screen, phase: float, cycle: int) -> N
 
 CARD_H = 36
 CARD_GAP = 4
-CARD_MAX = 3
+CARD_MAX = L.card.max
 
 
 def _card(draw: ImageDraw.ImageDraw, c: Card, y: int) -> None:
@@ -266,11 +268,16 @@ def _card(draw: ImageDraw.ImageDraw, c: Card, y: int) -> None:
               fill=quantize565(PAL.text_dim), anchor="lm")
 
 
-def _cards(draw: ImageDraw.ImageDraw, cards: list[Card]) -> None:
+def _cards(draw: ImageDraw.ImageDraw, cards: list[Card], overflow: int) -> None:
     y = L.card.top + L.card.pad
     for c in cards[:CARD_MAX]:
         _card(draw, c, y)
         y += CARD_H + CARD_GAP
+    # การ์ดที่ไม่ได้วาดต้องเหลือร่องรอย ไม่ใช่หายเงียบ — "ไม่มีอะไรค้างแล้ว" กับ
+    # "ยังค้างอีกสองเรื่องแต่จอไม่พอ" คือสองสถานะที่ต้องแยกออกจากกันได้ในเหลือบเดียว
+    if overflow > 0:
+        draw.text((L.screen.width - L.card.pad - 8, y + 1), f"+{overflow} more",
+                  font=font(11), fill=quantize565(PAL.text_dim), anchor="rm")
 
 
 def fmt_remaining(secs: int | None) -> str:
@@ -416,7 +423,7 @@ def render(s: Screen, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     # ลำดับความสำคัญของพื้นที่ล่าง: การเตือน > โควตา > นาฬิกา
     # โควตาไม่เคยชนะ card เพราะ card คือสิ่งที่ต้องการการกระทำจากผู้ใช้
     if s.cards:
-        _cards(draw, s.cards)
+        _cards(draw, s.cards, s.card_overflow or max(0, len(s.cards) - CARD_MAX))
     elif s.usage:
         _usage(draw, s.usage)
     else:

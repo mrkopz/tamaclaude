@@ -89,6 +89,7 @@ static lv_obj_t *s_stroll;  // มาสคอตเดินข้ามจอ�
 static lv_obj_t *s_dot, *s_link, *s_clock_small, *s_overflow, *s_usage_top;
 static lv_obj_t *s_usage_track, *s_usage_fill;
 static lv_obj_t *s_clock_big, *s_date;
+static lv_obj_t *s_card_more;  // "+N more" ใต้การ์ดใบล่างสุด
 static slot_t s_slots[CT_SLOTS_COUNT];
 static card_t s_cards[CT_MAX_CARDS];
 static usage_row_t s_usage[CT_USAGE_ROWS];
@@ -223,10 +224,11 @@ static void draw_grass(lv_layer_t *layer, ct_sky_phase_t phase)
     int y = CT_SKY_HORIZON - 1;
     for (int i = 0; i < CT_SKY_GRASS_X_COUNT; i++) {
         int x = ct_sky_grass_x[i];
-        int main = 2 + i % 4, side = 1 + i % 3;  // สูงเท่ากันหมดอ่านเป็นรั้ว ไม่ใช่หญ้า
-        fill_rect(layer, x, y - main, x, y, color, 0);
-        fill_rect(layer, x - 2, y - side, x - 2, y, color, 0);
-        fill_rect(layer, x + 2, y - (side + 1) % 3, x + 2, y, color, 0);
+        int main = 3 + i % 4, side = 2 + i % 3;  // สูงเท่ากันหมดอ่านเป็นรั้ว ไม่ใช่หญ้า
+        // ก้านหนา 2px เว้นช่อง 1px — ก้าน 1px หายไปเลยบนแผงจริง
+        fill_rect(layer, x, y - main, x + 1, y, color, 0);
+        fill_rect(layer, x - 3, y - side, x - 2, y, color, 0);
+        fill_rect(layer, x + 3, y - (2 + (side + 1) % 3), x + 4, y, color, 0);
     }
 }
 
@@ -236,7 +238,9 @@ static void sky_draw_cb(lv_event_t *e)
 
     lv_layer_t *layer = lv_event_get_layer(e);
     ct_sky_phase_t phase = s_sky_phase;
-    fill_rect(layer, 0, CT_SLOTS_TOP, CT_SCREEN_WIDTH - 1, CT_SKY_HORIZON - 1, SKY_BG[phase], 0);
+    // ฟ้าเริ่มใต้แถบบน ไม่ใช่ที่ขอบบนของแถบมาสคอต — แถบมาสคอตนั่งต่ำกว่านั้นลงมามาก
+    fill_rect(layer, 0, CT_TOPBAR_HEIGHT, CT_SCREEN_WIDTH - 1, CT_SKY_HORIZON - 1,
+              SKY_BG[phase], 0);
 
     draw_stars(layer, phase);
     float x, y;
@@ -404,10 +408,11 @@ static void build_sky(lv_obj_t *scr)
 }
 
 // วาดฟ้าใหม่เฉพาะส่วนที่ขยับจริง — พื้นดินกับหญ้านิ่งตลอดช่วง ไม่ต้องแตะ
-// แถบฟ้า 320x71 = 22720 px ซึ่งน้อยกว่าที่แถบมาสคอตวาดใหม่ทุกเฟรมอยู่แล้ว
+// แถบฟ้า 320x98 = 31360 px ซึ่งอยู่ในระดับเดียวกับที่แถบมาสคอตวาดใหม่ทุกเฟรม
+// (28620 px) — วาดใหม่ไม่เกินวินาทีละครั้งหรือตอนเมฆขยับ (4 px/s) ไม่ใช่ทุกเฟรม
 static void invalidate_sky_band(void)
 {
-    lv_area_t a = {.x1 = 0, .y1 = CT_SLOTS_TOP, .x2 = CT_SCREEN_WIDTH - 1,
+    lv_area_t a = {.x1 = 0, .y1 = CT_TOPBAR_HEIGHT, .x2 = CT_SCREEN_WIDTH - 1,
                    .y2 = CT_SKY_HORIZON - 1};
     lv_obj_invalidate_area(s_sky, &a);
 }
@@ -522,6 +527,10 @@ static void build_cards(lv_obj_t *scr)
         s_cards[i] = (card_t){box, accent, title, body};
         lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
     }
+
+    // ตำแหน่งแนวตั้งขึ้นกับจำนวนใบที่แสดงจริง — ตั้งตอน layout_cards ไม่ใช่ตรงนี้
+    s_card_more = plain_label(scr, &lv_font_montserrat_12, CT_COL_TEXT_DIM);
+    lv_obj_add_flag(s_card_more, LV_OBJ_FLAG_HIDDEN);
 }
 
 // ขอบซ้าย/ขวาของเนื้อหาในแถว usage — ตรงกับ tools/gen/screen.py:_usage_row
@@ -682,6 +691,21 @@ static void layout_cards(void)
         lv_obj_set_style_bg_color(s_cards[i].accent, ct_color(card_accent(c->kind)), 0);
         lv_label_set_text(s_cards[i].title, c->title);
         lv_label_set_text(s_cards[i].body, c->body);
+    }
+
+    // การ์ดที่ไม่ได้วาดต้องเหลือร่องรอย ไม่ใช่หายเงียบ — "ไม่มีอะไรค้างแล้ว" กับ
+    // "ยังค้างอีกสองเรื่องแต่จอไม่พอ" คือสองสถานะที่ต้องแยกออกได้ในเหลือบเดียว
+    if (s_snap.card_count > 0 && s_snap.card_overflow > 0) {
+        // ตัดที่ 99 — เกินกว่านั้นตัวเลขที่แน่นอนไม่ได้บอกอะไรเพิ่มแล้ว มีแต่จะล้นบรรทัด
+        int more = s_snap.card_overflow > 99 ? 99 : s_snap.card_overflow;
+        char buf[16];
+        snprintf(buf, sizeof(buf), "+%d more", more);
+        lv_label_set_text(s_card_more, buf);
+        int y = CT_CARD_TOP + CT_CARD_PAD + s_snap.card_count * (CARD_H + CARD_GAP) + 1;
+        lv_obj_align(s_card_more, LV_ALIGN_TOP_RIGHT, -(CT_CARD_PAD + 8), y);
+        lv_obj_remove_flag(s_card_more, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(s_card_more, LV_OBJ_FLAG_HIDDEN);
     }
 
     // พื้นที่ล่างมีผู้ยึดสองราย (การ์ด, โควตา) — ถ้ามีรายใดรายหนึ่ง นาฬิกาใหญ่ต้องหลบ

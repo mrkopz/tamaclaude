@@ -96,6 +96,8 @@ bool ct_model_parse(const char *json, int len, ct_snapshot_t *out)
             card->kind = kind_from_name(cJSON_IsString(k) ? k->valuestring : NULL);
         }
     }
+    const cJSON *card_over = cJSON_GetObjectItem(root, "m");
+    if (cJSON_IsNumber(card_over)) tmp.card_overflow = card_over->valueint;
 
     // "u" เป็น array ของคู่ [percent, วินาทีที่เหลือ] ไม่ใช่ object — คีย์กินไบต์บนสาย
     // ไม่มีคีย์นี้เลย = ยังไม่เคยมีข้อมูลโควตา ซึ่งไม่เหมือนกับ "มีแต่ไม่รู้ค่า"
