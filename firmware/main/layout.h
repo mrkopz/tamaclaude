@@ -53,6 +53,8 @@
 #define CT_COL_TEXT                  0xEF1B
 #define CT_COL_TEXT_DIM              0x8C0F
 #define CT_COL_ACCENT                0xEDC9
+#define CT_COL_GLASS                 0xAEDD
+#define CT_COL_STEEL                 0x53B1
 #define CT_COL_ALERT                 0xDAA9
 #define CT_COL_GOOD                  0x5D4B
 

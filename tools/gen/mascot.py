@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from .config import L, PAL
-from .props import BOX_X0, BOX_X1, PROPS
+from .props import BOX_X0, BOX_X1, EYE_MAG, EYE_R, EYE_S, EYE_Y, PROPS, magnifier_glass
 from .rects import Rect, RectList, bounds, move, outline_pass
 
 GW = L.mascot.grid_w  # 17 — ความกว้างซิลลูเอ็ตรวมแขนสองข้าง
@@ -27,15 +27,20 @@ NUB_Y, NUB_H, NUB_W = 2.8, 2.5, 1.5
 LEG_TOP, LEG_H = 8.0, 3.2
 # ขาและช่องว่างวัดจากภาพอ้างอิง: ขานอกกว้างกว่าขาใน ช่องกลางกว้างกว่าช่องข้าง
 LEG_SPANS = ((1.00, 2.46), (4.50, 2.20), (9.29, 2.20), (12.53, 2.46))  # x, w
-EYE_L, EYE_R, EYE_Y, EYE_S = 3.36, 10.64, 2.10, 2.0
+EYE_L = 3.36  # ตาข้างขวา (EYE_R/EYE_Y/EYE_S) อยู่ใน props.py — แว่นขยายต้องเล็งไปที่นั่น
 
 FOOT_Y = LEG_TOP + LEG_H  # 11.2 — ระดับที่มาสคอตยืน
 
 
 # --- ตา --------------------------------------------------------------------
-def _eye(x: float, kind: str, look: float, ink: str) -> RectList:
-    """ตาหนึ่งข้าง กล่องฐาน EYE_S x EYE_S ที่ (x, EYE_Y) — ทุกค่าอิงสัดส่วน ไม่ฝังตัวเลขดิบ"""
-    s, y = EYE_S, EYE_Y
+def _eye(x: float, kind: str, look: float, ink: str, scale: float = 1.0) -> RectList:
+    """ตาหนึ่งข้าง กล่องฐาน EYE_S x EYE_S ที่ (x, EYE_Y) — ทุกค่าอิงสัดส่วน ไม่ฝังตัวเลขดิบ
+
+    scale > 1 = ตาโตขึ้นโดยยึดจุดกึ่งกลางเดิม (ใช้กับตาที่อยู่หลังเลนส์แว่นขยาย)
+    """
+    s = EYE_S * scale
+    grow = (s - EYE_S) / 2.0
+    x, y = x - grow, EYE_Y - grow
     if kind == "sleep":
         return [Rect(x, y + s * 0.62, s, s * 0.3, ink)]
     if kind == "squint":
@@ -196,13 +201,16 @@ def build(
     # ตาเลื่อนตามลำตัวที่ถูก squash
     eye_dy = dy + BODY[3] * squash
     look = m.look * math.sin(phase * math.pi * 2.0)
-    eyes = _eye(EYE_L, eye_kind, look, ink) + _eye(EYE_R, eye_kind, look, ink)
+    mag = EYE_MAG if prop_name == "magnifier" else 1.0  # ตาข้างที่อยู่หลังเลนส์
+    eyes = _eye(EYE_L, eye_kind, look, ink) + _eye(EYE_R, eye_kind, look, ink, mag)
     eyes = move(eyes, dx, eye_dy)
 
     out: RectList = []
     if L.mascot.outline:
         out += outline_pass(silhouette, L.mascot.outline, edge)
     out += silhouette
+    if prop_name == "magnifier":  # กระจกอยู่ใต้ตา ขอบเลนส์อยู่บนตา
+        out += move(magnifier_glass(phase, connected), dx, dy)
     out += eyes
     if prop_name:
         out += move(PROPS[prop_name](phase, connected), dx, dy)

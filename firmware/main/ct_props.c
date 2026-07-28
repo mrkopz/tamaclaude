@@ -10,26 +10,68 @@ static uint16_t c(bool connected, uint16_t color)
     return connected ? color : CT_COL_GRAY_DARK;
 }
 
-// สี่เหลี่ยมกลวง หนา t
-static void ring(ct_rects_t *o, float x, float y, float s, float t, uint16_t col)
+// วงกลมกลวง หนา t — ตัดมุมทั้งสี่เป็นแนวทแยง จึงอ่านเป็นวงกลมไม่ใช่กรอบสี่เหลี่ยม
+static void ring_round(ct_rects_t *o, float x, float y, float s, float t, uint16_t col)
 {
-    ct_rects_add(o, x, y, s, t, col);
-    ct_rects_add(o, x, y + s - t, s, t, col);
-    ct_rects_add(o, x, y + t, t, s - 2 * t, col);
-    ct_rects_add(o, x + s - t, y + t, t, s - 2 * t, col);
+    float k = s / 4.0f;  // ความยาวมุมที่ตัดออก
+    ct_rects_add(o, x + k, y, s - 2 * k, t, col);          // บน
+    ct_rects_add(o, x + k, y + s - t, s - 2 * k, t, col);  // ล่าง
+    ct_rects_add(o, x, y + k, t, s - 2 * k, col);          // ซ้าย
+    ct_rects_add(o, x + s - t, y + k, t, s - 2 * k, col);  // ขวา
+    const float corner[4][2] = {{k - t, k - t}, {s - k, k - t}, {k - t, s - k}, {s - k, s - k}};
+    for (int i = 0; i < 4; i++) {  // ชิ้นเชื่อมมุม
+        ct_rects_add(o, x + corner[i][0], y + corner[i][1], t, t, col);
+    }
 }
 
-// แว่นขยาย — Read/Grep/Glob (ส่ายซ้ายขวาเหมือนกำลังไล่อ่าน)
+// มุมบนซ้ายของเลนส์ในเฟรมนี้ — กระจกกับขอบต้องอ่านค่าเดียวกัน ไม่งั้นเลื่อนหลุดกัน
+static void lens_box(float phase, float *ox, float *oy)
+{
+    // ขยับลงอย่างเดียว — เลนส์สูงกว่าหัวอยู่แล้ว ถ้าลอยขึ้นอีกจะฉีกซิลลูเอ็ตจนอ่านไม่ออก
+    float lift = fabsf(sinf(phase * (float)M_PI * 2.0f)) * 0.4f;
+    *ox = CT_EYE_R + CT_EYE_S / 2.0f - CT_LENS_S / 2.0f;  // จัดวงให้ล้อมตาข้างขวาพอดี
+    *oy = CT_EYE_Y + CT_EYE_S / 2.0f - CT_LENS_S / 2.0f + lift;
+}
+
+// กระจกในเลนส์ — วาดก่อนตา (ct_mascot.c เป็นคนเรียก) ตาจึงทับอยู่บนกระจก
+// ถ้าวาดพร้อมขอบเลนส์ซึ่งอยู่หน้าตา กระจกจะบังตาที่เป็นพระเอกของท่านี้
+void ct_prop_magnifier_glass(ct_rects_t *o, float phase, bool connected)
+{
+    // ตอนหลุดการเชื่อมต่อใช้สีเดียวกับลำตัว = กระจกหายไปเลย ไม่ใช่หรี่เป็นเทาเข้ม
+    // เพราะเทาเข้มจะกลืนกับสีตาจนมองไม่เห็นตาในวง
+    uint16_t col = connected ? CT_COL_GLASS : CT_COL_GRAY;
+    float x, y;
+    lens_box(phase, &x, &y);
+    float s = CT_LENS_S - 2 * CT_LENS_T;  // เต็มรูในวงแหวนพอดี
+    x += CT_LENS_T;
+    y += CT_LENS_T;
+    // มุมที่ตัดต้องพอดีบันไดด้านในของวงแหวน ไม่เหลือรูและไม่ล้น
+    float k = CT_LENS_S / 4.0f - CT_LENS_T;
+    ct_rects_add(o, x + k, y, s - 2 * k, k, col);
+    ct_rects_add(o, x, y + k, s, s - 2 * k, col);
+    ct_rects_add(o, x + k, y + s - k, s - 2 * k, k, col);
+}
+
+// แว่นขยาย — Read/Grep/Glob
+// ยกมาส่องที่ตาข้างขวาแทนที่จะถือห้อยข้างตัว: ท่านี้อ่านออกทันทีว่า "กำลังอ่าน"
+// ในวงมีตาที่ถูกขยายบนกระจกฟ้าอ่อน (ct_mascot.c วาดให้ก่อนหน้านี้) ด้ามลากไปจบที่แขนขวา
+// กรอบเป็นฟ้าเทา เข้มกว่ากระจกพอให้เห็นเป็นวงแหวน แต่ไม่ดังกว่าตาที่เป็นพระเอกของท่านี้
+// วงใหญ่กว่าหัวและล้นขึ้นไปด้านบน — ตั้งใจ ให้อ่านออกแต่ไกลว่าเป็นแว่นขยาย ไม่ใช่แว่นตา
 static void magnifier(ct_rects_t *o, float phase, bool connected)
 {
-    uint16_t col = c(connected, CT_COL_ACCENT);
-    float x = CT_HAND_X + sinf(phase * (float)M_PI * 2.0f) * 0.35f;
-    float y = CT_HAND_Y, s = 4.5f, t = 0.8f;
-    // เลนส์ปล่อยโปร่ง — ถ้าถมสีจะเพี้ยนเวลาพื้นหลังเปลี่ยน
-    ring(o, x, y, s, t, col);
-    for (int i = 0; i < 2; i++) {  // ด้ามจับทแยงลงขวา
-        ct_rects_add(o, x + s - 0.3f + i * 0.65f, y + s - 0.3f + i * 0.65f, 0.9f, 0.9f, col);
+    uint16_t col = c(connected, CT_COL_STEEL);
+    float s = CT_LENS_S, t = CT_LENS_T;
+    float x, y;
+    lens_box(phase, &x, &y);
+    ring_round(o, x, y, s, t, col);
+    // ด้ามลากลงขวาไปจบที่มือ — ต้องพ้นขอบแขน (16.5) ถึงจะอ่านออกว่าถืออยู่
+    for (int i = 0; i < 3; i++) {
+        ct_rects_add(o, x + s - 0.5f + i * 1.15f, y + s * 0.70f + i * 0.55f, 1.5f, 1.05f, col);
     }
+    // แสงสะท้อนบนกระจกเป็นขีดสองขีดมุมบนซ้าย — วางในช่องว่างระหว่างตากับขอบ ไม่ทับตา
+    uint16_t glint = c(connected, CT_COL_OUTLINE);
+    ct_rects_add(o, x + 1.05f, y + 2.5f, 0.9f, 1.5f, glint);
+    ct_rects_add(o, x + 2.3f, y + 1.05f, 1.5f, 0.9f, glint);
 }
 
 // ดินสอ — Edit/Write (ขยับเป็นจังหวะเขียน)

@@ -3,6 +3,7 @@
 พิกัดอยู่ในตารางเดียวกับมาสคอต ซิลลูเอ็ตกิน x -0.5..16.5, y 0..11.2 (ฝ่าเท้าที่ y=11.2)
   prop ถือ  อยู่ช่วง x 17.2..23.4 — นอกลำตัว ไม่ทับตา ไม่ทับขา
   prop ลอย  อยู่ช่วง y -5.6..-0.1 เหนือหัว
+  ยกเว้นแว่นขยาย ที่ตั้งใจให้ทับตาข้างขวา (ท่ายกส่อง) — เลนส์กลวงจึงยังเห็นตา
 """
 
 from __future__ import annotations
@@ -22,29 +23,82 @@ HEAD_CX = 8.0  # กึ่งกลางลำตัวในแนวนอน
 HAND_X = 17.2  # ขอบซ้ายของพื้นที่ prop ที่ถือ (แขนจบที่ 16.5 เว้นช่องหายใจ 0.7)
 HAND_Y = 2.4
 
+# ตาข้างขวา — อยู่ที่นี่เพราะ prop บางชิ้น (แว่นขยาย) ต้องเล็งไปที่ตา
+# mascot.py import ไปใช้ต่อ จึงมีค่าชุดเดียวไม่ต้องซิงก์สองที่
+EYE_R, EYE_Y, EYE_S = 10.64, 2.10, 2.0
+# ตาที่อยู่หลังเลนส์ต้องโตกว่าอีกข้าง ไม่งั้นวงแหวนอ่านเป็นแค่ห่วงคล้องหน้า ไม่ใช่แว่นขยาย
+# mascot.py เป็นคนวาดตาที่ขยายแล้ว (มันรู้ว่าตากำลังเป็นท่าไหน เช่นตอนกะพริบ)
+EYE_MAG = 2.0
+
 
 def _c(connected: bool, color: str) -> str:
     return color if connected else PAL.gray_dark
 
 
-def _ring(x: float, y: float, s: float, t: float, color: str) -> RectList:
-    """สี่เหลี่ยมกลวง หนา t"""
+def _ring_round(x: float, y: float, s: float, t: float, color: str) -> RectList:
+    """วงกลมกลวง หนา t — ตัดมุมทั้งสี่เป็นแนวทแยง จึงอ่านเป็นวงกลมไม่ใช่กรอบสี่เหลี่ยม"""
+    c = s / 4.0  # ความยาวมุมที่ตัดออก
+    out = [
+        Rect(x + c, y, s - 2 * c, t, color),  # บน
+        Rect(x + c, y + s - t, s - 2 * c, t, color),  # ล่าง
+        Rect(x, y + c, t, s - 2 * c, color),  # ซ้าย
+        Rect(x + s - t, y + c, t, s - 2 * c, color),  # ขวา
+    ]
+    for cx, cy in ((c - t, c - t), (s - c, c - t), (c - t, s - c), (s - c, s - c)):
+        out.append(Rect(x + cx, y + cy, t, t, color))  # ชิ้นเชื่อมมุม
+    return out
+
+
+LENS_S, LENS_T = 8.0, 0.9
+
+
+def _lens_box(phase: float) -> tuple[float, float]:
+    """มุมบนซ้ายของเลนส์ในเฟรมนี้ — กระจกกับขอบต้องอ่านค่าเดียวกัน ไม่งั้นเลื่อนหลุดกัน"""
+    # ขยับลงอย่างเดียว — เลนส์สูงกว่าหัวอยู่แล้ว ถ้าลอยขึ้นอีกจะฉีกซิลลูเอ็ตจนอ่านไม่ออก
+    lift = abs(math.sin(phase * math.pi * 2.0)) * 0.4
+    x = EYE_R + EYE_S / 2.0 - LENS_S / 2.0  # จัดวงให้ล้อมตาข้างขวาพอดี
+    return x, EYE_Y + EYE_S / 2.0 - LENS_S / 2.0 + lift
+
+
+def magnifier_glass(phase: float, connected: bool = True) -> RectList:
+    """กระจกในเลนส์ — วาดก่อนตา (mascot.py เป็นคนเรียก) ตาจึงทับอยู่บนกระจก
+
+    ถ้าวาดพร้อมขอบเลนส์ซึ่งอยู่หน้าตา กระจกจะบังตาที่เป็นพระเอกของท่านี้
+    """
+    # ตอนหลุดการเชื่อมต่อใช้สีเดียวกับลำตัว = กระจกหายไปเลย ไม่ใช่หรี่เป็นเทาเข้ม
+    # เพราะเทาเข้มจะกลืนกับสีตาจนมองไม่เห็นตาในวง
+    col = PAL.glass if connected else PAL.gray
+    x, y = _lens_box(phase)
+    s = LENS_S - 2 * LENS_T  # เต็มรูในวงแหวนพอดี
+    x, y = x + LENS_T, y + LENS_T
+    c = LENS_S / 4.0 - LENS_T  # มุมที่ตัดต้องพอดีบันไดด้านในของวงแหวน ไม่เหลือรูและไม่ล้น
     return [
-        Rect(x, y, s, t, color),
-        Rect(x, y + s - t, s, t, color),
-        Rect(x, y + t, t, s - 2 * t, color),
-        Rect(x + s - t, y + t, t, s - 2 * t, color),
+        Rect(x + c, y, s - 2 * c, c, col),
+        Rect(x, y + c, s, s - 2 * c, col),
+        Rect(x + c, y + s - c, s - 2 * c, c, col),
     ]
 
 
 def magnifier(phase: float, connected: bool = True) -> RectList:
-    """แว่นขยาย — Read/Grep/Glob  (ส่ายซ้ายขวาเหมือนกำลังไล่อ่าน)"""
-    col = _c(connected, PAL.accent)
-    x = HAND_X + math.sin(phase * math.pi * 2.0) * 0.35
-    y, s, t = HAND_Y, 4.5, 0.8
-    out = _ring(x, y, s, t, col)  # เลนส์ปล่อยโปร่ง — ถ้าถมสีจะเพี้ยนเวลาพื้นหลังเปลี่ยน
-    for i in range(2):  # ด้ามจับทแยงลงขวา
-        out.append(Rect(x + s - 0.3 + i * 0.65, y + s - 0.3 + i * 0.65, 0.9, 0.9, col))
+    """แว่นขยาย — Read/Grep/Glob
+
+    ยกมาส่องที่ตาข้างขวาแทนที่จะถือห้อยข้างตัว: ท่านี้อ่านออกทันทีว่า "กำลังอ่าน"
+    ไม่ใช่แค่ "ถือของกลมๆ" ในวงมีตาที่ถูกขยายบนกระจกฟ้าอ่อน (ทั้งคู่ mascot.py
+    วาดให้ก่อนหน้านี้) ด้ามลากไปจบที่แขนขวา ขยับขึ้นลงเหมือนกำลังปรับระยะส่อง
+
+    กรอบเป็นฟ้าเทา เข้มกว่ากระจกพอให้เห็นเป็นวงแหวน แต่ไม่ดังกว่าตาที่เป็นพระเอกของท่านี้
+    วงใหญ่กว่าหัวและล้นขึ้นไปด้านบน — ตั้งใจ ให้อ่านออกแต่ไกลว่าเป็นแว่นขยาย ไม่ใช่แว่นตา
+    """
+    col = _c(connected, PAL.steel)
+    s, t = LENS_S, LENS_T
+    x, y = _lens_box(phase)
+    out = _ring_round(x, y, s, t, col)
+    for i in range(3):  # ด้ามลากลงขวาไปจบที่มือ — ต้องพ้นขอบแขน (16.5) ถึงจะอ่านออกว่าถืออยู่
+        out.append(Rect(x + s - 0.5 + i * 1.15, y + s * 0.70 + i * 0.55, 1.5, 1.05, col))
+    # แสงสะท้อนบนกระจกเป็นขีดสองขีดมุมบนซ้าย — วางในช่องว่างระหว่างตากับขอบ ไม่ทับตา
+    glint = _c(connected, PAL.outline)
+    out.append(Rect(x + 1.05, y + 2.5, 0.9, 1.5, glint))
+    out.append(Rect(x + 2.3, y + 1.05, 1.5, 0.9, glint))
     return out
 
 

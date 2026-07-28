@@ -17,9 +17,9 @@
 #define LEG_TOP 8.0f
 #define LEG_H 3.2f
 #define EYE_L 3.36f
-#define EYE_R 10.64f
-#define EYE_Y 2.10f
-#define EYE_S 2.0f
+#define EYE_R CT_EYE_R  // ตาข้างขวานิยามใน ct_props.h — แว่นขยายต้องเล็งไปที่นั่น
+#define EYE_Y CT_EYE_Y
+#define EYE_S CT_EYE_S
 
 // ขาและช่องว่างวัดจากภาพอ้างอิง: ขานอกกว้างกว่าขาใน ช่องกลางกว้างกว่าช่องข้าง
 static const float LEG_SPANS[4][2] = {
@@ -91,9 +91,13 @@ static const struct {
 
 // --- ตา ---------------------------------------------------------------------
 // ตาหนึ่งข้าง กล่องฐาน EYE_S x EYE_S ที่ (x, EYE_Y) — ทุกค่าอิงสัดส่วน ไม่ฝังตัวเลขดิบ
-static void eye(ct_rects_t *o, float x, eye_t kind, float look, uint16_t ink)
+// scale > 1 = ตาโตขึ้นโดยยึดจุดกึ่งกลางเดิม (ใช้กับตาที่อยู่หลังเลนส์แว่นขยาย)
+static void eye(ct_rects_t *o, float x, eye_t kind, float look, uint16_t ink, float scale)
 {
-    const float s = EYE_S, y = EYE_Y;
+    const float s = EYE_S * scale;
+    const float grow = (s - EYE_S) / 2.0f;
+    const float y = EYE_Y - grow;
+    x -= grow;
     switch (kind) {
         case EYE_SLEEP:
             ct_rects_add(o, x, y + s * 0.62f, s, s * 0.3f, ink);
@@ -230,11 +234,19 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
         ct_rects_add(out, r.x, r.y, r.w, r.h, r.color);
     }
 
+    if (STATES[state].prop == CT_PROP_MAGNIFIER) {  // กระจกอยู่ใต้ตา ขอบเลนส์อยู่บนตา
+        int glass_from = out->count;
+        ct_prop_magnifier_glass(out, phase, connected);
+        ct_rects_move_from(out, glass_from, dx, dy);
+    }
+
     // ตาเลื่อนตามลำตัวที่ถูก squash
     int eyes_from = out->count;
     float look = m->look * sinf(phase * (float)M_PI * 2.0f);
-    eye(out, EYE_L, eye_kind, look, ink);
-    eye(out, EYE_R, eye_kind, look, ink);
+    // ตาข้างที่อยู่หลังเลนส์แว่นขยายต้องโตกว่าอีกข้าง
+    float mag = STATES[state].prop == CT_PROP_MAGNIFIER ? CT_EYE_MAG : 1.0f;
+    eye(out, EYE_L, eye_kind, look, ink, 1.0f);
+    eye(out, EYE_R, eye_kind, look, ink, mag);
     ct_rects_move_from(out, eyes_from, dx, dy + BODY_H * squash);
 
     if (STATES[state].prop != CT_PROP_NONE) {
