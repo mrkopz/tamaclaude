@@ -12,7 +12,13 @@ usage:
   tamaclaude --install-statusline  take over statusLine.command to capture rate_limits
   tamaclaude --remove-statusline   give the statusLine slot back to the previous command
   tamaclaude --usage-cache       read statusline JSON on stdin, write the usage cache
+  tamaclaude --usage-poll        ask claude.ai for the quota once, write the cache, exit
   tamaclaude --send <json>       send one hand-written event (for testing)
+
+--usage-poll:
+  reads the claude.ai sessionKey from ~/.tamaclaude/session-key (mode 600, never argv).
+  set TAMACLAUDE_ORG_ID to pin an organization instead of discovering one.
+  exit 0 wrote the cache · 2 the key was rejected · 3 the key file is unusable · 1 other
 
 daemon options:
   --print       also print every snapshot to stdout
@@ -33,6 +39,16 @@ var signalSources: [DispatchSourceSignal] = []
 func fail(_ msg: String) -> Never {
     Log.info(msg)
     exit(1)
+}
+
+/// อาร์กิวเมนต์ที่สองของโหมดที่เขียน cache เป็นพาธปลายทาง มีไว้เพื่อทดสอบท่อทั้งเส้น
+/// โดยไม่แตะไฟล์จริง (`NSHomeDirectory()` บน macOS อ่านจาก getpwuid ไม่สน $HOME
+/// จึงหลอกด้วย env ไม่ได้) — ค่าที่ขึ้นต้นด้วย `-` คือธงที่พิมพ์ผิด ไม่ใช่พาธ
+/// ปล่อยผ่านแล้วจะได้ไฟล์ชื่อ `--no-ble` เงียบๆ แทนที่จะได้ข้อความบอกว่าพิมพ์ผิด
+func cacheTarget(_ args: [String]) -> URL {
+    guard args.count > 1 else { return Paths.usageCache }
+    guard !args[1].hasPrefix("-") else { fail("\(args[1]) is not a cache path") }
+    return URL(fileURLWithPath: args[1])
 }
 
 switch args.first {
@@ -75,13 +91,21 @@ case "--remove-statusline":
 case "--usage-cache":
     // เรียกจาก statusline.sh เท่านั้น — ต้องไม่ตายและไม่บ่นไม่ว่า stdin จะเป็นอะไร
     // เพราะ exit code ที่ไม่ใช่ 0 จะไปโผล่เป็นบรรทัด statusline ที่พังของผู้ใช้
-    //
-    // อาร์กิวเมนต์ที่สองเป็นพาธปลายทาง มีไว้เพื่อทดสอบท่อทั้งเส้นโดยไม่แตะไฟล์จริง
-    // (`NSHomeDirectory()` บน macOS อ่านจาก getpwuid ไม่สน $HOME จึงหลอกด้วย env ไม่ได้)
-    let target = args.count > 1 ? URL(fileURLWithPath: args[1]) : Paths.usageCache
     let stdin = FileHandle.standardInput.readDataToEndOfFile()
-    if let line = UsageWriter.ingest(stdin, to: target) { print(line) }
+    if let line = UsageWriter.ingest(stdin, to: cacheTarget(args)) { print(line) }
     exit(0)
+
+case "--usage-poll":
+    // โปรเซสอายุสั้นโดยตั้งใจ ไม่ใช่ daemon — ตัวจับเวลาอยู่ที่ผู้เรียก
+    // exit code แยก "ผู้ใช้ต้องไปแปะ key ใหม่" ออกจาก "เน็ตสะดุด เดี๋ยวก็หาย"
+    do {
+        print(try UsagePoll.run(cache: cacheTarget(args)))
+    } catch let failure as UsagePoll.Failure {
+        Log.info(failure.message)
+        exit(failure.code)
+    } catch {
+        fail("usage poll failed: \(error)")
+    }
 
 case "--daemon":
     Paths.ensureStateDir()
