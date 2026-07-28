@@ -53,8 +53,27 @@ func runAllTests() {
         s.apply(event("PreToolUse", tool: "Edit"), now: t0 + 1)
         equal(s.snapshot(now: t0 + 1).sessions.first?.state, .writing, "tool drives the mascot")
         s.apply(event("PostToolUse", tool: "Edit"), now: t0 + 2)
-        equal(s.snapshot(now: t0 + 2).sessions.first?.state, .thinking, "back to thinking after a tool")
-        equal(s.snapshot(now: t0 + 2).sessions.first?.project, "tamaclaude", "project name from cwd")
+        equal(
+            s.snapshot(now: t0 + 2).sessions.first?.state, .writing,
+            "the pose lingers so a fast tool is still visible")
+        equal(s.snapshot(now: t0 + 5).sessions.first?.state, .thinking, "back to thinking after a tool")
+        equal(s.snapshot(now: t0 + 5).sessions.first?.project, "tamaclaude", "project name from cwd")
+    }
+
+    suite("a permission card does not outlive the request") {
+        let s = store()
+        s.apply(event("PreToolUse", tool: "Bash"), now: t0)
+        s.apply(event("Notification", message: "Claude needs your permission"), now: t0 + 1)
+        equal(s.snapshot(now: t0 + 1).cards.count, 1, "the request raises a card")
+
+        s.apply(event("PostToolUse", tool: "Bash"), now: t0 + 5)
+        equal(s.snapshot(now: t0 + 5).cards.count, 0, "granting it and moving on clears the card")
+
+        // ปฏิเสธไม่มี PostToolUse ตามมาเสมอ ตัวจบเทิร์นจึงต้องล้างให้ด้วย
+        let d = store()
+        d.apply(event("Notification", message: "Claude needs your permission"), now: t0)
+        d.apply(event("Stop"), now: t0 + 3)
+        equal(d.snapshot(now: t0 + 3).cards.count, 0, "so does the turn ending")
     }
 
     suite("subagents") {

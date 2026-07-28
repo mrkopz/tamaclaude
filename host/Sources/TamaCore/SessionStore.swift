@@ -6,6 +6,12 @@ public struct Timings: Sendable {
     public var stopAlert: TimeInterval = 45
     /// ท่าดีใจหลังงานจบ ก่อนกลับไป idle
     public var celebrate: TimeInterval = 4
+    /// ค้างท่าของเครื่องมือไว้อีกเท่านี้หลัง PostToolUse
+    ///
+    /// Read/Edit ส่วนใหญ่จบใน ~100 มิลลิวินาที ถ้ากลับไป thinking ทันทีที่ PostToolUse
+    /// ท่า reading/writing จะโผล่สั้นกว่าหนึ่งเฟรมของบอร์ด (tick 1 วิ + ดีเลย์ BLE)
+    /// ผู้ใช้จึงเห็นแต่ thinking ตลอด ทั้งที่ตรรกะข้างในถูกแล้ว
+    public var toolHold: TimeInterval = 2
     /// ท่าเดินเข้ามาของ session ใหม่
     public var entering: TimeInterval = 1.2
     /// ท่ามุดหายก่อนหายจากจอ
@@ -40,6 +46,9 @@ struct Session {
     var celebrateUntil: Date?
     var endingAt: Date?
     var subagents: Int = 0
+    /// ท่าของเครื่องมือตัวล่าสุด และเวลาที่ยังยอมค้างท่านั้นไว้ได้ถึง
+    var lastTool: VisualState?
+    var toolHoldUntil: Date?
 
     func visualState(now: Date, t: Timings) -> VisualState {
         if endingAt != nil { return .leaving }  // prune() เป็นคนเอาออกเมื่อท่าจบ
@@ -53,6 +62,8 @@ struct Session {
             // (แต่แพ้ error กับ waiting ข้างบน: พังกับต้องการมือคน สำคัญกว่า)
             if subagents > 0 { return .conducting }
             if case .tool(let s) = activity { return s }
+            // เพิ่งวางเครื่องมือลง: ค้างท่าไว้ให้ตาตามทัน ก่อนกลับไปคิด
+            if let last = lastTool, let hold = toolHoldUntil, now < hold { return last }
             return .thinking
         case .idle:
             if let c = celebrateUntil, now < c { return .celebrate }
@@ -131,14 +142,25 @@ public final class SessionStore {
             // เทิร์นใหม่ = ล้างตัวนับที่ค้างจากเทิร์นก่อน (SubagentStop ที่หายไปตอน
             // daemon ไม่ได้รัน จะทำให้ session ติดท่า conducting ตลอดกาลถ้าไม่ล้าง)
             s.subagents = 0
+            s.lastTool = nil
+            s.toolHoldUntil = nil
             dismissCards(for: id)
 
         case "PreToolUse":
-            s.activity = .tool(toolMap.state(for: e.toolName ?? ""))
+            let state = toolMap.state(for: e.toolName ?? "")
+            s.activity = .tool(state)
+            s.lastTool = state
+            s.toolHoldUntil = nil
             s.stoppedAt = nil
+            // ขออนุญาตแล้วได้ไปต่อ = คำขอนั้นตายแล้ว การ์ดต้องไม่ค้างจนหมดอายุเอง
+            // (PermissionRequest ยิง Notification ทีหลัง PreToolUse ของตัวมันเอง
+            //  การ์ดของรอบนี้จึงไม่โดนล้างทิ้งก่อนผู้ใช้เห็น)
+            dismissCards(for: id)
 
         case "PostToolUse":
             s.activity = .thinking
+            s.toolHoldUntil = now + timings.toolHold
+            dismissCards(for: id)
 
         case "PreCompact":
             s.activity = .thinking
@@ -168,6 +190,11 @@ public final class SessionStore {
             s.celebrateUntil = now + timings.celebrate
             // main loop จบแล้ว จะมี subagent ค้างจริงไม่ได้
             s.subagents = 0
+            s.lastTool = nil
+            s.toolHoldUntil = nil
+            // เทิร์นจบแล้ว คำขออนุญาตของเทิร์นนั้นหมดความหมาย ต่อให้ผู้ใช้กดปฏิเสธ
+            // (ทางนั้นไม่มี PostToolUse มาล้างให้) — การเตือนที่เหลือมาทาง stopAlerts
+            dismissCards(for: id)
 
         case "StopFailure", "SubagentStopFailure":
             s.activity = .failed
