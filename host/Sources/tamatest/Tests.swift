@@ -56,8 +56,29 @@ func runAllTests() {
         equal(
             s.snapshot(now: t0 + 2).sessions.first?.state, .writing,
             "the pose lingers so a fast tool is still visible")
-        equal(s.snapshot(now: t0 + 5).sessions.first?.state, .thinking, "back to thinking after a tool")
-        equal(s.snapshot(now: t0 + 5).sessions.first?.project, "tamaclaude", "project name from cwd")
+        equal(s.snapshot(now: t0 + 7).sessions.first?.state, .thinking, "back to thinking after a tool")
+        equal(s.snapshot(now: t0 + 7).sessions.first?.project, "tamaclaude", "project name from cwd")
+    }
+
+    suite("every pose stays on screen long enough to read") {
+        let s = store()
+        s.apply(event("PreToolUse", tool: "Read"), now: t0)
+        equal(s.snapshot(now: t0).sessions.first?.state, .reading, "the pose goes up at once")
+
+        // เครื่องมือรัวๆ ในหนึ่งวินาที: ท่าที่ถูกข้ามหายไปเลย ไม่เข้าคิวมาเล่าย้อนหลัง
+        s.apply(event("PostToolUse", tool: "Read"), now: t0 + 0.2)
+        s.apply(event("PreToolUse", tool: "Edit"), now: t0 + 0.3)
+        s.apply(event("PostToolUse", tool: "Edit"), now: t0 + 0.5)
+        equal(s.snapshot(now: t0 + 1).sessions.first?.state, .reading, "a burst does not flicker")
+        equal(s.snapshot(now: t0 + 4).sessions.first?.state, .reading, "it holds the whole window")
+        equal(s.snapshot(now: t0 + 5).sessions.first?.state, .thinking, "then catches up to now")
+
+        // แต่เรื่องด่วนกว่าไม่ต้องรอคิว
+        let f = store()
+        f.apply(event("PreToolUse", tool: "Read"), now: t0)
+        equal(f.snapshot(now: t0).sessions.first?.state, .reading, "a tool is on screen")
+        f.apply(event("StopFailure"), now: t0 + 1)
+        equal(f.snapshot(now: t0 + 1).sessions.first?.state, .error, "trouble cuts the line")
     }
 
     suite("a permission card does not outlive the request") {
@@ -99,7 +120,7 @@ func runAllTests() {
             "one of two finishing is not the end of it")
         s.apply(event("SubagentStop"), now: t0 + 5)
         equal(
-            s.snapshot(now: t0 + 5).sessions.first?.state, .thinking,
+            s.snapshot(now: t0 + 6).sessions.first?.state, .thinking,
             "the last one finishing hands the mascot back")
     }
 
@@ -151,7 +172,7 @@ func runAllTests() {
         equal(late.sessions.first?.state, .waiting, "mascot asks for you")
 
         s.apply(event("UserPromptSubmit"), now: t0 + 50)
-        let after = s.snapshot(now: t0 + 50)
+        let after = s.snapshot(now: t0 + 52)
         equal(after.cards.count, 0, "answering clears the card")
         equal(after.sessions.first?.state, .thinking, "and puts it back to work")
     }

@@ -4,14 +4,14 @@ import Foundation
 public struct Timings: Sendable {
     /// Stop แล้วเงียบเกินเท่านี้ = ถือว่าต้องเตือนผู้ใช้ (เกณฑ์ใน DESIGN.md)
     public var stopAlert: TimeInterval = 45
-    /// ท่าดีใจหลังงานจบ ก่อนกลับไป idle
-    public var celebrate: TimeInterval = 4
-    /// ค้างท่าของเครื่องมือไว้อีกเท่านี้หลัง PostToolUse
+    /// ท่าดีใจหลังงานจบ ก่อนกลับไป idle — อย่าตั้งต่ำกว่า `minPose` เพราะ minPose จะยืดให้เองอยู่ดี
+    public var celebrate: TimeInterval = 5
+    /// ท่าหนึ่งต้องอยู่บนจออย่างน้อยเท่านี้ ก่อนยอมให้ท่าถัดไปแทน
     ///
-    /// Read/Edit ส่วนใหญ่จบใน ~100 มิลลิวินาที ถ้ากลับไป thinking ทันทีที่ PostToolUse
+    /// Read/Edit ส่วนใหญ่จบใน ~100 มิลลิวินาที ถ้าเปลี่ยนท่าตามเหตุการณ์ทันที
     /// ท่า reading/writing จะโผล่สั้นกว่าหนึ่งเฟรมของบอร์ด (tick 1 วิ + ดีเลย์ BLE)
     /// ผู้ใช้จึงเห็นแต่ thinking ตลอด ทั้งที่ตรรกะข้างในถูกแล้ว
-    public var toolHold: TimeInterval = 2
+    public var minPose: TimeInterval = 5
     /// ท่าเดินเข้ามาของ session ใหม่
     public var entering: TimeInterval = 1.2
     /// ท่ามุดหายก่อนหายจากจอ
@@ -46,10 +46,11 @@ struct Session {
     var celebrateUntil: Date?
     var endingAt: Date?
     var subagents: Int = 0
-    /// ท่าของเครื่องมือตัวล่าสุด และเวลาที่ยังยอมค้างท่านั้นไว้ได้ถึง
-    var lastTool: VisualState?
-    var toolHoldUntil: Date?
+    /// ท่าที่อยู่บนจอตอนนี้ และเวลาที่มันขึ้นจอ — ใช้บังคับเวลาขั้นต่ำต่อท่า
+    var posed: VisualState?
+    var posedAt: Date = .distantPast
 
+    /// ท่าที่ "ควรจะเป็น" ตามสถานะจริง ณ วินาทีนี้ — ยังไม่ผ่านการหน่วง
     func visualState(now: Date, t: Timings) -> VisualState {
         if endingAt != nil { return .leaving }  // prune() เป็นคนเอาออกเมื่อท่าจบ
         if now < startedAt + t.entering { return .entering }
@@ -62,8 +63,6 @@ struct Session {
             // (แต่แพ้ error กับ waiting ข้างบน: พังกับต้องการมือคน สำคัญกว่า)
             if subagents > 0 { return .conducting }
             if case .tool(let s) = activity { return s }
-            // เพิ่งวางเครื่องมือลง: ค้างท่าไว้ให้ตาตามทัน ก่อนกลับไปคิด
-            if let last = lastTool, let hold = toolHoldUntil, now < hold { return last }
             return .thinking
         case .idle:
             if let c = celebrateUntil, now < c { return .celebrate }
@@ -73,6 +72,27 @@ struct Session {
             if let s = stoppedAt, now >= s + t.stopAlert { return .waiting }
             return .idle
         }
+    }
+
+    /// ท่าที่แสดงจริง: ท่าดิบที่ถูกหน่วงไว้ให้อยู่ครบ `minPose` ก่อนเปลี่ยนตัว
+    ///
+    /// ท่าที่ถูกข้ามระหว่างหน่วงจะหายไปเลย ไม่เข้าคิว — คิวจะทำให้มาสคอตเล่าอดีต
+    /// ช้ากว่าความจริงเรื่อยๆ เมื่อเครื่องมือยิงรัว ซึ่งแย่กว่าการตกท่าไปบางท่า
+    mutating func displayState(now: Date, t: Timings) -> VisualState {
+        let raw = visualState(now: now, t: t)
+        func latch() -> VisualState {
+            posed = raw
+            posedAt = now
+            return raw
+        }
+        // ท่าเข้า/ออกมีนาฬิกาของตัวเองอยู่แล้ว จึงไม่หน่วง ทั้งขาเข้าและขาออกจากมัน
+        // (และ prune นับเวลาท่ามุดหายจาก endingAt ไม่ใช่จากจอ ถ้าหน่วงจะโดนลบก่อนได้แสดง)
+        if raw == .entering || raw == .leaving || posed == .entering { return latch() }
+        guard let cur = posed else { return latch() }
+        if cur == raw { return cur }
+        // เรื่องด่วนกว่าแทรกได้ทันที (พัง/ต้องการมือคน) ที่เหลือรอให้ท่าปัจจุบันอยู่ครบเวลา
+        if raw.priority > cur.priority || now >= posedAt + t.minPose { return latch() }
+        return cur
     }
 }
 
@@ -142,15 +162,10 @@ public final class SessionStore {
             // เทิร์นใหม่ = ล้างตัวนับที่ค้างจากเทิร์นก่อน (SubagentStop ที่หายไปตอน
             // daemon ไม่ได้รัน จะทำให้ session ติดท่า conducting ตลอดกาลถ้าไม่ล้าง)
             s.subagents = 0
-            s.lastTool = nil
-            s.toolHoldUntil = nil
             dismissCards(for: id)
 
         case "PreToolUse":
-            let state = toolMap.state(for: e.toolName ?? "")
-            s.activity = .tool(state)
-            s.lastTool = state
-            s.toolHoldUntil = nil
+            s.activity = .tool(toolMap.state(for: e.toolName ?? ""))
             s.stoppedAt = nil
             // ขออนุญาตแล้วได้ไปต่อ = คำขอนั้นตายแล้ว การ์ดต้องไม่ค้างจนหมดอายุเอง
             // (PermissionRequest ยิง Notification ทีหลัง PreToolUse ของตัวมันเอง
@@ -159,7 +174,6 @@ public final class SessionStore {
 
         case "PostToolUse":
             s.activity = .thinking
-            s.toolHoldUntil = now + timings.toolHold
             dismissCards(for: id)
 
         case "PreCompact":
@@ -190,8 +204,6 @@ public final class SessionStore {
             s.celebrateUntil = now + timings.celebrate
             // main loop จบแล้ว จะมี subagent ค้างจริงไม่ได้
             s.subagents = 0
-            s.lastTool = nil
-            s.toolHoldUntil = nil
             // เทิร์นจบแล้ว คำขออนุญาตของเทิร์นนั้นหมดความหมาย ต่อให้ผู้ใช้กดปฏิเสธ
             // (ทางนั้นไม่มี PostToolUse มาล้างให้) — การเตือนที่เหลือมาทาง stopAlerts
             dismissCards(for: id)
@@ -270,10 +282,18 @@ public final class SessionStore {
         prune(now: now)
         stopAlerts(now: now)
 
-        let live = order.compactMap { sessions[$0] }
+        // เดินท่าของทุกตัวก่อน (รวมตัวที่ตกจอ) เพื่อให้นาฬิกาหน่วงท่าเดินสม่ำเสมอ
+        var live: [(project: String, state: VisualState, lastActivity: Date)] = []
+        for id in order {
+            guard var s = sessions[id] else { continue }
+            let state = s.displayState(now: now, t: timings)
+            sessions[id] = s
+            live.append((s.project, state, s.lastActivity))
+        }
+
         // เลือกตัวที่ได้ slot ตามความสำคัญ แต่ *วาด* ตามลำดับเกิดเสมอ
         // สิ่งที่ต้องนิ่งคือลำดับซ้าย->ขวา ไม่ใช่พิกัด (DESIGN.md)
-        let chosen: [Session]
+        let chosen: [(project: String, state: VisualState, lastActivity: Date)]
         if live.count <= slotCount {
             chosen = live
         } else {
@@ -281,8 +301,8 @@ public final class SessionStore {
             // ข้อสุดท้ายทำให้ผลนิ่ง (ไม่ขึ้นกับการเรียงที่ไม่เสถียร) และตัดตัวที่เก่าสุด
             // และเงียบสุดออกก่อน ซึ่งเป็นตัวที่ผู้ใช้น่าจะสนใจน้อยที่สุด
             let ranked = live.enumerated().sorted { a, b in
-                let pa = a.element.visualState(now: now, t: timings).priority
-                let pb = b.element.visualState(now: now, t: timings).priority
+                let pa = a.element.state.priority
+                let pb = b.element.state.priority
                 if pa != pb { return pa > pb }
                 if a.element.lastActivity != b.element.lastActivity {
                     return a.element.lastActivity > b.element.lastActivity
@@ -293,9 +313,7 @@ public final class SessionStore {
             chosen = live.enumerated().filter { keep.contains($0.offset) }.map { $0.element }
         }
 
-        let snaps = chosen.map {
-            SessionSnap(project: $0.project, state: $0.visualState(now: now, t: timings))
-        }
+        let snaps = chosen.map { SessionSnap(project: $0.project, state: $0.state) }
 
         let f = DateFormatter()
         f.calendar = calendar
