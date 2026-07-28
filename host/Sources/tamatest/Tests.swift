@@ -397,6 +397,50 @@ func runAllTests() {
         expect(squeezed.usage == nil, "usage is dropped before any session is")
     }
 
+    suite("the menu bar badge shows the 5 hour window, or nothing at all") {
+        let w = UsageReader.sessionWindow
+
+        expect(MenuBadge.from(nil) == nil, "no usage at all means the plain icon comes back")
+        expect(
+            MenuBadge.from([UsageSnap(), UsageSnap(percent: 48, remaining: w)]) == nil,
+            "a known weekly does not rescue an unknown session — the badge is the 5 h window")
+        expect(
+            MenuBadge.from([UsageSnap(percent: UsageSnap.unknown, remaining: 0)]) == nil,
+            "a rolled window means unknown, never 0%")
+
+        // ศูนย์เป็นค่าจริง: หน้าต่างเพิ่งรีเซ็ตแล้วยังไม่ได้ใช้ ต้องเห็น 0% ไม่ใช่ไอคอนเปล่า
+        equal(
+            MenuBadge.from([UsageSnap(percent: 0, remaining: w)]),
+            MenuBadge(percent: 0, isAlarming: false),
+            "a fresh window really is 0%")
+
+        equal(
+            MenuBadge.from([UsageSnap(percent: 42, remaining: w / 2)]),
+            MenuBadge(percent: 42, isAlarming: false),
+            "42% with half the window left is on pace")
+        equal(
+            MenuBadge.from([UsageSnap(percent: 60, remaining: w / 2)]),
+            MenuBadge(percent: 60, isAlarming: true),
+            "60% with half the window left is ahead of pace, red before 85%")
+        equal(
+            MenuBadge.from([UsageSnap(percent: 90, remaining: 0)])?.isAlarming, nil,
+            "a rolled window is unknown even at 90% — it cannot alarm about a number it lost")
+        equal(
+            MenuBadge.from([UsageSnap(percent: 86, remaining: UsageSnap.unknown)]),
+            MenuBadge(percent: 86, isAlarming: true),
+            "over 85% is red even when the countdown is missing")
+        equal(
+            MenuBadge.from([UsageSnap(percent: 85, remaining: UsageSnap.unknown)]),
+            MenuBadge(percent: 85, isAlarming: false),
+            "85% itself is not over the line, and no countdown means no pace check")
+        // นาฬิกาสองฝั่งไม่ตรงกันทำให้ countdown ยาวเกินหน้าต่างได้ ถ้าปล่อยให้ elapsed ติดลบ
+        // แม้แต่ 0% ก็จะแซง pace แล้วแถบเมนูแดงตั้งแต่หน้าต่างยังไม่เริ่ม
+        equal(
+            MenuBadge.from([UsageSnap(percent: 0, remaining: w * 2)]),
+            MenuBadge(percent: 0, isAlarming: false),
+            "a countdown longer than the window is clock skew, not negative elapsed time")
+    }
+
     suite("statusline script never breaks the user's own statusline") {
         let script = StatuslineInstaller.script(
             binary: "/Applications/tamaclaude.app/Contents/MacOS/tamaclaude",

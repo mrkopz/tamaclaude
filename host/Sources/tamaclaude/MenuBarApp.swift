@@ -34,9 +34,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
         Log.toFile = true
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = NSImage(
-            systemSymbolName: "desktopcomputer", accessibilityDescription: "tamaclaude")
-        statusItem.button?.image?.isTemplate = true
+        showBadge(nil)
         statusItem.menu = buildMenu()
 
         if let saved = UserDefaults.standard.string(forKey: Self.preferredKey),
@@ -131,10 +129,12 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
 
     // MARK: - อัปเดตหน้าตา
 
+    /// สถานะบอร์ดอยู่ในบรรทัดแรกของเมนู ไม่ใช่ที่ไอคอน
+    ///
+    /// เคยหรี่ไอคอนตอนต่อบอร์ดไม่ติด แต่พอไอคอนกลายเป็นตัวเลขโควตา การหรี่กลับกลาย
+    /// เป็นการทำให้ข้อมูลที่ยังถูกต้องอยู่ (โควตาไม่ได้มาจากบอร์ด) ดูเหมือนใช้ไม่ได้
     private func refreshLink() {
-        let connected = ble.isConnected
-        linkItem.title = connected ? "Board connected" : "Looking for the board…"
-        statusItem.button?.appearsDisabled = !connected
+        linkItem.title = ble.isConnected ? "Board connected" : "Looking for the board…"
     }
 
     /// รายการบอร์ดที่สแกนเจอ — ติ๊กตัวที่ผู้ใช้เลือกไว้ และวงเล็บบอกตัวที่กำลังคุยอยู่จริง
@@ -171,6 +171,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
     }
 
     private func show(_ snapshot: Snapshot) {
+        showBadge(MenuBadge.from(snapshot.usage))
         if snapshot.sessions.isEmpty {
             sessionItem.title = "No sessions"
             return
@@ -179,6 +180,77 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
         var text = parts.joined(separator: "\n")
         if snapshot.overflow > 0 { text += "\n+\(snapshot.overflow) more" }
         sessionItem.title = text
+    }
+
+    // MARK: - ไอคอนแถบเมนู
+
+    /// วาดใหม่เฉพาะตอนค่าเปลี่ยนจริง — `show` ถูกเรียกทุกครั้งที่ snapshot ขยับ
+    /// ซึ่งรวมถึงนาฬิกาที่เดินทุกนาที ส่วนโควตาขยับนานๆ ครั้ง
+    private func showBadge(_ badge: MenuBadge?) {
+        guard badge != shownBadge || statusItem.button?.image == nil else { return }
+        shownBadge = badge
+        guard let badge else {
+            // ยังไม่เคยรู้โควตาเลย หรือหน้าต่างหมุนไปแล้วโดยไม่มีค่าใหม่ — ถอยไปเป็นไอคอนเดิม
+            // `0%` ที่เดาเอาคือคำโกหกที่ดูเหมือนค่าที่วัดมา แถบเปล่าดูเหมือนแอปพัง
+            let icon = NSImage(
+                systemSymbolName: "desktopcomputer", accessibilityDescription: "tamaclaude")
+            icon?.isTemplate = true
+            statusItem.button?.image = icon
+            statusItem.button?.toolTip = "tamaclaude — no usage figures yet"
+            return
+        }
+        statusItem.button?.image = Self.badgeImage(badge)
+        statusItem.button?.toolTip = "\(badge.percent)% of the 5 hour window used"
+    }
+
+    private var shownBadge: MenuBadge?
+
+    /// แถบ pill สั้นๆ กับเปอร์เซ็นต์ ในภาพเดียว
+    ///
+    /// ปกติเป็น template ขาวดำ ระบบจึงกลับสีให้เองทั้งพื้นสว่าง/มืด และตอนเมนูถูกไฮไลต์
+    /// ตอนต้องเตือนเลิกเป็น template แล้ววาดแดงตรงๆ — สีที่ระบบกลับได้ตามใจ
+    /// ไม่สามารถแปลว่า "แดง" ได้
+    private static func badgeImage(_ badge: MenuBadge) -> NSImage {
+        let barW: CGFloat = 22, barH: CGFloat = 6, gap: CGFloat = 4, height: CGFloat = 14
+        // ขาวดำมาจาก isTemplate ไม่ใช่จากสีที่วาด — วาดดำแล้วระบบเก็บแค่ alpha ไปใช้
+        let ink: NSColor = badge.isAlarming ? .systemRed : .black
+        let text = "\(badge.percent)%" as NSString
+        // ตัวเลขความกว้างคงที่ ไม่งั้นไอคอนขยับซ้ายขวาทุกครั้งที่เปอร์เซ็นต์เปลี่ยนหลัก
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+            .foregroundColor: ink,
+        ]
+        let textSize = text.size(withAttributes: attributes)
+        let size = NSSize(width: barW + gap + ceil(textSize.width), height: height)
+
+        let image = NSImage(size: size, flipped: false) { _ in
+            let bar = NSRect(x: 0, y: (height - barH) / 2, width: barW, height: barH)
+            let pill = NSBezierPath(roundedRect: bar, xRadius: barH / 2, yRadius: barH / 2)
+            // รางจางแต่ยังเห็น — แถบที่ไม่มีรางบอกไม่ได้ว่า 20% นี้คือ 20% ของเท่าไร
+            ink.withAlphaComponent(0.3).setFill()
+            pill.fill()
+
+            let filled = barW * CGFloat(min(100, max(0, badge.percent))) / 100
+            if filled > 0 {
+                // ตัดด้วย clip ไม่ใช่วาด pill ที่แคบลง ไม่งั้นปลายซ้ายของเนื้อแถบ
+                // จะโค้งตามความยาวของตัวเอง แทนที่จะโค้งตามราง
+                NSGraphicsContext.saveGraphicsState()
+                NSBezierPath(
+                    rect: NSRect(x: bar.minX, y: bar.minY, width: filled, height: barH)
+                ).setClip()
+                ink.setFill()
+                pill.fill()
+                NSGraphicsContext.restoreGraphicsState()
+            }
+
+            text.draw(
+                at: NSPoint(x: barW + gap, y: (height - textSize.height) / 2),
+                withAttributes: attributes)
+            return true
+        }
+        image.isTemplate = !badge.isAlarming
+        image.accessibilityDescription = "\(badge.percent)% of the 5 hour window used"
+        return image
     }
 
     // MARK: - การกระทำ
