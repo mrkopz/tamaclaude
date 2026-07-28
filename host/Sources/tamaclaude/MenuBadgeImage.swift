@@ -6,10 +6,13 @@ import TamaCore
 /// อยู่คนละไฟล์กับ `MenuBarApp` เพราะเป็นคนละเหตุผลที่จะแก้: ไฟล์นั้นเปลี่ยนเมื่อเมนู
 /// มีรายการใหม่หรือ daemon ต่อสายใหม่ ไฟล์นี้เปลี่ยนเมื่อหน้าตาของแบดจ์เปลี่ยน
 enum MenuBadgeImage {
-    private static let barWidth: CGFloat = 22
-    private static let barHeight: CGFloat = 6
-    private static let gap: CGFloat = 4
-    private static let height: CGFloat = 14
+    private static let barWidth: CGFloat = 28
+    private static let barHeight: CGFloat = 9
+    private static let gap: CGFloat = 5
+    /// 16 คือเพดานที่ปลอดภัยของภาพบนแถบเมนู — สูงกว่านี้ระบบย่อให้เองแล้วเส้นขอบ 1 px
+    /// กลายเป็นเส้นเบลอครึ่งพิกเซล
+    private static let height: CGFloat = 16
+    private static let border: CGFloat = 1
 
     /// ไอคอนตอนไม่มีอะไรจะบอก — `0%` ที่เดาเอาคือคำโกหกที่ดูเหมือนค่าที่วัดมา
     /// ส่วนแถบเปล่าดูเหมือนแอปพัง
@@ -34,33 +37,41 @@ enum MenuBadgeImage {
         let text = "\(badge.percent)%" as NSString
         // ตัวเลขความกว้างคงที่ ไม่งั้นไอคอนขยับซ้ายขวาทุกครั้งที่เปอร์เซ็นต์เปลี่ยนหลัก
         let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular),
             .foregroundColor: ink,
         ]
         let textSize = text.size(withAttributes: attributes)
         let size = NSSize(width: barWidth + gap + ceil(textSize.width), height: height)
 
         let image = NSImage(size: size, flipped: false) { _ in
+            // หดเข้ามาครึ่งเส้น เพราะ stroke วาดคร่อมเส้นทาง ครึ่งนอกจะถูกขอบภาพตัดทิ้ง
             let bar = NSRect(
-                x: 0, y: (height - barHeight) / 2, width: barWidth, height: barHeight)
+                x: border / 2, y: (height - barHeight) / 2,
+                width: barWidth - border, height: barHeight - border)
             let pill = NSBezierPath(
-                roundedRect: bar, xRadius: barHeight / 2, yRadius: barHeight / 2)
+                roundedRect: bar, xRadius: bar.height / 2, yRadius: bar.height / 2)
             // รางจางแต่ยังเห็น — แถบที่ไม่มีรางบอกไม่ได้ว่า 20% นี้คือ 20% ของเท่าไร
-            ink.withAlphaComponent(0.3).setFill()
+            ink.withAlphaComponent(0.25).setFill()
             pill.fill()
 
-            let filled = barWidth * CGFloat(min(100, max(0, badge.percent))) / 100
+            let filled = bar.width * CGFloat(min(100, max(0, badge.percent))) / 100
             if filled > 0 {
                 // ตัดด้วย clip ไม่ใช่วาด pill ที่แคบลง ไม่งั้นปลายซ้ายของเนื้อแถบ
                 // จะโค้งตามความยาวของตัวเอง แทนที่จะโค้งตามราง
                 NSGraphicsContext.saveGraphicsState()
                 NSBezierPath(
-                    rect: NSRect(x: bar.minX, y: bar.minY, width: filled, height: barHeight)
+                    rect: NSRect(x: bar.minX, y: bar.minY, width: filled, height: bar.height)
                 ).setClip()
                 ink.setFill()
                 pill.fill()
                 NSGraphicsContext.restoreGraphicsState()
             }
+
+            // ขอบทึบวาดทับท้ายสุด — บนพื้นแถบเมนูที่มีวอลเปเปอร์อยู่ข้างหลัง รางจางๆ
+            // อย่างเดียวหายไปกับพื้น เส้นขอบคือสิ่งที่บอกว่าแถบเริ่มและจบตรงไหน
+            ink.setStroke()
+            pill.lineWidth = border
+            pill.stroke()
 
             text.draw(
                 at: NSPoint(x: barWidth + gap, y: (height - textSize.height) / 2),
