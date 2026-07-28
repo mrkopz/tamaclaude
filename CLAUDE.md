@@ -101,6 +101,7 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/Daemon.swift` | wires it together + 1 s tick |
 | `TamaCore/PanelText.swift` | what the foot of the popover says (board link, session rows, figure age) |
 | `TamaCore/QuotaCard.swift` | what a quota card says: colour level, pace tick, reset line |
+| `TamaCore/RefreshControl.swift` | the refresh button's discipline: cooldown, and when opening the panel polls |
 | `tamaclaude/MenuBarApp.swift` | the menu bar app **is** the daemon (Bluetooth TCC is per-`.app`) |
 | `tamaclaude/PanelViewController.swift` | the popover: header + gear, the cards, the foot |
 | `tamaclaude/QuotaCardView.swift` | how a quota card is drawn (bar, pace tick, palette) |

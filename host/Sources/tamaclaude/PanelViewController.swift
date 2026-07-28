@@ -10,14 +10,24 @@ import TamaCore
 final class PanelViewController: NSViewController {
     /// ปุ่มเฟืองไม่รู้ว่าเมนูมีอะไร — `MenuBarApp` เป็นเจ้าของ NSMenu ตัวนั้น
     var onGear: ((NSButton) -> Void)?
+    /// ลูกศรข้างชื่อ org ก็เหมือนกัน — รายการ org อยู่ที่ poller ไม่ใช่ที่แผง
+    var onOrgs: ((NSButton) -> Void)?
+    /// ปุ่ม refresh — วินัยของมัน (กดได้ไหม เย็นตัวหรือยัง) อยู่ที่ `RefreshControl`
+    var onRefresh: (() -> Void)?
     /// บรรทัด "key หมดอายุ" กดได้ — ที่ที่บอกว่าพังคือที่ที่ควรแก้ได้
     var onKeyProblem: (() -> Void)?
 
     private static let width: CGFloat = 260
     private static let inset: CGFloat = 14
+    /// ที่ยืนของปุ่ม refresh — ปุ่มกับตัวหมุนสลับกันอยู่ในกรอบเดียวขนาดคงที่ ไม่งั้นหัวแผง
+    /// ขยับทุกครั้งที่เริ่มยิงและทุกครั้งที่ยิงจบ
+    private static let iconSize: CGFloat = 16
 
-    /// ชื่อแอปไปก่อน — ชื่อ org มาพร้อมการ์ดโควตาในใบถัดไป
-    private let heading = NSTextField(labelWithString: "tamaclaude")
+    /// ชื่อ org ที่ตัวเลขมาจาก — ชื่อแอปตอนที่ยังไม่มี org ให้พูดถึง
+    private let heading = NSTextField(labelWithString: PanelText.appName)
+    private let orgs = NSButton()
+    private let refresh = NSButton()
+    private let spinner = NSProgressIndicator()
     private let gear = NSButton()
     /// การ์ดสองใบ — ใบเดิมสองใบตลอดอายุแผง เปลี่ยนแต่เนื้อใน การสร้างใหม่ทุกวินาที
     /// คือการทิ้ง view ทุกวินาทีเพื่อผลลัพธ์หน้าตาเดียวกัน
@@ -36,20 +46,37 @@ final class PanelViewController: NSViewController {
         root.translatesAutoresizingMaskIntoConstraints = false
 
         heading.font = .systemFont(ofSize: 13, weight: .semibold)
+        heading.lineBreakMode = .byTruncatingTail
+        // ชื่อ org ยาวได้ตามใจคนตั้ง — ปุ่มทางขวาต้องไม่ถูกดันตกขอบแผงไปด้วย
+        heading.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-        gear.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")
-        gear.isBordered = false
-        gear.bezelStyle = .inline
-        gear.imagePosition = .imageOnly
-        gear.target = self
-        gear.action = #selector(gearClicked)
-        gear.setContentHuggingPriority(.required, for: .horizontal)
-        // เมนูเด้งตอนกดลง ไม่ใช่ตอนปล่อย — เหมือนปุ่มที่มีเมนูทุกตัวใน macOS
-        gear.cell?.sendAction(on: .leftMouseDown)
+        icon(orgs, "chevron.up.chevron.down", "Switch organization", #selector(orgsClicked))
+        orgs.isHidden = true
 
-        let header = NSStackView(views: [heading, NSView(), gear])
+        icon(refresh, "arrow.clockwise", "Refresh", #selector(refreshClicked))
+        // ปุ่มนี้ทำงานตอน *ปล่อย* ต่างจากอีกสองปุ่มที่เด้งเมนู — มันยิงจริง ไม่ได้กางอะไร
+        // และการยิงที่เริ่มตอนกดลงคือการยิงที่ยกเลิกไม่ได้
+        refresh.cell?.sendAction(on: .leftMouseUp)
+
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        // หยุดแล้วต้องหายไปเอง ไม่งั้นวงกลมจางๆ ค้างทับปุ่มที่กดได้อยู่
+        spinner.isDisplayedWhenStopped = false
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+
+        icon(gear, "gearshape", "Settings", #selector(gearClicked))
+
+        // ปุ่มกับตัวหมุนซ้อนกันในกรอบเดียว — สลับด้วย isHidden แล้วหัวแผงจะขยับ
+        // เพราะ stack ไม่นับ view ที่ซ่อนอยู่
+        let holder = NSView()
+        holder.translatesAutoresizingMaskIntoConstraints = false
+        holder.addSubview(refresh)
+        holder.addSubview(spinner)
+
+        let header = NSStackView(views: [heading, orgs, NSView(), holder, gear])
         header.orientation = .horizontal
         header.distribution = .fill
+        header.spacing = 6
 
         cards.setViews([sessionCard, weeklyCard], in: .top)
         cards.orientation = .vertical
@@ -104,6 +131,14 @@ final class PanelViewController: NSViewController {
             stack.topAnchor.constraint(equalTo: root.topAnchor, constant: inset),
             stack.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -inset),
             header.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            holder.widthAnchor.constraint(equalToConstant: Self.iconSize),
+            holder.heightAnchor.constraint(equalToConstant: Self.iconSize),
+            refresh.centerXAnchor.constraint(equalTo: holder.centerXAnchor),
+            refresh.centerYAnchor.constraint(equalTo: holder.centerYAnchor),
+            spinner.centerXAnchor.constraint(equalTo: holder.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: holder.centerYAnchor),
+            spinner.widthAnchor.constraint(equalToConstant: Self.iconSize),
+            spinner.heightAnchor.constraint(equalToConstant: Self.iconSize),
             body.widthAnchor.constraint(equalTo: stack.widthAnchor),
             cards.widthAnchor.constraint(equalTo: body.widthAnchor),
             sessionCard.widthAnchor.constraint(equalTo: cards.widthAnchor),
@@ -116,6 +151,25 @@ final class PanelViewController: NSViewController {
         if shownRows.isEmpty { showSessions(Snapshot(clock: "", date: "")) }
     }
 
+    /// ปุ่มไอคอนล้วนสามตัวในหัวแผงตั้งเหมือนกันหมด ต่างกันแค่รูปกับสิ่งที่มันทำ
+    ///
+    /// ปุ่มที่เด้งเมนูทำงานตอน *กดลง* เหมือนปุ่มที่มีเมนูทุกตัวใน macOS — ผู้เรียกที่ต้องการ
+    /// อย่างอื่นเปลี่ยนทีหลังได้
+    private func icon(
+        _ button: NSButton, _ symbol: String, _ label: String, _ action: Selector
+    ) {
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
+        button.isBordered = false
+        button.bezelStyle = .inline
+        button.imagePosition = .imageOnly
+        button.target = self
+        button.action = action
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setContentHuggingPriority(.required, for: .horizontal)
+        button.setContentCompressionResistancePriority(.required, for: .horizontal)
+        button.cell?.sendAction(on: .leftMouseDown)
+    }
+
     private func separator() -> NSView {
         let line = NSBox()
         line.boxType = .separator
@@ -126,6 +180,38 @@ final class PanelViewController: NSViewController {
 
     @objc private func gearClicked() {
         onGear?(gear)
+    }
+
+    @objc private func orgsClicked() {
+        onOrgs?(orgs)
+    }
+
+    @objc private func refreshClicked() {
+        onRefresh?()
+    }
+
+    /// หัวแผง — ชื่อ org ที่ตัวเลขมาจาก และลูกศรเมื่อมีอะไรให้สลับ
+    func showHeading(_ title: String, switchable: Bool) {
+        // แตะเฉพาะตอนเปลี่ยนจริง: ถูกเรียกทุกวินาทีที่แผงเปิดอยู่ และการเขียนทับด้วยค่าเดิม
+        // ทำให้ NSTextField วาดใหม่ทั้งบรรทัด
+        if heading.stringValue != title { heading.stringValue = title }
+        orgs.isHidden = !switchable
+    }
+
+    /// ปุ่ม refresh — สามสภาพ: กดได้ · กำลังยิง · เย็นตัวอยู่
+    ///
+    /// ตอนกำลังยิงคือตัวหมุนแทนที่ปุ่ม ไม่ใช่ปุ่มที่จางลงเฉยๆ — ปุ่มจางอ่านได้ว่า
+    /// "กดไม่ได้ตอนนี้" ซึ่งเป็นสภาพเดียวกับตอนเย็นตัว ทั้งที่สองอย่างนี้ต่างกัน
+    func showRefresh(_ state: RefreshState) {
+        refresh.isEnabled = state.enabled
+        refresh.isHidden = state.spinning
+        refresh.toolTip = state.tooltip
+        if state.spinning {
+            spinner.startAnimation(nil)
+        } else {
+            spinner.stopAnimation(nil)
+        }
+        spinner.toolTip = state.tooltip
     }
 
     @objc private func keyProblemClicked() {
