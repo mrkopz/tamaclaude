@@ -219,26 +219,22 @@ static void squashed(ct_rects_t *rs, int from, float squash)
     ct_rects_scale_from(rs, from, 1.0f + squash * 0.45f, 1.0f - squash, CT_HEAD_CX, FOOT_Y);
 }
 
-// คืน (สีตัว, สีตา, สีขอบ)
-static void skin(bool connected, ct_state_t state, uint16_t *body_c, uint16_t *ink,
-                 uint16_t *edge)
+// คืน (สีตัว, สีตา)
+static void skin(bool connected, ct_state_t state, uint16_t *body_c, uint16_t *ink)
 {
     if (!connected) {
         *body_c = CT_COL_GRAY;
         *ink = CT_COL_GRAY_DARK;
-        *edge = CT_COL_TEXT_DIM;
         return;
     }
     if (state == CT_STATE_SLEEPING) {
         // หรี่ลงเล็กน้อยเท่านั้น — ถ้าเปลี่ยนสีแรงจะไปชนกับสัญญาณ "หลุดการเชื่อมต่อ"
         *body_c = CT_COL_CLAY_DARK;
         *ink = CT_COL_INK;
-        *edge = CT_COL_OUTLINE;
         return;
     }
     *body_c = CT_COL_CLAY;
     *ink = CT_COL_INK;
-    *edge = CT_COL_OUTLINE;
 }
 
 void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connected,
@@ -246,8 +242,8 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
 {
     if (state < 0 || state >= CT_STATE_COUNT) state = CT_STATE_IDLE;
     const mood_t *m = &MOODS[STATES[state].mood];
-    uint16_t body_c, ink, edge;
-    skin(connected, state, &body_c, &ink, &edge);
+    uint16_t body_c, ink;
+    skin(connected, state, &body_c, &ink);
 
     // ปัด dy ลงตารางพิกเซลก่อน ไม่งั้นแต่ละ rect ปัดคนละทางแล้วเห็นแค่เส้นขอบกระพริบ
     // แทนที่จะเห็นทั้งตัวเลื่อนขึ้นลงพร้อมกัน
@@ -290,9 +286,6 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
     }
 
     ct_rects_reset(out);
-    if (CT_MASCOT_OUTLINE > 0.0f) {
-        ct_rects_outline_pass(out, &silhouette, CT_MASCOT_OUTLINE, edge);
-    }
     for (int i = 0; i < silhouette.count; i++) {
         ct_rect_t r = silhouette.items[i];
         ct_rects_add(out, r.x, r.y, r.w, r.h, r.color);

@@ -32,7 +32,6 @@
 
 #define CT_MASCOT_GRID_W             17
 #define CT_MASCOT_GRID_H             11.2f
-#define CT_MASCOT_OUTLINE            0.34f
 
 // กรอบวาดมาสคอตรวม prop (หน่วย unit) — มาจาก tools/gen/props.py
 #define CT_BOX_X0                    -0.5f

@@ -29,7 +29,7 @@ from .props import (
     hammer_stage,
     magnifier_glass,
 )
-from .rects import Rect, RectList, bounds, move, outline_pass, scaled
+from .rects import Rect, RectList, bounds, move, scaled
 
 GW = L.mascot.grid_w  # 17 — ความกว้างซิลลูเอ็ตรวมแขนสองข้าง
 GH = L.mascot.grid_h  # 11.2
@@ -214,14 +214,14 @@ FLOATING_PROPS = frozenset({"globe"})
 STATE_SCALE: dict[str, float] = {"building": 0.875}
 
 
-def _skin(connected: bool, state: str) -> tuple[str, str, str]:
-    """คืน (สีตัว, สีตา, สีขอบ)"""
+def _skin(connected: bool, state: str) -> tuple[str, str]:
+    """คืน (สีตัว, สีตา)"""
     if not connected:
-        return PAL.gray, PAL.gray_dark, PAL.text_dim
+        return PAL.gray, PAL.gray_dark
     if state == "sleeping":
         # หรี่ลงเล็กน้อยเท่านั้น — ถ้าเปลี่ยนสีแรงจะไปชนกับสัญญาณ "หลุดการเชื่อมต่อ"
-        return PAL.clay_dark, PAL.ink, PAL.outline
-    return PAL.clay, PAL.ink, PAL.outline
+        return PAL.clay_dark, PAL.ink
+    return PAL.clay, PAL.ink
 
 
 def build(
@@ -238,7 +238,7 @@ def build(
         raise KeyError(f"unknown visual state: {state!r}")
     mood_name, prop_name = STATES[state]
     m = MOODS[mood_name]
-    skin, ink, edge = _skin(connected, state)
+    skin, ink = _skin(connected, state)
 
     # ปัด dy ลงตารางพิกเซลก่อน ไม่งั้นแต่ละ rect ปัดคนละทางแล้วเห็นแค่เส้นขอบกระพริบ
     # แทนที่จะเห็นทั้งตัวเลื่อนขึ้นลงพร้อมกัน
@@ -281,10 +281,7 @@ def build(
     eyes = _eye(EYE_L, eye_kind, look, ink) + _eye(EYE_R, eye_kind, look, ink, mag)
     eyes = move(_squashed(eyes, squash), dx, dy)  # ตายุบไปกับลำตัว ไม่ใช่ค้างอยู่บนหน้าที่เตี้ยลง
 
-    out: RectList = []
-    if L.mascot.outline:
-        out += outline_pass(silhouette, L.mascot.outline, edge)
-    out += silhouette
+    out: RectList = list(silhouette)
     if prop_name == "hammer":  # แท่นวางอยู่กับพื้น จึงไม่เลื่อนตาม dy ที่ลำตัวขยับ
         out += hammer_anvil(phase, connected)
     if prop_name == "magnifier":  # กระจกอยู่ใต้ตา ขอบเลนส์อยู่บนตา

@@ -19,15 +19,6 @@ void ct_rects_scale_from(ct_rects_t *rs, int from, float sx, float sy, float ox,
     }
 }
 
-void ct_rects_outline_pass(ct_rects_t *dst, const ct_rects_t *src, float width, uint16_t color)
-{
-    for (int i = 0; i < src->count; i++) {
-        const ct_rect_t *r = &src->items[i];
-        ct_rects_add(dst, r->x - width, r->y - width, r->w + 2 * width, r->h + 2 * width,
-                     color);
-    }
-}
-
 void ct_rects_bounds(const ct_rects_t *rs, float *x0, float *y0, float *x1, float *y1)
 {
     if (rs->count == 0) {

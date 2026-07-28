@@ -37,9 +37,5 @@ void ct_rects_move_from(ct_rects_t *rs, int from, float dx, float dy);
 // ย่อ/ขยายชุด ตั้งแต่ดัชนี from เป็นต้นไป รอบจุด (ox, oy)
 void ct_rects_scale_from(ct_rects_t *rs, int from, float sx, float sy, float ox, float oy);
 
-// ขอบรอบซิลลูเอ็ต: ชิ้นที่พองออกด้วยสีขอบ วาดไว้ข้างหลัง
-// ถูกกว่าการหา contour จริง และให้ผลเหมือนกันเพราะทุกชิ้นเป็นสี่เหลี่ยมแกนตั้งฉาก
-void ct_rects_outline_pass(ct_rects_t *dst, const ct_rects_t *src, float width, uint16_t color);
-
 // กรอบรวมของทั้งชุด
 void ct_rects_bounds(const ct_rects_t *rs, float *x0, float *y0, float *x1, float *y1);

@@ -20,9 +20,6 @@ class Rect:
     def moved(self, dx: float, dy: float) -> "Rect":
         return Rect(self.x + dx, self.y + dy, self.w, self.h, self.color)
 
-    def inflated(self, m: float) -> "Rect":
-        return Rect(self.x - m, self.y - m, self.w + 2 * m, self.h + 2 * m, self.color)
-
     def recolored(self, color: str) -> "Rect":
         return Rect(self.x, self.y, self.w, self.h, color)
 
@@ -49,14 +46,6 @@ def scaled(rects: RectList, sx: float, sy: float, ox: float = 0.0, oy: float = 0
         Rect(ox + (r.x - ox) * sx, oy + (r.y - oy) * sy, r.w * sx, r.h * sy, r.color)
         for r in rects
     ]
-
-
-def outline_pass(rects: RectList, width: float, color: str) -> RectList:
-    """ขอบรอบซิลลูเอ็ต — วาดชิ้นที่พองออกด้วยสีขอบไว้ข้างหลัง
-
-    ถูกกว่าการคำนวณ contour จริง และให้ผลเหมือนกันเพราะทุกชิ้นเป็นสี่เหลี่ยมแกนตั้งฉาก
-    """
-    return [r.inflated(width).recolored(color) for r in rects]
 
 
 def bounds(rects: RectList) -> tuple[float, float, float, float]:
