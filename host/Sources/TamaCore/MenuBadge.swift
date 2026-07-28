@@ -21,8 +21,10 @@ public struct MenuBadge: Equatable, Sendable {
         self.isAlarming = isAlarming
     }
 
-    /// เกณฑ์คงที่ — ตรงกับสีแดงของแผงโควตาบนบอร์ด
-    public static let redAbove = 85
+    /// เกณฑ์แดง — ต้องตรงกับ `crit_pct` ใน `tools/layout.toml` ซึ่งเป็นเจ้าของค่านี้
+    /// ทั้งสองฝั่งที่วาดแถบโควตา (`ct_ui.c`, `tools/gen/screen.py`) เทียบด้วย `>=`
+    /// แถบเมนูจึงต้องเทียบแบบเดียวกัน ไม่งั้นที่ 85% พอดีจอแดงแต่แถบเมนูไม่แดง
+    public static let critPercent = 85
 
     /// `nil` แปลว่าไม่มีอะไรจะบอก ให้กลับไปเป็นไอคอนเดิม
     ///
@@ -38,8 +40,10 @@ public struct MenuBadge: Equatable, Sendable {
 
     /// แซง pace = แดงก่อนถึงเกณฑ์ — "60% ตอนเหลือเวลาอีกครึ่ง" เป็นปัญหาคนละแบบ
     /// กับ "60% ตอนหมดเวลาพอดี" คิดด้วยจำนวนเต็มล้วนเพื่อไม่ให้เกณฑ์ขึ้นกับการปัดทศนิยม
+    ///
+    /// ต้องตรงกับ `usage_bar_color` ใน `firmware/main/ct_ui.c` และ `tools/gen/screen.py`
     private static func alarming(_ snap: UsageSnap) -> Bool {
-        if snap.percent > redAbove { return true }
+        if snap.percent >= critPercent { return true }
         guard snap.remaining != UsageSnap.unknown else { return false }
         let window = UsageReader.sessionWindow
         // countdown ที่ยาวกว่าหน้าต่างแปลว่านาฬิกาสองฝั่งไม่ตรงกัน ไม่ใช่ว่าเวลาเดินถอยหลัง

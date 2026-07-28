@@ -7,7 +7,7 @@ import TamaCore
 /// ไม่ได้สั่ง daemon อีกตัวจากระยะไกล แต่ *เป็น* daemon เอง (โปรเซสเดียว socket เดียว)
 /// เพราะสิทธิ์ Bluetooth ผูกกับ .app ที่ถูกปล่อยผ่าน LaunchServices เท่านั้น
 /// ถ้าแยกโปรเซสจะได้ daemon ที่ไม่มีสิทธิ์ต่อบอร์ด
-final class MenuBarApp: NSObject, NSApplicationDelegate {
+final class MenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let ble = BLETransport()
     private var daemon: Daemon!
@@ -28,6 +28,14 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
         title: "Launch at login", action: #selector(toggleLogin), keyEquivalent: "")
     private let brightness = NSSlider(value: 100, minValue: 5, maxValue: 100, target: nil,
                                       action: nil)
+
+    /// ภาพที่วาดไปแล้ว — ไฮไลต์เป็นส่วนหนึ่งของภาพ ไม่ใช่แค่ค่าโควตา
+    private struct Drawn: Equatable {
+        var badge: MenuBadge?
+        var highlighted: Bool
+    }
+    private var lastDrawn: Drawn?
+    private var menuIsOpen = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Paths.ensureStateDir()
@@ -73,6 +81,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
 
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.delegate = self
         linkItem.isEnabled = false
         sessionItem.isEnabled = false
         menu.addItem(linkItem)
@@ -170,6 +179,22 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
         boardItem.submenu = menu
     }
 
+    /// วาดแบดจ์ใหม่เฉพาะตอนภาพจะเปลี่ยนจริง — `show` ถูกเรียกทุกครั้งที่ snapshot ขยับ
+    /// ซึ่งรวมถึงนาฬิกาที่เดินทุกนาที ส่วนโควตาขยับนานๆ ครั้ง
+    private func showBadge(_ badge: MenuBadge?) {
+        let drawn = Drawn(badge: badge, highlighted: menuIsOpen)
+        guard drawn != lastDrawn || statusItem.button?.image == nil else { return }
+        lastDrawn = drawn
+        guard let badge else {
+            // ยังไม่เคยรู้โควตาเลย หรือหน้าต่างหมุนไปแล้วโดยไม่มีค่าใหม่ — ถอยไปเป็นไอคอนเดิม
+            statusItem.button?.image = MenuBadgeImage.fallback()
+            statusItem.button?.toolTip = "tamaclaude — no usage figures yet"
+            return
+        }
+        statusItem.button?.image = MenuBadgeImage.make(badge, highlighted: menuIsOpen)
+        statusItem.button?.toolTip = MenuBadgeImage.description(badge)
+    }
+
     private func show(_ snapshot: Snapshot) {
         showBadge(MenuBadge.from(snapshot.usage))
         if snapshot.sessions.isEmpty {
@@ -182,75 +207,17 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
         sessionItem.title = text
     }
 
-    // MARK: - ไอคอนแถบเมนู
+    // MARK: - เมนูเปิด/ปิด
 
-    /// วาดใหม่เฉพาะตอนค่าเปลี่ยนจริง — `show` ถูกเรียกทุกครั้งที่ snapshot ขยับ
-    /// ซึ่งรวมถึงนาฬิกาที่เดินทุกนาที ส่วนโควตาขยับนานๆ ครั้ง
-    private func showBadge(_ badge: MenuBadge?) {
-        guard badge != shownBadge || statusItem.button?.image == nil else { return }
-        shownBadge = badge
-        guard let badge else {
-            // ยังไม่เคยรู้โควตาเลย หรือหน้าต่างหมุนไปแล้วโดยไม่มีค่าใหม่ — ถอยไปเป็นไอคอนเดิม
-            // `0%` ที่เดาเอาคือคำโกหกที่ดูเหมือนค่าที่วัดมา แถบเปล่าดูเหมือนแอปพัง
-            let icon = NSImage(
-                systemSymbolName: "desktopcomputer", accessibilityDescription: "tamaclaude")
-            icon?.isTemplate = true
-            statusItem.button?.image = icon
-            statusItem.button?.toolTip = "tamaclaude — no usage figures yet"
-            return
-        }
-        statusItem.button?.image = Self.badgeImage(badge)
-        statusItem.button?.toolTip = "\(badge.percent)% of the 5 hour window used"
+    /// ปุ่มบนแถบเมนูถูกถมด้วยสีเน้นตอนเมนูเปิด ภาพที่ไม่ใช่ template จึงต้องวาดใหม่
+    func menuWillOpen(_ menu: NSMenu) {
+        menuIsOpen = true
+        showBadge(lastDrawn?.badge)
     }
 
-    private var shownBadge: MenuBadge?
-
-    /// แถบ pill สั้นๆ กับเปอร์เซ็นต์ ในภาพเดียว
-    ///
-    /// ปกติเป็น template ขาวดำ ระบบจึงกลับสีให้เองทั้งพื้นสว่าง/มืด และตอนเมนูถูกไฮไลต์
-    /// ตอนต้องเตือนเลิกเป็น template แล้ววาดแดงตรงๆ — สีที่ระบบกลับได้ตามใจ
-    /// ไม่สามารถแปลว่า "แดง" ได้
-    private static func badgeImage(_ badge: MenuBadge) -> NSImage {
-        let barW: CGFloat = 22, barH: CGFloat = 6, gap: CGFloat = 4, height: CGFloat = 14
-        // ขาวดำมาจาก isTemplate ไม่ใช่จากสีที่วาด — วาดดำแล้วระบบเก็บแค่ alpha ไปใช้
-        let ink: NSColor = badge.isAlarming ? .systemRed : .black
-        let text = "\(badge.percent)%" as NSString
-        // ตัวเลขความกว้างคงที่ ไม่งั้นไอคอนขยับซ้ายขวาทุกครั้งที่เปอร์เซ็นต์เปลี่ยนหลัก
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: ink,
-        ]
-        let textSize = text.size(withAttributes: attributes)
-        let size = NSSize(width: barW + gap + ceil(textSize.width), height: height)
-
-        let image = NSImage(size: size, flipped: false) { _ in
-            let bar = NSRect(x: 0, y: (height - barH) / 2, width: barW, height: barH)
-            let pill = NSBezierPath(roundedRect: bar, xRadius: barH / 2, yRadius: barH / 2)
-            // รางจางแต่ยังเห็น — แถบที่ไม่มีรางบอกไม่ได้ว่า 20% นี้คือ 20% ของเท่าไร
-            ink.withAlphaComponent(0.3).setFill()
-            pill.fill()
-
-            let filled = barW * CGFloat(min(100, max(0, badge.percent))) / 100
-            if filled > 0 {
-                // ตัดด้วย clip ไม่ใช่วาด pill ที่แคบลง ไม่งั้นปลายซ้ายของเนื้อแถบ
-                // จะโค้งตามความยาวของตัวเอง แทนที่จะโค้งตามราง
-                NSGraphicsContext.saveGraphicsState()
-                NSBezierPath(
-                    rect: NSRect(x: bar.minX, y: bar.minY, width: filled, height: barH)
-                ).setClip()
-                ink.setFill()
-                pill.fill()
-                NSGraphicsContext.restoreGraphicsState()
-            }
-
-            text.draw(
-                at: NSPoint(x: barW + gap, y: (height - textSize.height) / 2),
-                withAttributes: attributes)
-            return true
-        }
-        image.isTemplate = !badge.isAlarming
-        image.accessibilityDescription = "\(badge.percent)% of the 5 hour window used"
-        return image
+    func menuDidClose(_ menu: NSMenu) {
+        menuIsOpen = false
+        showBadge(lastDrawn?.badge)
     }
 
     // MARK: - การกระทำ

@@ -733,6 +733,7 @@ static uint16_t usage_color(int percent)
 // สีของแถบ — แดงทันทีที่ใช้เร็วกว่าเวลาที่ผ่านไปในหน้าต่าง ไม่ต้องรอถึงเกณฑ์ %
 // "60% ตอนเหลือเวลาอีกครึ่ง" เป็นปัญหาคนละแบบกับ "60% ตอนหมดเวลาพอดี"
 // ต้องตรงกับ usage_bar_color ใน tools/gen/screen.py
+// และ MenuBadge.alarming ใน host/Sources/TamaCore/MenuBadge.swift (แถบเมนูใช้กฎเดียวกัน)
 static uint16_t usage_bar_color(const ct_usage_t *u, int window)
 {
     if (u->percent < 0) return CT_COL_TEXT_DIM;
