@@ -6,13 +6,16 @@ import TamaCore
 /// อยู่คนละไฟล์กับ `MenuBarApp` เพราะเป็นคนละเหตุผลที่จะแก้: ไฟล์นั้นเปลี่ยนเมื่อเมนู
 /// มีรายการใหม่หรือ daemon ต่อสายใหม่ ไฟล์นี้เปลี่ยนเมื่อหน้าตาของแบดจ์เปลี่ยน
 enum MenuBadgeImage {
-    private static let barWidth: CGFloat = 28
-    private static let barHeight: CGFloat = 9
+    private static let barWidth: CGFloat = 34
+    private static let barHeight: CGFloat = 11
     private static let gap: CGFloat = 5
-    /// 16 คือเพดานที่ปลอดภัยของภาพบนแถบเมนู — สูงกว่านี้ระบบย่อให้เองแล้วเส้นขอบ 1 px
-    /// กลายเป็นเส้นเบลอครึ่งพิกเซล
-    private static let height: CGFloat = 16
+    /// 17 คือเพดานที่ปลอดภัยของภาพบนแถบเมนู — สูงกว่านี้ระบบย่อให้เองแล้วเส้นขอบ 1 px
+    /// กลายเป็นเส้นเบลอครึ่งพิกเซล ความสูงนี้ต้องพอให้ขีด pace ล้นแถบได้ทั้งบนและล่าง
+    private static let height: CGFloat = 17
     private static let border: CGFloat = 1
+    /// ขีด pace ล้นขอบแถบข้างละ 2 px เหมือนบนจอ — ตรงที่มันทับเนื้อแถบพอดี
+    /// สีเดียวกันทำให้มันหายไป ส่วนที่ล้นออกมาคือส่วนที่มองเห็นได้เสมอ
+    private static let paceOvershoot: CGFloat = 2
 
     /// ไอคอนตอนไม่มีอะไรจะบอก — `0%` ที่เดาเอาคือคำโกหกที่ดูเหมือนค่าที่วัดมา
     /// ส่วนแถบเปล่าดูเหมือนแอปพัง
@@ -73,6 +76,18 @@ enum MenuBadgeImage {
             pill.lineWidth = border
             pill.stroke()
 
+            // ขีด "ควรใช้ถึงไหนแล้ว" — ขีดอยู่ขวาของเนื้อแถบ = ใช้ช้ากว่าเวลา
+            // อยู่ซ้าย = ใช้เร็วเกินไป ภาษาเดียวกับแผงบนบอร์ด
+            if badge.pace != MenuBadge.unknown {
+                let at = bar.minX + bar.width * CGFloat(min(100, max(0, badge.pace))) / 100
+                ink.setFill()
+                NSBezierPath(
+                    rect: NSRect(
+                        x: min(at, barWidth - border), y: bar.minY - paceOvershoot,
+                        width: border, height: bar.height + 2 * paceOvershoot)
+                ).fill()
+            }
+
             text.draw(
                 at: NSPoint(x: barWidth + gap, y: (height - textSize.height) / 2),
                 withAttributes: attributes)
@@ -84,6 +99,9 @@ enum MenuBadgeImage {
     }
 
     static func description(_ badge: MenuBadge) -> String {
-        "\(badge.percent)% of the 5 hour window used"
+        let used = "\(badge.percent)% of the 5 hour window used"
+        guard badge.pace != MenuBadge.unknown else { return used }
+        // ขีดบนภาพบอกเรื่องนี้กับตา คำอธิบายต้องบอกเรื่องเดียวกันกับคนที่ไม่ได้ใช้ตาอ่าน
+        return used + ", \(badge.pace)% of the window elapsed"
     }
 }

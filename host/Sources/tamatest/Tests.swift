@@ -618,34 +618,45 @@ func runAllTests() {
         // ศูนย์เป็นค่าจริง: หน้าต่างเพิ่งรีเซ็ตแล้วยังไม่ได้ใช้ ต้องเห็น 0% ไม่ใช่ไอคอนเปล่า
         equal(
             MenuBadge.from([UsageSnap(percent: 0, remaining: w)]),
-            MenuBadge(percent: 0, isAlarming: false),
-            "a fresh window really is 0%")
+            MenuBadge(percent: 0, pace: 0),
+            "a fresh window really is 0% with the clock at the start")
 
         equal(
             MenuBadge.from([UsageSnap(percent: 42, remaining: w / 2)]),
-            MenuBadge(percent: 42, isAlarming: false),
+            MenuBadge(percent: 42, pace: 50),
             "42% with half the window left is on pace")
+        expect(
+            MenuBadge(percent: 42, pace: 50).isAlarming == false,
+            "behind the clock is not a warning")
+        expect(
+            MenuBadge(percent: 60, pace: 50).isAlarming,
+            "ahead of the clock is")
+        // ขีดต้องรู้ว่าเวลาเดินไปถึงไหน ไม่ใช่แค่ว่าแซงหรือไม่แซง — สีตอบข้อหลังไปแล้ว
         equal(
-            MenuBadge.from([UsageSnap(percent: 60, remaining: w / 2)]),
-            MenuBadge(percent: 60, isAlarming: true),
-            "60% with half the window left is ahead of pace")
+            MenuBadge.from([UsageSnap(percent: 60, remaining: w / 4)])?.pace, 75,
+            "the pace is where the clock is, in the same percent the bar is drawn in")
         equal(
             MenuBadge.from([UsageSnap(percent: 90, remaining: 0)])?.isAlarming, nil,
             "a rolled window is unknown even at 90% — it cannot alarm about a number it lost")
         // pace เป็นเกณฑ์เดียว — เลขสูงๆ ที่ยังตามเวลาทันไม่ใช่เรื่องต้องเตือน
         equal(
             MenuBadge.from([UsageSnap(percent: 90, remaining: w / 10)]),
-            MenuBadge(percent: 90, isAlarming: false),
+            MenuBadge(percent: 90, pace: 90),
             "90% with a tenth of the window left is exactly on pace, so no colour")
+        expect(
+            MenuBadge(percent: 90, pace: 90).isAlarming == false, "exactly on pace is not ahead")
         equal(
             MenuBadge.from([UsageSnap(percent: 99, remaining: UsageSnap.unknown)]),
-            MenuBadge(percent: 99, isAlarming: false),
+            MenuBadge(percent: 99, pace: MenuBadge.unknown),
             "no countdown means no pace to be ahead of, and no fixed threshold to trip")
+        expect(
+            MenuBadge(percent: 99, pace: MenuBadge.unknown).isAlarming == false,
+            "an unknown pace cannot be overtaken, so it never turns red")
         // นาฬิกาสองฝั่งไม่ตรงกันทำให้ countdown ยาวเกินหน้าต่างได้ ถ้าปล่อยให้ elapsed ติดลบ
         // แม้แต่ 0% ก็จะแซง pace แล้วแถบเมนูแดงตั้งแต่หน้าต่างยังไม่เริ่ม
         equal(
             MenuBadge.from([UsageSnap(percent: 0, remaining: w * 2)]),
-            MenuBadge(percent: 0, isAlarming: false),
+            MenuBadge(percent: 0, pace: 0),
             "a countdown longer than the window is clock skew, not negative elapsed time")
     }
 
