@@ -99,9 +99,11 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/UsagePoll.swift` | `--usage-poll`: one claude.ai quota fetch, then exit |
 | `TamaCore/{Hook,Statusline}Installer.swift` | writes into `~/.claude/settings.json` |
 | `TamaCore/Daemon.swift` | wires it together + 1 s tick |
-| `TamaCore/PanelText.swift` | what the foot of the popover says (board link, session rows) |
+| `TamaCore/PanelText.swift` | what the foot of the popover says (board link, session rows, figure age) |
+| `TamaCore/QuotaCard.swift` | what a quota card says: colour level, pace tick, reset line |
 | `tamaclaude/MenuBarApp.swift` | the menu bar app **is** the daemon (Bluetooth TCC is per-`.app`) |
-| `tamaclaude/PanelViewController.swift` | the popover: header + gear, the card slot, the foot |
+| `tamaclaude/PanelViewController.swift` | the popover: header + gear, the cards, the foot |
+| `tamaclaude/QuotaCardView.swift` | how a quota card is drawn (bar, pace tick, palette) |
 
 ### Invariants worth knowing before you touch things
 

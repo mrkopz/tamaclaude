@@ -27,17 +27,19 @@ public enum PanelText {
 
     /// บรรทัด "ค่านี้อายุเท่าไร" — ความเก่าของตัวเลขที่เห็นอยู่ ไม่ใช่สถานะของท่อ
     ///
-    /// หยาบระดับนาที/ชั่วโมง/วัน เพราะไม่มีการตัดสินใจไหนเปลี่ยนเพราะวินาที และเลขที่
-    /// ขยับทุกวินาทีจะดึงสายตาไปจากสิ่งที่แผงนี้มีไว้บอกจริงๆ
-    public static func figures(stamp: Date?, now: Date = Date()) -> String {
+    /// มีวินาทีจริงๆ ต่างจากที่อื่นในแอปนี้: ทั้งฟีเจอร์เกิดจากคำถาม "เลขนี้ค้างหรือเปล่า"
+    /// และคำตอบที่หยาบระดับนาทีก็แค่ย้ายความสงสัยจากบอร์ดมาไว้บนเมนูบาร์ แผงที่เปิดค้าง
+    /// วาดใหม่ทุกวินาทีอยู่แล้ว ตัวเลขที่เดินจึงเป็นหลักฐานว่าแผงยังมีชีวิต
+    public static func updated(stamp: Date?, now: Date = Date()) -> String {
         guard let stamp else { return "No quota figures yet" }
-        let age = max(0, now.timeIntervalSince(stamp))
-        if age < 90 { return "Quota figures from just now" }
-        let minutes = Int(age / 60)
-        if minutes < 60 { return "Quota figures \(minutes) min old" }
+        // นาฬิกาเครื่องเดินถอยหลังได้ (sleep, NTP) — อายุติดลบต้องไม่กลายเป็นข้อความประหลาด
+        let age = Int(max(0, now.timeIntervalSince(stamp)))
+        if age < 60 { return "Updated \(age)s ago" }
+        let minutes = age / 60
+        if minutes < 60 { return "Updated \(minutes)m ago" }
         let hours = minutes / 60
-        if hours < 48 { return "Quota figures \(hours) h old" }
-        return "Quota figures \(hours / 24) d old"
+        if hours < 48 { return "Updated \(hours)h ago" }
+        return "Updated \(hours / 24)d ago"
     }
 
     /// หนึ่งแถวต่อหนึ่ง session แล้วปิดท้ายด้วยจำนวนที่ล้นออกจาก slot ของบอร์ด

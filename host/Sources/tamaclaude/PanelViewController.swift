@@ -6,8 +6,7 @@ import TamaCore
 /// อยู่คนละไฟล์กับ `MenuBarApp` ด้วยเหตุผลเดียวกับ `MenuBadgeImage`: ไฟล์นั้นเปลี่ยน
 /// เมื่อการต่อสายระหว่าง daemon กับ UI เปลี่ยน ไฟล์นี้เปลี่ยนเมื่อหน้าตาของแผงเปลี่ยน
 ///
-/// โครงคือ หัว / เนื้อ / ท้าย โดยเนื้อยังว่างอยู่ — การ์ดโควตามาทีหลัง แต่ช่องของมัน
-/// ถูกจองไว้แล้วเพื่อให้การเพิ่มเข้ามาไม่ต้องรื้อลำดับของอย่างอื่น
+/// โครงคือ หัว / เนื้อ / ท้าย โดยเนื้อคือการ์ดโควตาสองใบกับบรรทัดอายุของค่า
 final class PanelViewController: NSViewController {
     /// ปุ่มเฟืองไม่รู้ว่าเมนูมีอะไร — `MenuBarApp` เป็นเจ้าของ NSMenu ตัวนั้น
     var onGear: ((NSButton) -> Void)?
@@ -20,12 +19,15 @@ final class PanelViewController: NSViewController {
     /// ชื่อแอปไปก่อน — ชื่อ org มาพร้อมการ์ดโควตาในใบถัดไป
     private let heading = NSTextField(labelWithString: "tamaclaude")
     private let gear = NSButton()
-    /// ที่ว่างของการ์ดโควตา ยังไม่มีอะไร จึงยังไม่กินความสูง
+    /// การ์ดสองใบ — ใบเดิมสองใบตลอดอายุแผง เปลี่ยนแต่เนื้อใน การสร้างใหม่ทุกวินาที
+    /// คือการทิ้ง view ทุกวินาทีเพื่อผลลัพธ์หน้าตาเดียวกัน
+    private let sessionCard = QuotaCardView()
+    private let weeklyCard = QuotaCardView()
     private let cards = NSStackView()
     private let boardLabel = NSTextField(labelWithString: "")
     /// สองบรรทัดที่พูดคนละเรื่อง: ท่อพัง (กดได้) กับ ค่าที่เห็นอยู่เก่าแค่ไหน
     private let keyButton = NSButton()
-    private let figuresLabel = NSTextField(labelWithString: "")
+    private let ageLabel = NSTextField(labelWithString: "")
     private let sessions = NSStackView()
     private var shownRows: [String] = []
 
@@ -49,11 +51,12 @@ final class PanelViewController: NSViewController {
         header.orientation = .horizontal
         header.distribution = .fill
 
+        cards.setViews([sessionCard, weeklyCard], in: .top)
         cards.orientation = .vertical
-        cards.spacing = 8
+        cards.spacing = 10
         cards.alignment = .leading
-        // ซ่อนไว้จนกว่าจะมีการ์ด — stack ที่ว่างยังกินระยะห่างของ stack ที่ครอบมันอยู่
-        // แผงเปล่าจึงมีช่องว่างลอยๆ ที่ไม่มีอะไรอธิบาย
+        // ซ่อนไว้จนกว่าจะมีค่าจริง — stack ที่ว่างยังกินระยะห่างของ stack ที่ครอบมันอยู่
+        // และการ์ดเปล่าสองใบอ่านได้ว่าอุปกรณ์พัง ทั้งที่ยังไม่เคยมีตัวเลขมาถึง
         cards.isHidden = true
 
         boardLabel.font = .systemFont(ofSize: 12)
@@ -71,15 +74,22 @@ final class PanelViewController: NSViewController {
         keyButton.alignment = .left
         keyButton.isHidden = true
 
-        figuresLabel.font = .systemFont(ofSize: 12)
-        figuresLabel.textColor = .secondaryLabelColor
+        ageLabel.font = .systemFont(ofSize: 12)
+        ageLabel.textColor = .secondaryLabelColor
 
-        let footer = NSStackView(views: [keyButton, figuresLabel, boardLabel, sessions])
+        // อายุของค่าอยู่ใต้การ์ด ไม่ใช่ท้ายแผง — มันเป็นคำอธิบายของตัวเลขที่อยู่เหนือมัน
+        // ("เลขนี้ค้างหรือเปล่า") ไม่ใช่สถานะของแอปแบบเดียวกับบรรทัดบอร์ดหรือรายการ session
+        let body = NSStackView(views: [cards, ageLabel])
+        body.orientation = .vertical
+        body.spacing = 8
+        body.alignment = .leading
+
+        let footer = NSStackView(views: [keyButton, boardLabel, sessions])
         footer.orientation = .vertical
         footer.spacing = 4
         footer.alignment = .leading
 
-        let stack = NSStackView(views: [header, cards, separator(), footer])
+        let stack = NSStackView(views: [header, body, separator(), footer])
         stack.orientation = .vertical
         stack.spacing = 10
         stack.alignment = .leading
@@ -94,6 +104,10 @@ final class PanelViewController: NSViewController {
             stack.topAnchor.constraint(equalTo: root.topAnchor, constant: inset),
             stack.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -inset),
             header.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            body.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            cards.widthAnchor.constraint(equalTo: body.widthAnchor),
+            sessionCard.widthAnchor.constraint(equalTo: cards.widthAnchor),
+            weeklyCard.widthAnchor.constraint(equalTo: cards.widthAnchor),
             footer.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
         view = root
@@ -122,11 +136,21 @@ final class PanelViewController: NSViewController {
     ///
     /// `detail` คือสิ่งที่ตัวยิงพูดล่าสุด (`HTTP 503`, บรรทัดสรุป) อยู่ใน tooltip เพราะ
     /// เป็นคำตอบของคำถามที่นานๆ ถามที ("ทำไมค่าถึงเก่า") ไม่ใช่ของที่ต้องเห็นตลอดเวลา
-    func showQuota(problem: String?, figures: String, detail: String? = nil) {
+    func showQuota(
+        problem: String?, age: String, cards quota: [QuotaCard]?, detail: String? = nil
+    ) {
         keyButton.isHidden = problem == nil
         keyButton.title = problem ?? ""
-        figuresLabel.stringValue = figures
-        figuresLabel.toolTip = detail
+        ageLabel.stringValue = age
+        ageLabel.toolTip = detail
+
+        // `nil` = ไม่รู้อะไรเลยทั้งสองหน้าต่าง ซึ่งไม่ใช่ 0% สองใบ — ซ่อนทั้งช่อง
+        // แล้วเหลือแต่บรรทัดอายุที่พูดว่ายังไม่เคยมีตัวเลข
+        cards.isHidden = quota == nil
+        guard let quota else { return }
+        // การ์ดมาเป็นคู่เสมอจาก `QuotaCard.cards` — ใบที่หายไปแปลว่าสัญญาเปลี่ยน ไม่ใช่ค่าหาย
+        if let session = quota.first { sessionCard.show(session) }
+        if quota.count > 1 { weeklyCard.show(quota[1]) }
     }
 
     // MARK: - อัปเดตข้อความ

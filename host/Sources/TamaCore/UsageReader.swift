@@ -34,6 +34,20 @@ public enum UsageReader {
         return [session, weekly]
     }
 
+    /// เวลาในหน้าต่างเดินไปกี่เปอร์เซ็นต์แล้ว — ตำแหน่งของขีด pace
+    ///
+    /// อยู่ที่นี่เพราะที่นี่เป็นเจ้าของความยาวหน้าต่าง และเพราะแบดจ์บนแถบเมนูกับการ์ด
+    /// ใน popover ต้องได้ตัวเลขเดียวกันเสมอ — สองสูตรที่เขียนแยกกันจะเพี้ยนกันวันหนึ่ง
+    ///
+    /// การหารลงพื้นไม่ทำให้เกณฑ์เพี้ยน: `percent > floor(pace)` ให้ผลเดียวกับ
+    /// `percent * window > elapsed * 100` ทุกกรณี เพราะ percent เป็นจำนวนเต็ม
+    public static func elapsedPercent(remaining: Int, window: Int) -> Int {
+        guard remaining != UsageSnap.unknown, window > 0 else { return UsageSnap.unknown }
+        // countdown ที่ยาวกว่าหน้าต่างแปลว่านาฬิกาสองฝั่งไม่ตรงกัน ไม่ใช่ว่าเวลาเดินถอยหลัง
+        let elapsed = min(window, max(0, window - remaining))
+        return elapsed * 100 / window
+    }
+
     /// เวลาที่ cache ถูกเขียนครั้งล่าสุด — คนละเรื่องกับ `resets_at` ของหน้าต่าง
     ///
     /// ใช้ตอบคำถาม "ค่านี้อายุเท่าไร" ซึ่งเป็นคนละคำถามกับ "ท่อยังเดินอยู่ไหม" ค่าที่
