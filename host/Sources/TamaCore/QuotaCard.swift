@@ -11,7 +11,7 @@ import Foundation
 public struct QuotaCard: Equatable, Sendable {
     /// ระดับที่สีอ่านออกมาได้ — ไม่ใช่ `NSColor` เพราะ TamaCore ไม่รู้จัก AppKit
     /// และเพราะ "ระดับ" คือสิ่งที่เทสต์ได้ ส่วน "สี" คือการตีความของมัน
-    public enum Level: String, Sendable {
+    public enum Level: Sendable {
         case unknown, good, warn, crit
     }
 

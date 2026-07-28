@@ -50,7 +50,12 @@ final class QuotaCardView: NSView {
         reset.textColor = .secondaryLabelColor
         reset.lineBreakMode = .byTruncatingTail
 
-        let head = NSStackView(views: [title, subtitle, NSView(), percent])
+        // ตัวคั่นต้องยอมยืดก่อนใคร ไม่งั้นความกว้างที่เหลือถูกแบ่งกับ label แล้วเปอร์เซ็นต์
+        // ไม่ชิดขวาจริงเวลาคำอธิบายสั้น
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.init(1), for: .horizontal)
+
+        let head = NSStackView(views: [title, subtitle, spacer, percent])
         head.orientation = .horizontal
         head.spacing = 6
         head.alignment = .firstBaseline

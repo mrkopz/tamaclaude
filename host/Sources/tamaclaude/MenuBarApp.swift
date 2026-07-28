@@ -297,12 +297,19 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// คำถามที่เกิดขึ้นนานๆ ครั้ง ("ทำไมค่าถึงเก่า") การให้มันกินที่ถาวรคือการเอาเสียง
     /// รบกวนไปวางไว้ตรงหน้าตลอดเวลา
     private func redrawQuota() {
+        redrawPanel()
+        showQuotaMenus()
+    }
+
+    /// เฉพาะแผง ไม่แตะเมนู — นาฬิกาวินาทีเรียกตัวนี้ เพราะรายการในเมนูเฟืองมาจากสถานะ
+    /// ของ poller ซึ่งไม่ได้ขยับทุกวินาที และการสร้าง submenu ใหม่ขณะที่ผู้ใช้กางเมนูอยู่
+    /// ทำให้แถบไฮไลต์ที่เขากำลังเลื่อนหลุด
+    private func redrawPanel() {
         panel.showQuota(
             problem: PanelText.keyProblem(poller.blocked),
             age: PanelText.updated(stamp: UsageReader.stamp()),
             cards: QuotaCard.cards(UsageReader.read()),
             detail: poller.status)
-        showQuotaMenus()
     }
 
     /// สองเมนูนี้เปลี่ยนพร้อมกันเสมอ — ทั้งคู่วาดจากสถานะของ poller ก้อนเดียวกัน
@@ -326,9 +333,14 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // ตลอดเวลาเพื่อข้อความที่ไม่มีใครมอง
         redrawQuota()
         panelTicks?.invalidate()
-        panelTicks = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.redrawQuota()
+        let ticks = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.redrawPanel()
         }
+        // `.common` ไม่ใช่ `.default` — เมนูเฟืองที่กางอยู่ทำให้ run loop เข้าโหมด tracking
+        // แล้ว timer โหมดปกติหยุดยิงทั้งที่แผงยังเห็นอยู่เต็มๆ ตัวเลขที่ค้างตอนนั้น
+        // คืออาการเดียวกับที่ฟีเจอร์นี้มีไว้แก้
+        RunLoop.main.add(ticks, forMode: .common)
+        panelTicks = ticks
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         // popover ที่ไม่ใช่ .transient ไม่ปิดตัวเอง — คลิกนอกแอปคือสัญญาณเดียวที่เหลือ
         outsideClicks = NSEvent.addGlobalMonitorForEvents(
