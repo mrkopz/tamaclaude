@@ -15,10 +15,17 @@ visuals, protocol, or layout**, and add an entry there when a decision changes.
 
 ```
 Claude Code hooks --> tamaclaude --hook --> Unix socket --> daemon --> BLE GATT --> board
-Claude Code statusline --> ~/.tamaclaude/statusline.sh --> ~/.claude/.statusline-usage-cache
-                                                              |
-                                                       daemon reads --> "u" key --> board
+
+Claude Code statusline --> ~/.tamaclaude/statusline.sh --.
+                                                          >--> ~/.claude/.statusline-usage-cache
+menu bar timer --> tamaclaude --usage-poll --> claude.ai --'                |
+                                                        daemon reads --> "u" key --> board
 ```
+
+The quota panel has **two** sources, not one. The statusline pipe needs no credential but is
+event-driven, so it goes quiet exactly when the desk display is left alone; the poll pipe uses
+the user's `sessionKey` and keeps the number moving with Claude Code closed. Neither replaces
+the other and they are separate switches — see the reversal note in `DESIGN.md`.
 
 The daemon owns all logic. Firmware only knows a fixed `VisualState` enum and draws it.
 Tool-to-animation mapping is host-side and user-overridable at `~/.tamaclaude/tools.json`.
@@ -33,9 +40,17 @@ swift build                        # debug
 swift run tamatest                 # run the whole test suite
 swift run tamaclaude --daemon --print --no-ble -v   # daemon without bluetooth, prints snapshots
 swift run tamaclaude --send '<json>'                # inject one hand-written hook event
+swift run tamaclaude --usage-poll                   # one quota fetch -> cache, then exit
+swift run tamaclaude --usage-cache < statusline.json  # the statusline pipe, by hand
+swift run tamaclaude --install-statusline           # take over statusLine.command
+swift run tamaclaude --remove-statusline            # give the slot back
 ./Scripts/make-app.sh              # release .app -> host/dist/tamaclaude.app
 ./Scripts/make-app.sh --install    # install to /Applications and launch
 ```
+
+`--usage-poll` reads the key from `~/.tamaclaude/session-key` (mode 600, never argv, never env)
+and exits: `0` = wrote the cache · `2` = key rejected · `3` = key file unusable · `1` = anything else.
+The menu bar app runs it on a timer; the key is set from its gear menu, not by hand.
 
 There is **no `testTarget`** and no per-test filter — `swift run tamatest` runs everything
 (`Sources/tamatest/Tests.swift`, grouped by `suite("...")`). A machine with only Command Line
@@ -97,14 +112,19 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/BLETransport.swift` | CoreBluetooth central + auto-reconnect |
 | `TamaCore/Usage{Reader,Writer}.swift` | the `.statusline-usage-cache` contract |
 | `TamaCore/UsagePoll.swift` | `--usage-poll`: one claude.ai quota fetch, then exit |
+| `TamaCore/UsagePoller.swift` | when to poll and what the last poll said — fed `tick(now:)`, owns no timer |
+| `TamaCore/SessionKeyFile.swift` | writes `~/.tamaclaude/session-key` so it is mode 600 from birth |
 | `TamaCore/{Hook,Statusline}Installer.swift` | writes into `~/.claude/settings.json` |
+| `TamaCore/Paths.swift` | the `~/.tamaclaude` paths + `Log` (`settings.json` belongs to `HookInstaller`) |
 | `TamaCore/Daemon.swift` | wires it together + 1 s tick |
+| `TamaCore/MenuBadge.swift` | what the menu bar icon knows: percent + pace position |
 | `TamaCore/PanelText.swift` | what the foot of the popover says (board link, session rows, figure age) |
 | `TamaCore/QuotaCard.swift` | what a quota card says: colour level, pace tick, reset line |
 | `TamaCore/RefreshControl.swift` | the refresh button's discipline: cooldown, and when opening the panel polls |
 | `tamaclaude/MenuBarApp.swift` | the menu bar app **is** the daemon (Bluetooth TCC is per-`.app`) |
 | `tamaclaude/PanelViewController.swift` | the popover: header + gear, the cards, the foot |
 | `tamaclaude/QuotaCardView.swift` | how a quota card is drawn (bar, pace tick, palette) |
+| `tamaclaude/MenuBadgeImage.swift` | how the menu bar icon is drawn (template vs red) |
 
 ### Invariants worth knowing before you touch things
 
@@ -121,6 +141,9 @@ look at `out/`. It proves the *design*, not the C renderer.
   window (same `resets_at`) the percentage only increases, so a lower value is stale — never
   overwrite a newer one. Foreign keys in the shared cache file (`PROFILE_NAME`, `COST_*`)
   must survive.
+- **The `sessionKey` is a full-account credential.** File only (`~/.tamaclaude/session-key`,
+  mode 600), never argv, never env, never logged, re-read every poll. Not the Keychain: the
+  adhoc signature changes cdhash on every build, so the item would prompt on every upgrade.
 - **`-v` and `-psn_*` are not modes.** LaunchServices appends `-psn_0_12345`; an app that
   rejects unknown args dies on double-click.
 - **The `VisualState` enum is a contract with the firmware.** Adding or reordering it means
