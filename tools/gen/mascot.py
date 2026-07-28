@@ -81,18 +81,22 @@ def _legs(gait: str, phase: float, color: str, extra_lift: float = 0.0) -> RectL
 
 
 # --- ลำตัว -----------------------------------------------------------------
-def _body(squash: float, color: str) -> RectList:
-    """squash > 0 = เตี้ยลงกว้างขึ้น (ยึดฝ่าเท้าเป็นหลัก)"""
+def _body(squash: float, color: str, arm_dy: tuple[float, float] = (0.0, 0.0)) -> RectList:
+    """squash > 0 = เตี้ยลงกว้างขึ้น (ยึดฝ่าเท้าเป็นหลัก)
+
+    arm_dy เลื่อนแขน (nub) ทีละข้าง — ท่าพิมพ์ใช้ค่าคนละเครื่องหมายจึงอ่านเป็นสลับมือ
+    """
     bx, by, bw, bh = BODY
     nh = bh * (1.0 - squash)
     nw = bw * (1.0 + squash * 0.45)
     nx = bx - (nw - bw) / 2.0
     ny = by + (bh - nh)
     ncx = nx + nw
+    ay = ny + (NUB_Y - by) * (nh / bh)
     return [
         Rect(nx, ny, nw, nh, color),
-        Rect(nx - NUB_W, ny + (NUB_Y - by) * (nh / bh), NUB_W, NUB_H, color),
-        Rect(ncx, ny + (NUB_Y - by) * (nh / bh), NUB_W, NUB_H, color),
+        Rect(nx - NUB_W, ay + arm_dy[0], NUB_W, NUB_H, color),
+        Rect(ncx, ay + arm_dy[1], NUB_W, NUB_H, color),
     ]
 
 
@@ -106,6 +110,8 @@ class Mood:
     bob_hz: float = 1.0
     shake: float = 0.0
     look: float = 0.0
+    scan: float = 0.0  # กวาดสายตาซ้าย->ขวาแล้ววกกลับ (unit) — ท่าอ่านโค้ด
+    arm: float = 0.0   # ระยะที่แขนขยับสลับข้าง (unit) — ท่าพิมพ์
     blink: bool = True  # ตาลืมเท่านั้นที่กะพริบได้
     sink: float = 0.0  # >0 = จมลงดินตามความคืบหน้าของ phase (ท่ามุดหาย)
 
@@ -120,6 +126,9 @@ BLINK_EVERY = 4
 MOODS: dict[str, Mood] = {
     "idle":      Mood(eye="open",   bob=0.75, bob_hz=1.0),
     "working":   Mood(eye="focus",  bob=0.50, bob_hz=2.4, squash=0.03),
+    # ท่านั่งพิมพ์ — ตัวแทบไม่กระเด้ง เพราะสัญญาณอยู่ที่สายตาที่กวาดอ่านกับแขนที่พิมพ์
+    "typing":    Mood(eye="focus",  bob=0.30, bob_hz=2.0, squash=0.03, scan=1.0,
+                      arm=0.70),
     "walking":   Mood(eye="open",   gait="walk", bob=0.75, bob_hz=2.0),
     "waiting":   Mood(eye="open",   bob=1.00, bob_hz=0.7, look=0.40),
     "sleeping":  Mood(eye="sleep",  gait="sit", squash=0.10, bob=0.50, bob_hz=0.35,
@@ -138,7 +147,7 @@ MOODS: dict[str, Mood] = {
 STATES: dict[str, tuple[str, str | None]] = {
     "idle":      ("idle", None),
     "reading":   ("working", "magnifier"),
-    "writing":   ("working", "pencil"),
+    "writing":   ("typing", "laptop"),
     "building":  ("working", "hammer"),
     "searching": ("working", "globe"),
     "thinking":  ("idle", "dots"),
@@ -189,7 +198,10 @@ def build(
 
     # ท่ามุดหาย: ยิ่ง phase เดินหน้า ยิ่งแบนลงติดพื้นและขาหด
     squash = m.squash + m.sink * phase * 0.60
-    silhouette = _body(squash, skin) + _legs(
+    # แขนพิมพ์ — แขนข้างลำตัวสลับขึ้นลงสองรอบต่อลูป ไม่มีแขนพาดหน้าแล็ปท็อป
+    # (แขนที่เอื้อมมาข้างหน้าอ่านเป็น "กดจอ" ไม่ใช่ "พิมพ์อยู่หลังจอ")
+    arm = m.arm * math.sin(phase * math.pi * 4.0)
+    silhouette = _body(squash, skin, (arm, -arm)) + _legs(
         m.gait, phase, skin, m.sink * phase * LEG_H * 0.9
     )
     silhouette = move(silhouette, dx, dy)
@@ -201,6 +213,9 @@ def build(
     # ตาเลื่อนตามลำตัวที่ถูก squash
     eye_dy = dy + BODY[3] * squash
     look = m.look * math.sin(phase * math.pi * 2.0)
+    # กวาดสายตา: ไล่จากซ้ายไปขวาแล้ววกกลับทันที = อ่านทีละบรรทัด ไม่ใช่ส่ายไปมา
+    # สองบรรทัดต่อลูป — ช้ากว่านี้จะอ่านเป็นเหม่อ ไม่ใช่กำลังไล่โค้ด
+    look += m.scan * ((phase * 2.0 % 1.0) - 0.5) * 2.0
     mag = EYE_MAG if prop_name == "magnifier" else 1.0  # ตาข้างที่อยู่หลังเลนส์
     eyes = _eye(EYE_L, eye_kind, look, ink) + _eye(EYE_R, eye_kind, look, ink, mag)
     eyes = move(eyes, dx, eye_dy)

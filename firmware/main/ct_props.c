@@ -74,17 +74,80 @@ static void magnifier(ct_rects_t *o, float phase, bool connected)
     ct_rects_add(o, x + 2.3f, y + 1.05f, 1.5f, 0.9f, glint);
 }
 
-// ดินสอ — Edit/Write (ขยับเป็นจังหวะเขียน)
-static void pencil(ct_rects_t *o, float phase, bool connected)
+// โลโก้แอปเปิลบนฝา — เขียนเป็นภาพ ASCII ตรงๆ อ่านง่ายกว่าลิสต์ตัวเลข
+// ช่องละ 0.25 unit = 1 พิกเซลพอดีที่ unit_px=4 จึงคมและไม่เพี้ยนจากการปัดเศษ
+// ใบเอียงขึ้นขวา ตัวลูกเป็นก้อนกลมทึบ ขอบขวาเว้าสองแถว = รอยกัด ก้นแยกสองพู
+// ตั้งใจให้รายละเอียดน้อย: ที่ 12 px ต่อโลโก้ รอยหยักย่อยๆ กลายเป็นขอบเละ ไม่ใช่รูปทรง
+#define APPLE_PX 0.25f
+#define APPLE_W 10
+#define APPLE_H 11
+static const char *const APPLE_ART[APPLE_H] = {
+    ".....##...",
+    "....##....",
+    "..######..",
+    ".########.",
+    "##########",
+    "########..",
+    "########..",
+    "##########",
+    ".########.",
+    "..######..",
+    "..##..##..",
+};
+
+// แปลง APPLE_ART เป็น rect ทีละช่วงพิกเซลติดกัน ไม่ใช่ทีละช่อง
+static void apple(ct_rects_t *o, float x, float y, uint16_t color)
 {
-    uint16_t col = c(connected, CT_COL_ACCENT);
-    uint16_t tip = c(connected, CT_COL_TEXT);
-    float wob = sinf(phase * (float)M_PI * 4.0f) * 0.4f;
-    float x = CT_HAND_X, y = CT_HAND_Y + wob;
-    for (int i = 0; i < 4; i++) {
-        ct_rects_add(o, x + 3.5f - i * 0.95f, y + i * 1.02f, 1.6f, 1.25f, col);
+    for (int row = 0; row < APPLE_H; row++) {
+        const char *line = APPLE_ART[row];
+        for (int col = 0; col < APPLE_W;) {
+            if (line[col] != '#') {
+                col++;
+                continue;
+            }
+            int run = 1;
+            while (col + run < APPLE_W && line[col + run] == '#') run++;
+            ct_rects_add(o, x + col * APPLE_PX, y + row * APPLE_PX, run * APPLE_PX, APPLE_PX,
+                         color);
+            col += run;
+        }
     }
-    ct_rects_add(o, x - 0.1f, y + 4.06f, 1.4f, 1.4f, tip);  // ปลายไส้
+}
+
+// แล็ปท็อป — Edit/Write (นั่งพิมพ์ โดยจอหันหลังให้เรา)
+// วางทับลำตัวแทนที่จะถือข้างตัวเหมือน prop อื่น: ท่า "พิมพ์โค้ดอยู่" อ่านออกจากการมีจอ
+// คั่นระหว่างเรากับตัวมัน จอหันหลัง = ฝาเป็นแผ่นเหล็กทึบล้วน ไม่มีอะไรสว่างอยู่บนนั้น
+// สิ่งเดียวที่บอกว่าจออีกด้านเปิดอยู่คือแสงที่รอดขึ้นมาเลาะขอบบนของฝาไปโดนหน้ามัน
+// (จุดสว่างกลางฝาจะอ่านกลับเป็นจอหันเข้าหาเราทันที จึงห้ามมี)
+// ส่วนสายตาที่กวาดซ้ายไปขวากับแขนที่ขยับสลับข้าง อยู่ใน ct_mascot.c
+static void laptop(ct_rects_t *o, float phase, bool connected)
+{
+    // ฝาเป็นแผ่นเหล็กทึบ ไม่ใช่สีดำ — สี่เหลี่ยมดำใหญ่ๆ อ่านเป็น "จอที่เปิดอยู่" เสมอ
+    // ต่อให้ไม่มีอะไรสว่างบนนั้น ขอบสีหมึกบางๆ ทำหน้าที่ตัดฝาออกจากลำตัวแทน
+    uint16_t shell = c(connected, CT_COL_STEEL);
+    uint16_t rim = c(connected, CT_COL_INK);
+    // แสงที่รอดขอบจอ — ตอนหลุดการเชื่อมต่อใช้เทาอ่อน ไม่ใช่เทาเข้ม ไม่งั้นกลืนไปกับฝา
+    uint16_t spill = connected ? CT_COL_GLASS : CT_COL_GRAY;
+
+    // ขอบฝา — ตัดฝากับลำตัวสีดินออกจากกัน
+    ct_rects_add(o, CT_LID_X, CT_LID_Y, CT_LID_W, CT_LID_H, rim);
+    ct_rects_add(o, CT_LID_X + 0.5f, CT_LID_Y + 0.5f, CT_LID_W - 1.0f, CT_LID_H - 1.0f,
+                 shell);  // หลังฝา (ทึบล้วน)
+    // ฐาน — เข้มกว่าฝา จึงไม่อ่านเป็นก้อนเดียวกัน
+    ct_rects_add(o, CT_LAP_X, CT_LAP_Y, CT_LAP_W, CT_LAP_H, rim);
+    // สันบนของฐาน = ระนาบคีย์บอร์ดที่รับแสง
+    ct_rects_add(o, CT_LAP_X, CT_LAP_Y, CT_LAP_W, 0.5f, shell);
+
+    // แสงจอรอดขึ้นมาเหนือฝา หายใจเข้าออกช้าๆ — ขีดบางๆ ขีดเดียว ไม่ใช่ก้อนสว่าง
+    // ต้องอยู่ *เหนือ* ขอบฝา ไม่ใช่บนฝา ไม่งั้นกลับไปอ่านเป็นเนื้อจออีก
+    float w = CT_LID_W - 4.0f + 0.8f * sinf(phase * (float)M_PI * 2.0f);
+    ct_rects_add(o, CT_LID_X + (CT_LID_W - w) / 2.0f, CT_LID_Y - 0.5f, w, 0.5f, spill);
+
+    // โลโก้แอปเปิลกลางฝา — รูปทรงชัดเจน ไม่ใช่ก้อนสว่างสี่เหลี่ยม จึงไม่พลิกกลับไป
+    // อ่านเป็นเนื้อจอ วาดทีละแถวเป็นแท่งยาว ไม่ใช่ทีละพิกเซล จะได้ไม่กิน rect budget
+    uint16_t mark = c(connected, CT_COL_OUTLINE);
+    apple(o, CT_LID_X + (CT_LID_W - APPLE_W * APPLE_PX) / 2.0f,
+          CT_LID_Y + (CT_LID_H - APPLE_H * APPLE_PX) / 2.0f, mark);
 }
 
 // ค้อน — Bash (ทุบเป็นจังหวะ มีประกายตอนกระแทก)
@@ -235,7 +298,7 @@ void ct_prop_build(ct_rects_t *out, ct_prop_t prop, float phase, bool connected)
 {
     switch (prop) {
         case CT_PROP_MAGNIFIER: magnifier(out, phase, connected); break;
-        case CT_PROP_PENCIL: pencil(out, phase, connected); break;
+        case CT_PROP_LAPTOP: laptop(out, phase, connected); break;
         case CT_PROP_HAMMER: hammer(out, phase, connected); break;
         case CT_PROP_GLOBE: globe(out, phase, connected); break;
         case CT_PROP_DOTS: dots(out, phase, connected); break;

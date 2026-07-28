@@ -42,29 +42,34 @@ typedef struct {
     float bob_hz;
     float shake;
     float look;
+    float scan;    // กวาดสายตาซ้าย->ขวาแล้ววกกลับ (unit) — ท่าอ่านโค้ด
+    float arm;     // ระยะที่แขนขยับสลับข้าง (unit) — ท่าพิมพ์
     bool blink;    // ตาลืมเท่านั้นที่กะพริบได้
     float sink;    // >0 = จมลงดินตามความคืบหน้าของ phase (ท่ามุดหาย)
 } mood_t;
 
 typedef enum {
-    MOOD_IDLE, MOOD_WORKING, MOOD_WALKING, MOOD_WAITING, MOOD_SLEEPING,
+    MOOD_IDLE, MOOD_WORKING, MOOD_TYPING, MOOD_WALKING, MOOD_WAITING, MOOD_SLEEPING,
     MOOD_ALERT, MOOD_CELEBRATE, MOOD_ERROR, MOOD_ENTERING, MOOD_LEAVING,
     MOOD_COUNT,
 } mood_id_t;
 
 // bob วัดเป็น unit — 1 unit = CT_SLOTS_UNIT_PX พิกเซล ต่ำกว่า 0.5 unit จะมองแทบไม่เห็นบนจอ
+// ลำดับฟิลด์: eye, gait, squash, bob, bob_hz, shake, look, scan, arm, blink, sink
 static const mood_t MOODS[MOOD_COUNT] = {
-    [MOOD_IDLE]      = {EYE_OPEN,   GAIT_STAND, 0.00f, 0.75f, 1.0f, 0.00f, 0.00f, true,  0.0f},
-    [MOOD_WORKING]   = {EYE_FOCUS,  GAIT_STAND, 0.03f, 0.50f, 2.4f, 0.00f, 0.00f, true,  0.0f},
-    [MOOD_WALKING]   = {EYE_OPEN,   GAIT_WALK,  0.00f, 0.75f, 2.0f, 0.00f, 0.00f, true,  0.0f},
-    [MOOD_WAITING]   = {EYE_OPEN,   GAIT_STAND, 0.00f, 1.00f, 0.7f, 0.00f, 0.40f, true,  0.0f},
-    [MOOD_SLEEPING]  = {EYE_SLEEP,  GAIT_SIT,   0.10f, 0.50f, 0.35f, 0.00f, 0.00f, false, 0.0f},
-    [MOOD_ALERT]     = {EYE_WIDE,   GAIT_STAND, 0.00f, 0.90f, 3.2f, 0.20f, 0.00f, false, 0.0f},
-    [MOOD_CELEBRATE] = {EYE_HAPPY,  GAIT_STAND, -0.05f, 1.25f, 2.6f, 0.00f, 0.00f, false, 0.0f},
-    [MOOD_ERROR]     = {EYE_DEAD,   GAIT_SIT,   0.12f, 0.00f, 1.0f, 0.08f, 0.00f, false, 0.0f},
+    [MOOD_IDLE]      = {EYE_OPEN,   GAIT_STAND, 0.00f, 0.75f, 1.0f, 0.00f, 0.00f, 0.00f, 0.00f, true,  0.0f},
+    [MOOD_WORKING]   = {EYE_FOCUS,  GAIT_STAND, 0.03f, 0.50f, 2.4f, 0.00f, 0.00f, 0.00f, 0.00f, true,  0.0f},
+    // ท่านั่งพิมพ์ — ตัวแทบไม่กระเด้ง เพราะสัญญาณอยู่ที่สายตาที่กวาดอ่านกับแขนที่พิมพ์
+    [MOOD_TYPING]    = {EYE_FOCUS,  GAIT_STAND, 0.03f, 0.30f, 2.0f, 0.00f, 0.00f, 1.00f, 0.70f, true,  0.0f},
+    [MOOD_WALKING]   = {EYE_OPEN,   GAIT_WALK,  0.00f, 0.75f, 2.0f, 0.00f, 0.00f, 0.00f, 0.00f, true,  0.0f},
+    [MOOD_WAITING]   = {EYE_OPEN,   GAIT_STAND, 0.00f, 1.00f, 0.7f, 0.00f, 0.40f, 0.00f, 0.00f, true,  0.0f},
+    [MOOD_SLEEPING]  = {EYE_SLEEP,  GAIT_SIT,   0.10f, 0.50f, 0.35f, 0.00f, 0.00f, 0.00f, 0.00f, false, 0.0f},
+    [MOOD_ALERT]     = {EYE_WIDE,   GAIT_STAND, 0.00f, 0.90f, 3.2f, 0.20f, 0.00f, 0.00f, 0.00f, false, 0.0f},
+    [MOOD_CELEBRATE] = {EYE_HAPPY,  GAIT_STAND, -0.05f, 1.25f, 2.6f, 0.00f, 0.00f, 0.00f, 0.00f, false, 0.0f},
+    [MOOD_ERROR]     = {EYE_DEAD,   GAIT_SIT,   0.12f, 0.00f, 1.0f, 0.08f, 0.00f, 0.00f, 0.00f, false, 0.0f},
     // ท่าเปลี่ยนผ่าน — phase ทำหน้าที่เป็นความคืบหน้า 0->1 ไม่ใช่ลูปวน
-    [MOOD_ENTERING]  = {EYE_OPEN,   GAIT_WALK,  0.00f, 1.00f, 4.0f, 0.00f, 0.00f, true,  0.0f},
-    [MOOD_LEAVING]   = {EYE_SQUINT, GAIT_SIT,   0.30f, 0.00f, 1.0f, 0.00f, 0.00f, false, 1.0f},
+    [MOOD_ENTERING]  = {EYE_OPEN,   GAIT_WALK,  0.00f, 1.00f, 4.0f, 0.00f, 0.00f, 0.00f, 0.00f, true,  0.0f},
+    [MOOD_LEAVING]   = {EYE_SQUINT, GAIT_SIT,   0.30f, 0.00f, 1.0f, 0.00f, 0.00f, 0.00f, 0.00f, false, 1.0f},
 };
 
 // visual state = mood + prop — ต้องตรงกับ STATES ใน tools/gen/mascot.py
@@ -74,7 +79,7 @@ static const struct {
 } STATES[CT_STATE_COUNT] = {
     [CT_STATE_IDLE]      = {MOOD_IDLE,      CT_PROP_NONE},
     [CT_STATE_READING]   = {MOOD_WORKING,   CT_PROP_MAGNIFIER},
-    [CT_STATE_WRITING]   = {MOOD_WORKING,   CT_PROP_PENCIL},
+    [CT_STATE_WRITING]   = {MOOD_TYPING,    CT_PROP_LAPTOP},
     [CT_STATE_BUILDING]  = {MOOD_WORKING,   CT_PROP_HAMMER},
     [CT_STATE_SEARCHING] = {MOOD_WORKING,   CT_PROP_GLOBE},
     [CT_STATE_THINKING]  = {MOOD_IDLE,      CT_PROP_DOTS},
@@ -161,7 +166,8 @@ static void legs(ct_rects_t *o, gait_t gait, float phase, uint16_t color, float 
 
 // --- ลำตัว ------------------------------------------------------------------
 // squash > 0 = เตี้ยลงกว้างขึ้น (ยึดฝ่าเท้าเป็นหลัก)
-static void body(ct_rects_t *o, float squash, uint16_t color)
+// arm_l/arm_r เลื่อนแขน (nub) ทีละข้าง — ท่าพิมพ์ใช้ค่าคนละเครื่องหมายจึงอ่านเป็นสลับมือ
+static void body(ct_rects_t *o, float squash, uint16_t color, float arm_l, float arm_r)
 {
     float nh = BODY_H * (1.0f - squash);
     float nw = BODY_W * (1.0f + squash * 0.45f);
@@ -170,8 +176,8 @@ static void body(ct_rects_t *o, float squash, uint16_t color)
     float ncx = nx + nw;
     float nub_dy = (NUB_Y - BODY_Y) * (nh / BODY_H);
     ct_rects_add(o, nx, ny, nw, nh, color);
-    ct_rects_add(o, nx - NUB_W, ny + nub_dy, NUB_W, NUB_H, color);
-    ct_rects_add(o, ncx, ny + nub_dy, NUB_W, NUB_H, color);
+    ct_rects_add(o, nx - NUB_W, ny + nub_dy + arm_l, NUB_W, NUB_H, color);
+    ct_rects_add(o, ncx, ny + nub_dy + arm_r, NUB_W, NUB_H, color);
 }
 
 // คืน (สีตัว, สีตา, สีขอบ)
@@ -215,7 +221,10 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
 
     ct_rects_t silhouette;
     ct_rects_reset(&silhouette);
-    body(&silhouette, squash, body_c);
+    // แขนพิมพ์ — แขนข้างลำตัวสลับขึ้นลงสองรอบต่อลูป ไม่มีแขนพาดหน้าแล็ปท็อป
+    // (แขนที่เอื้อมมาข้างหน้าอ่านเป็น "กดจอ" ไม่ใช่ "พิมพ์อยู่หลังจอ")
+    float arm = m->arm * sinf(phase * (float)M_PI * 4.0f);
+    body(&silhouette, squash, body_c, arm, -arm);
     legs(&silhouette, m->gait, phase, body_c, m->sink * phase * LEG_H * 0.9f);
     ct_rects_move_from(&silhouette, 0, dx, dy);
 
@@ -243,6 +252,9 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
     // ตาเลื่อนตามลำตัวที่ถูก squash
     int eyes_from = out->count;
     float look = m->look * sinf(phase * (float)M_PI * 2.0f);
+    // กวาดสายตา: ไล่จากซ้ายไปขวาแล้ววกกลับทันที = อ่านทีละบรรทัด ไม่ใช่ส่ายไปมา
+    // สองบรรทัดต่อลูป — ช้ากว่านี้จะอ่านเป็นเหม่อ ไม่ใช่กำลังไล่โค้ด
+    look += m->scan * (fmodf(phase * 2.0f, 1.0f) - 0.5f) * 2.0f;
     // ตาข้างที่อยู่หลังเลนส์แว่นขยายต้องโตกว่าอีกข้าง
     float mag = STATES[state].prop == CT_PROP_MAGNIFIER ? CT_EYE_MAG : 1.0f;
     eye(out, EYE_L, eye_kind, look, ink, 1.0f);

@@ -102,14 +102,88 @@ def magnifier(phase: float, connected: bool = True) -> RectList:
     return out
 
 
-def pencil(phase: float, connected: bool = True) -> RectList:
-    """ดินสอ — Edit/Write  (ขยับเป็นจังหวะเขียน)"""
-    col = _c(connected, PAL.accent)
-    tip = _c(connected, PAL.text)
-    wob = math.sin(phase * math.pi * 4.0) * 0.4
-    x, y = HAND_X, HAND_Y + wob
-    out = [Rect(x + 3.5 - i * 0.95, y + i * 1.02, 1.6, 1.25, col) for i in range(4)]
-    out.append(Rect(x - 0.1, y + 4.06, 1.4, 1.4, tip))  # ปลายไส้
+# แล็ปท็อป — วางหน้าลำตัว ไม่ใช่ช่อง prop ข้างตัว จึงมีค่าคงที่ชุดของตัวเอง
+# ใหญ่เกือบเท่าลำตัว แต่แคบกว่าอยู่ราวข้างละ 1 unit — ช่องนั้นคือที่ที่ไหล่ยังโผล่ให้เห็น
+# แขนที่โผล่ข้างฝาคือแขนเดิมของลำตัว (nub) ที่ขยับขึ้นลง — ไม่มีแขนวาดเพิ่มพาดหน้าฝา
+LID_X, LID_W = 2.5, 11.0
+LID_Y, LID_H = 5.0, 4.9  # ขอบบนต่ำกว่าตา (จบที่ 4.1) — จอไม่บังหน้า
+LAP_X, LAP_W = 1.8, 12.4  # ฐาน — ยื่นออกกว่าฝาจอนิดเดียว จึงอ่านเป็นแล็ปท็อปไม่ใช่ป้าย
+LAP_Y, LAP_H = 9.9, 1.3  # ฐานจบพอดีระดับฝ่าเท้า (11.2) — แล็ปท็อปบังขาหมดทั้งสี่
+
+
+# โลโก้แอปเปิลบนฝา — เขียนเป็นภาพ ASCII ตรงๆ อ่านง่ายกว่าลิสต์ตัวเลข
+# ช่องละ 0.25 unit = 1 พิกเซลพอดีที่ unit_px=4 จึงคมและไม่เพี้ยนจากการปัดเศษ
+# ใบเอียงขึ้นขวา ตัวลูกเป็นก้อนกลมทึบ ขอบขวาเว้าสองแถว = รอยกัด ก้นแยกสองพู
+# ตั้งใจให้รายละเอียดน้อย: ที่ 12 px ต่อโลโก้ รอยหยักย่อยๆ กลายเป็นขอบเละ ไม่ใช่รูปทรง
+APPLE_PX = 0.25
+APPLE_ART = (
+    ".....##...",
+    "....##....",
+    "..######..",
+    ".########.",
+    "##########",
+    "########..",
+    "########..",
+    "##########",
+    ".########.",
+    "..######..",
+    "..##..##..",
+)
+
+
+def _apple(x: float, y: float, color: str) -> RectList:
+    """แปลง APPLE_ART เป็น rect ทีละช่วงพิกเซลติดกัน ไม่ใช่ทีละช่อง"""
+    out: RectList = []
+    for row, line in enumerate(APPLE_ART):
+        col = 0
+        while col < len(line):
+            if line[col] == "#":
+                run = 1
+                while col + run < len(line) and line[col + run] == "#":
+                    run += 1
+                out.append(
+                    Rect(x + col * APPLE_PX, y + row * APPLE_PX, run * APPLE_PX, APPLE_PX, color)
+                )
+                col += run
+            else:
+                col += 1
+    return out
+
+
+def laptop(phase: float, connected: bool = True) -> RectList:
+    """แล็ปท็อป — Edit/Write  (นั่งพิมพ์ โดยจอหันหลังให้เรา)
+
+    วางทับลำตัวแทนที่จะถือข้างตัวเหมือน prop อื่น: ท่า "พิมพ์โค้ดอยู่" อ่านออกจากการ
+    มีจอคั่นระหว่างเรากับตัวมัน จอหันหลัง = ฝาเป็นแผ่นเหล็กทึบล้วน ไม่มีอะไรสว่างอยู่บนนั้น
+    สิ่งเดียวที่บอกว่าจออีกด้านเปิดอยู่คือแสงที่รอดขึ้นมาเลาะขอบบนของฝาไปโดนหน้ามัน
+    (จุดสว่างกลางฝาจะอ่านกลับเป็นจอหันเข้าหาเราทันที จึงห้ามมี)
+    ส่วนการอ่านสื่อด้วยสายตาที่กวาดซ้ายไปขวา และการพิมพ์สื่อด้วยแขนที่ขยับสลับข้าง
+    (ทั้งคู่อยู่ใน mascot.py)
+    """
+    # ฝาเป็นแผ่นเหล็กทึบ ไม่ใช่สีดำ — สี่เหลี่ยมดำใหญ่ๆ อ่านเป็น "จอที่เปิดอยู่" เสมอ
+    # ต่อให้ไม่มีอะไรสว่างบนนั้น ขอบสีหมึกบางๆ ทำหน้าที่ตัดฝาออกจากลำตัวแทน
+    shell = _c(connected, PAL.steel)
+    rim = _c(connected, PAL.ink)
+    # แสงที่รอดขอบจอ — ตอนหลุดการเชื่อมต่อใช้เทาอ่อน ไม่ใช่เทาเข้ม ไม่งั้นกลืนไปกับฝา
+    spill = PAL.glass if connected else PAL.gray
+
+    out = [
+        Rect(LID_X, LID_Y, LID_W, LID_H, rim),  # ขอบฝา — ตัดฝากับลำตัวสีดินออกจากกัน
+        Rect(LID_X + 0.5, LID_Y + 0.5, LID_W - 1.0, LID_H - 1.0, shell),  # หลังฝา (ทึบล้วน)
+        Rect(LAP_X, LAP_Y, LAP_W, LAP_H, rim),  # ฐาน — เข้มกว่าฝา จึงไม่อ่านเป็นก้อนเดียวกัน
+        Rect(LAP_X, LAP_Y, LAP_W, 0.5, shell),  # สันบนของฐาน = ระนาบคีย์บอร์ดที่รับแสง
+    ]
+    # แสงจอรอดขึ้นมาเหนือฝา หายใจเข้าออกช้าๆ — ขีดบางๆ ขีดเดียว ไม่ใช่ก้อนสว่าง
+    # ต้องอยู่ *เหนือ* ขอบฝา ไม่ใช่บนฝา ไม่งั้นกลับไปอ่านเป็นเนื้อจออีก
+    w = LID_W - 4.0 + 0.8 * math.sin(phase * math.pi * 2.0)
+    out.append(Rect(LID_X + (LID_W - w) / 2.0, LID_Y - 0.5, w, 0.5, spill))
+
+    # โลโก้แอปเปิลกลางฝา — รูปทรงชัดเจน ไม่ใช่ก้อนสว่างสี่เหลี่ยม จึงไม่พลิกกลับไป
+    # อ่านเป็นเนื้อจอ วาดทีละแถวเป็นแท่งยาว ไม่ใช่ทีละพิกเซล จะได้ไม่กิน rect budget
+    mark = _c(connected, PAL.outline)
+    ax = LID_X + (LID_W - len(APPLE_ART[0]) * APPLE_PX) / 2.0
+    ay = LID_Y + (LID_H - len(APPLE_ART) * APPLE_PX) / 2.0
+    out += _apple(ax, ay, mark)
     return out
 
 
@@ -260,7 +334,7 @@ def beacon(phase: float, connected: bool = True) -> RectList:
 
 PROPS: dict[str, Callable[[float, bool], RectList]] = {
     "magnifier": magnifier,
-    "pencil": pencil,
+    "laptop": laptop,
     "hammer": hammer,
     "globe": globe,
     "dots": dots,
