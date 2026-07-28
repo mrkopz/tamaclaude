@@ -41,14 +41,7 @@ public enum UsageWriter {
             }
         }
 
-        guard !fields.isEmpty else { return nil }
-
-        var merged = merge(fields, into: url)
-        merged.append(("TIMESTAMP", String(Int(now.timeIntervalSince1970))))
-
-        let text = merged.map { "\($0)=\($1)" }.joined(separator: "\n") + "\n"
-        write(text, to: url)
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+        return commit(fields, parts: parts, now: now, to: url)
     }
 
     /// อ่าน payload ของ `/api/organizations/<org>/usage` แล้วเขียน cache เดียวกัน
@@ -68,22 +61,60 @@ public enum UsageWriter {
 
         // ชื่อคีย์ weekly มีหลายแบบที่เคยเจอในสนามจริง ส่วน `weekly_scoped` เป็น limit
         // ราย model ไม่ใช่ของทั้งบัญชี จึงไม่อยู่ในรายการ kind ที่ยอมรับ
-        for (keys, kinds, pctKey, resetKey, label) in [
-            (["five_hour"], ["session"], "UTILIZATION", "RESETS_AT", "5h"),
-            (["seven_day", "weekly", "week", "seven_days"], ["weekly_all"],
+        for (keys, kind, pctKey, resetKey, label) in [
+            (["five_hour"], "session", "UTILIZATION", "RESETS_AT", "5h"),
+            (["seven_day", "weekly", "week", "seven_days"], "weekly_all",
              "WEEKLY_UTILIZATION", "WEEKLY_RESETS_AT", "7d"),
         ] {
-            guard let found = window(root, keys: keys, kinds: kinds) else { continue }
+            guard let found = window(root, keys: keys, kind: kind) else { continue }
             fields.append((pctKey, String(found.percent)))
-            parts.append("\(label) \(found.percent)%")
-            // เวลาต้องผ่าน formatter ตัวเดียวกับทางเข้าเดิมเสมอ ไม่ใช่ส่ง ISO ดิบลงไฟล์ —
+            // เวลาผ่าน formatter ตัวเดียวกับทางเข้าเดิมเสมอ ไม่ใช่ส่ง ISO ดิบลงไฟล์ —
             // "…:00Z" กับ "…:00.482Z" คือหน้าต่างเดียวกัน แต่เป็นคนละสตริง แล้ว merge
             // จะเข้าใจว่าหน้าต่างหมุนแล้วและปล่อยให้เปอร์เซ็นต์ถอยหลัง
-            if let date = found.resetsAt.flatMap(parseISO) {
-                fields.append((resetKey, iso(date)))
-            }
+            fields.append((resetKey, iso(found.resetsAt)))
+            parts.append("\(label) \(found.percent)%")
         }
 
+        return commit(fields, parts: parts, now: now, to: url)
+    }
+
+    /// หาหน้าต่างหนึ่งบานจาก payload — ระดับบนสุดก่อน แล้วค่อย `limits` array
+    ///
+    /// payload พก​ตัวเลขชุดเดียวกันมาสองที่ ระดับบนสุดกำกวมน้อยกว่า (คีย์บอกชนิด
+    /// ตรงตัว) จึงอ่านก่อน `utilization` เป็น float ส่วน `percent` เป็น int —
+    /// ปัดทั้งคู่ ไม่ตัดทิ้ง ไม่งั้นสองทางจะต่างกันหนึ่งจุดที่ค่าอย่าง 16.6
+    ///
+    /// เปอร์เซ็นต์ที่ไม่มี `resets_at` ที่อ่านออกถือว่าไม่มีหน้าต่าง — ทิ้งทั้งบาน
+    /// เพราะกฎ "เพิ่มอย่างเดียว" เทียบได้ก็ต่อเมื่อรู้ว่าเป็นหน้าต่างเดียวกัน
+    /// ตัวเลขลอยๆ จะเข้า merge ในฐานะหน้าต่างใหม่ แล้วลากค่าที่ถูกต้องให้ถอยหลัง
+    static func window(
+        _ root: [String: Any], keys: [String], kind: String
+    ) -> (percent: Int, resetsAt: Date)? {
+        for key in keys {
+            guard let entry = root[key] as? [String: Any],
+                let pct = (entry["utilization"] as? NSNumber)?.doubleValue,
+                let at = (entry["resets_at"] as? String).flatMap(parseISO)
+            else { continue }
+            return (Int(pct.rounded()), at)
+        }
+
+        for case let entry as [String: Any] in root["limits"] as? [Any] ?? [] {
+            guard entry["kind"] as? String == kind,
+                let pct = (entry["percent"] as? NSNumber)?.doubleValue,
+                let at = (entry["resets_at"] as? String).flatMap(parseISO)
+            else { continue }
+            return (Int(pct.rounded()), at)
+        }
+        return nil
+    }
+
+    /// จบงานของทั้งสองทางเข้า — merge, ประทับเวลา, เขียน
+    ///
+    /// ทางเข้าที่สอง ไม่ใช่ module ที่สอง: ทั้งสองทางต้องผ่านบรรทัดชุดนี้ชุดเดียว
+    /// ไม่งั้นวันที่รูปแบบไฟล์เปลี่ยน จะมีที่ให้ลืมแก้อยู่หนึ่งที่เสมอ
+    static func commit(
+        _ fields: [(String, String)], parts: [String], now: Date, to url: URL
+    ) -> String? {
         guard !fields.isEmpty else { return nil }
 
         var merged = merge(fields, into: url)
@@ -92,30 +123,6 @@ public enum UsageWriter {
         let text = merged.map { "\($0)=\($1)" }.joined(separator: "\n") + "\n"
         write(text, to: url)
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
-    }
-
-    /// หาหน้าต่างหนึ่งบานจาก payload — ระดับบนสุดก่อน แล้วค่อย `limits` array
-    ///
-    /// payload พก​ตัวเลขชุดเดียวกันมาสองที่ ระดับบนสุดกำกวมน้อยกว่า (คีย์บอกชนิด
-    /// ตรงตัว) จึงอ่านก่อน `utilization` เป็น float ส่วน `percent` เป็น int —
-    /// ปัดทั้งคู่ ไม่ตัดทิ้ง ไม่งั้นสองทางจะต่างกันหนึ่งจุดที่ค่าอย่าง 16.6
-    static func window(
-        _ root: [String: Any], keys: [String], kinds: [String]
-    ) -> (percent: Int, resetsAt: String?)? {
-        for key in keys {
-            guard let entry = root[key] as? [String: Any],
-                let pct = (entry["utilization"] as? NSNumber)?.doubleValue
-            else { continue }
-            return (Int(pct.rounded()), entry["resets_at"] as? String)
-        }
-
-        for case let entry as [String: Any] in root["limits"] as? [Any] ?? [] {
-            guard let kind = entry["kind"] as? String, kinds.contains(kind),
-                let pct = (entry["percent"] as? NSNumber)?.doubleValue
-            else { continue }
-            return (Int(pct.rounded()), entry["resets_at"] as? String)
-        }
-        return nil
     }
 
     /// ISO8601 ที่มีเศษวินาทีบ้างไม่มีบ้าง — ลองทั้งสองแบบ

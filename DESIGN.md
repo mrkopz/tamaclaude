@@ -171,17 +171,20 @@ notification card · auto-reconnect · RGB LED กระพริบ · macOS me
 
 **ที่มาของตัวเลข** — Claude Code ป้อน JSON เข้า stdin ของคำสั่ง `statusLine` ทุกครั้งที่
 render และใน JSON นั้นมี `rate_limits.five_hour` / `.seven_day` (`used_percentage` 0–100
-กับ `resets_at` เป็น epoch) นี่คือแหล่งเดียวที่ใช้ — **ไม่มี sessionKey ไม่ยิงเน็ต
-ไม่แตะ Keychain** และไม่ต้องมี timer เพราะ Claude Code เป็นตัวเรียกให้เอง
+กับ `resets_at` เป็น epoch) นี่คือแหล่งตั้งต้นและเป็นแหล่งเดียวที่ทำงานได้เอง —
+**ไม่มี sessionKey ไม่ยิงเน็ต ไม่แตะ Keychain** และไม่ต้องมี timer เพราะ Claude Code
+เป็นตัวเรียกให้เอง
 
 ข้อจำกัดที่เอกสารระบุ: `rate_limits` มีเฉพาะบัญชี Pro/Max และเฉพาะหลัง API response แรก
 ของ session · แต่ละหน้าต่างหายไปอิสระต่อกันได้
 
 **ทางเดินของข้อมูล**
 ```
-Claude Code --stdin--> ~/.tamaclaude/statusline.sh --> ~/.claude/.statusline-usage-cache
-                                   |                            |
-                          (ส่งต่อให้ statusline เดิม)      daemon อ่าน --> "u" --> บอร์ด
+Claude Code --stdin--> ~/.tamaclaude/statusline.sh --.
+                                   |                  \
+                          (ส่งต่อให้ statusline เดิม)   >--> ~/.claude/.statusline-usage-cache
+                                                      /                  |
+claude.ai /api/.../usage --payload--> UsageWriter ---'        daemon อ่าน --> "u" --> บอร์ด
 ```
 
 - **ยึดช่อง `statusLine.command` แต่ไม่เปลี่ยนสิ่งที่ผู้ใช้เห็น** — สคริปต์ของเราเขียน cache
@@ -192,6 +195,17 @@ Claude Code --stdin--> ~/.tamaclaude/statusline.sh --> ~/.claude/.statusline-usa
   เวลาเป็น ISO8601 เหมือนเดิม — สคริปต์ statusline ที่ผู้ใช้จูนไว้จึงอ่านต่อได้โดยไม่ต้องแก้
   ทั้งสองฝ่ายเขียนความหมายเดียวกัน ใครเขียนทีหลังก็ถูก และเขียนแบบ temp + rename
   จึงไม่มีใครอ่านเจอไฟล์ครึ่งๆ
+- **ทางเข้าที่สอง ไม่ใช่ตัวเขียน cache ตัวที่สอง** — payload ของ `/api/organizations/<org>/usage`
+  (รูปแบบดูที่ `docs/claude-usage-api.md`) เข้าทาง `UsageWriter.ingestAPI` ซึ่งอยู่ใน enum
+  เดียวกับทางเข้าของ statusline และจบที่ `merge`/`write` ชุดเดียวกัน เหตุผลคือกฎ
+  "ภายในหน้าต่างเดียวกัน เปอร์เซ็นต์เพิ่มอย่างเดียว" ต้องมีเจ้าของคนเดียว ถ้าแยกไปเขียน cache
+  จากอีกที่ กฎจะมีสองสำเนาแล้ววันหนึ่งจะไม่ตรงกัน กับดักสองอันที่เทสต์ปักไว้: `utilization`
+  เป็น float ส่วน `percent` เป็น int จึง**ปัด**ทั้งคู่ ไม่ตัดทิ้ง (16.6 ไม่งั้นได้ 16 ทางหนึ่ง
+  17 อีกทางหนึ่ง) · และเวลาต้องผ่าน formatter ตัวเดิมก่อนเขียนเสมอ ไม่ส่ง ISO ดิบลงไฟล์
+  เพราะ `…:00Z` กับ `…:00.482Z` คือหน้าต่างเดียวกันแต่คนละสตริง แล้ว merge จะนึกว่า
+  หน้าต่างหมุนและปล่อยให้เปอร์เซ็นต์ถอยหลัง — เปอร์เซ็นต์ที่ไม่มี `resets_at` ที่อ่านออก
+  จึงถูกทิ้งทั้งบาน ตัวเลขที่ไม่รู้ว่าอยู่หน้าต่างไหนเทียบกับกฎไม่ได้ · `weekly_scoped`
+  เป็น limit ราย model ไม่ใช่ของทั้งบัญชี จึงไม่เคยถูกอ่านเป็น weekly
 - **ส่ง "วินาทีที่เหลือ" ไม่ใช่เวลารีเซ็ต** — `"u":[[35,10800],[48,111600]]` บอร์ดนับถอยลงเอง
   ผลคือ countdown ยังเดินถูกตอน BLE หลุด และ daemon ไม่ต้องยิงใหม่ทุกนาที
   ค่าที่ส่งถูกปัดลงเป็นนาที ไม่งั้น snapshot ต่างกันทุกวินาทีแล้วบอร์ดโดนยิงวินาทีละครั้ง

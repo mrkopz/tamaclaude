@@ -365,7 +365,7 @@ func runAllTests() {
         text = try String(contentsOf: url, encoding: .utf8)
         expect(text.contains("UTILIZATION=17"), "the array path agrees with the top-level path")
         expect(text.contains("WEEKLY_UTILIZATION=42"), "weekly_all is the account-wide window")
-        expect(!text.contains("99"), "weekly_scoped is per-model and is never read as weekly")
+        expect(!text.contains("=99"), "weekly_scoped is per-model and is never read as any window")
 
         // weekly_scoped อย่างเดียวไม่ใช่ weekly — ต้องไม่มีคีย์ weekly เลย ไม่ใช่เขียนเป็น 0
         try? FileManager.default.removeItem(at: url)
@@ -430,9 +430,14 @@ func runAllTests() {
             """
         try Data(before.utf8).write(to: url)
 
+        // เปอร์เซ็นต์ที่ไม่รู้ว่าอยู่หน้าต่างไหน (ไม่มี resets_at หรือ parse ไม่ออก) ใช้ไม่ได้ —
+        // ถ้าปล่อยผ่าน merge จะนับเป็นหน้าต่างใหม่แล้วลากค่าที่ถูกต้องให้ถอยหลัง
         for junk in ["not json at all", "[]", "{}", #"{"limits":[]}"#,
                      #"{"limits":[{"kind":"weekly_scoped","percent":9}]}"#,
-                     #"{"five_hour":{"resets_at":"2023-11-15T03:00:00Z"}}"#] {
+                     #"{"five_hour":{"resets_at":"2023-11-15T03:00:00Z"}}"#,
+                     #"{"five_hour":{"utilization":9}}"#,
+                     #"{"five_hour":{"utilization":9,"resets_at":"tuesday-ish"}}"#,
+                     #"{"limits":[{"kind":"session","percent":9}]}"#] {
             expect(UsageWriter.ingestAPI(Data(junk.utf8), now: t0, to: url) == nil,
                    "nothing to record in: \(junk)")
         }
