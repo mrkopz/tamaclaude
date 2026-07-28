@@ -7,7 +7,7 @@ import TamaCore
 /// มีรายการใหม่หรือ daemon ต่อสายใหม่ ไฟล์นี้เปลี่ยนเมื่อหน้าตาของแบดจ์เปลี่ยน
 enum MenuBadgeImage {
     private static let barWidth: CGFloat = 35
-    private static let barHeight: CGFloat = 13
+    private static let barHeight: CGFloat = 11
     private static let gap: CGFloat = 5
     /// สูงกว่านี้ระบบย่อภาพให้เองแล้วเส้นขอบ 1 px กลายเป็นเส้นเบลอครึ่งพิกเซล
     private static let height: CGFloat = 16
