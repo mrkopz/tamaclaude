@@ -36,11 +36,41 @@ def _f(v: float) -> str:
 def _emit_section(name: str, values: dict) -> list[str]:
     lines = []
     for k, v in values.items():
+        if isinstance(v, list):
+            continue  # ตารางไปออกเป็น C array ไม่ใช่ #define — ดู _emit_tables
         macro = f"CT_{name.upper()}_{k.upper()}"
         if isinstance(v, float):
             lines.append(f"#define {macro:<28} {_f(v)}")
         else:
             lines.append(f"#define {macro:<28} {v}")
+    return lines
+
+
+def _emit_tables(name: str, values: dict) -> list[str]:
+    """ตารางใน layout.toml -> C array + มาโครนับจำนวน
+
+    ตำแหน่งดาว/กอหญ้า/เมฆต้องเป็นชุดเดียวกันเป๊ะทั้งสองฝั่ง ถ้าปล่อยให้แต่ละฝั่งสุ่มเอง
+    ภาพบน preview จะไม่ใช่ภาพบนบอร์ด แล้ว preview ก็หมดประโยชน์
+    """
+    lines: list[str] = []
+    for k, v in values.items():
+        if not isinstance(v, list) or not v:
+            continue
+        sym = f"ct_{name}_{k}"
+        count = f"CT_{name.upper()}_{k.upper()}_COUNT"
+        lines.append(f"#define {count:<28} {len(v)}")
+        if isinstance(v[0], list):
+            cols = len(v[0])
+            if any(len(row) != cols for row in v):
+                raise ValueError(f"{name}.{k}: ทุกแถวต้องยาวเท่ากัน")
+            lines.append(f"static const int16_t {sym}[{count}][{cols}] = {{")
+            for row in v:
+                lines.append("    {" + ", ".join(f"{c:>3}" for c in row) + "},")
+        else:
+            lines.append(f"static const int16_t {sym}[{count}] = {{")
+            for i in range(0, len(v), 12):
+                lines.append("    " + ", ".join(f"{c:>3}" for c in v[i:i + 12]) + ",")
+        lines += ["};", ""]
     return lines
 
 
@@ -50,10 +80,13 @@ def build_header() -> str:
         "// แก้ที่ layout.toml แล้วรัน: python3 tools/export_layout.py",
         "#pragma once",
         "",
+        "#include <stdint.h>",
+        "",
     ]
-    for section in ("screen", "topbar", "slots", "card", "usage", "stroll", "mascot"):
+    for section in ("screen", "topbar", "slots", "card", "usage", "stroll", "sky", "mascot"):
         out += _emit_section(section, _raw[section])
         out.append("")
+        out += _emit_tables(section, _raw[section])
 
     out += [
         "// กรอบวาดมาสคอตรวม prop (หน่วย unit) — มาจาก tools/gen/props.py",

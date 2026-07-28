@@ -383,3 +383,9 @@ void ct_mascot_build_centered(ct_rects_t *out, ct_state_t state, float phase, bo
     ct_mascot_build(out, state, phase, connected, cycle);
     ct_rects_move_from(out, 0, s_center_dx[state], 0.0f);
 }
+
+float ct_mascot_center_dx(ct_state_t state)
+{
+    if (state < 0 || state >= CT_STATE_COUNT) state = CT_STATE_IDLE;
+    return s_center_dx[state];
+}

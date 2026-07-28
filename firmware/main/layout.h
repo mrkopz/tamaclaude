@@ -2,6 +2,8 @@
 // แก้ที่ layout.toml แล้วรัน: python3 tools/export_layout.py
 #pragma once
 
+#include <stdint.h>
+
 #define CT_SCREEN_WIDTH              320
 #define CT_SCREEN_HEIGHT             240
 
@@ -29,6 +31,52 @@
 #define CT_STROLL_SPEED_PX_S         34
 #define CT_STROLL_PAUSE_S            2.5f
 #define CT_STROLL_PAD_PX             96
+
+#define CT_SKY_HORIZON               93
+#define CT_SKY_DAWN_HOUR             5
+#define CT_SKY_DAY_HOUR              7
+#define CT_SKY_DUSK_HOUR             17
+#define CT_SKY_NIGHT_HOUR            19
+#define CT_SKY_DISC_R                7
+#define CT_SKY_ARC_PEAK              58
+#define CT_SKY_ARC_PAD               0
+#define CT_SKY_TWINKLE_N             4
+#define CT_SKY_LOW_STAR_N            6
+#define CT_SKY_CLOUD_SPEED_PX_S      4
+#define CT_SKY_CLOUD_PAD             60
+
+#define CT_SKY_STARS_COUNT           16
+static const int16_t ct_sky_stars[CT_SKY_STARS_COUNT][2] = {
+    { 14,  30},
+    { 58,  66},
+    {103,  38},
+    {171,  72},
+    { 33,  52},
+    { 76,  26},
+    { 92,  78},
+    {128,  55},
+    {149,  33},
+    {186,  44},
+    {205,  70},
+    {229,  28},
+    {247,  58},
+    {268,  80},
+    {289,  41},
+    {307,  64},
+};
+
+#define CT_SKY_CLOUDS_COUNT          3
+static const int16_t ct_sky_clouds[CT_SKY_CLOUDS_COUNT][3] = {
+    { 40,  40,  44},
+    {150,  62,  36},
+    {250,  30,  52},
+};
+
+#define CT_SKY_GRASS_X_COUNT         24
+static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
+      4,  13,  35,  41,  55,  62,  88,  99, 104, 123, 131, 155,
+    168, 174, 191, 200, 228, 235, 247, 268, 273, 288, 298, 310,
+};
 
 #define CT_MASCOT_GRID_W             17
 #define CT_MASCOT_GRID_H             11.2f
@@ -58,6 +106,30 @@
 #define CT_COL_STEEL                 0x53B1
 #define CT_COL_ALERT                 0xDAA9
 #define CT_COL_GOOD                  0x5D4B
+#define CT_COL_SKY_NIGHT             0x0863
+#define CT_COL_SKY_DAWN              0x3A4F
+#define CT_COL_SKY_DAY               0xBEFE
+#define CT_COL_SKY_DUSK              0x79CA
+#define CT_COL_GROUND_NIGHT          0x10C3
+#define CT_COL_GROUND_DAWN           0x1926
+#define CT_COL_GROUND_DAY            0x29C5
+#define CT_COL_GROUND_DUSK           0x28E4
+#define CT_COL_SUN                   0xF525
+#define CT_COL_SUN_LOW               0xEC09
+#define CT_COL_MOON                  0xCE7B
+#define CT_COL_STAR                  0xEF1B
+#define CT_COL_STAR_DIM              0x6BD1
+#define CT_COL_CLOUD_DAY             0xF7DF
+#define CT_COL_CLOUD_DAWN            0x5B73
+#define CT_COL_CLOUD_DUSK            0xAAEE
+#define CT_COL_GRASS_NIGHT           0x2A07
+#define CT_COL_GRASS_DAWN            0x3287
+#define CT_COL_GRASS_DAY             0x6D4B
+#define CT_COL_GRASS_DUSK            0x5A87
+#define CT_COL_SHADOW_NIGHT          0x0862
+#define CT_COL_SHADOW_DAWN           0x10A3
+#define CT_COL_SHADOW_DAY            0x1923
+#define CT_COL_SHADOW_DUSK           0x18A3
 
 // visual state — daemon ส่งค่าพวกนี้มาบน BLE ห้ามเรียงใหม่
 typedef enum {

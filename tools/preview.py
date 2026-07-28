@@ -155,6 +155,23 @@ SCENES: dict[str, screen.Screen] = {
 }
 
 
+# ฉากตรวจท้องฟ้า — ไม่มี session เลย ซึ่งเป็นสภาพที่จอเป็นเกือบตลอดเวลา
+# และเป็นตอนที่ฟ้าโล่งที่สุด ส่วนตอนถูกมาสคอตบังดูได้จาก screen_busy/waiting
+SKY_CLOCKS = {"dawn": "05:40", "day": "12:00", "dusk": "18:10", "night": "02:14"}
+
+
+def sky_scene(clock: str) -> screen.Screen:
+    return screen.Screen(
+        sessions=[],
+        clock=clock,
+        date="Mon 27 Jul",
+        usage=[
+            screen.Usage("Current", SESSION_WINDOW, 35, 3 * 3600 + 5 * 60),
+            screen.Usage("Weekly", WEEKLY_WINDOW, 48, 31 * 3600),
+        ],
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sheet", action="store_true", help="เฉพาะ contact sheet")
@@ -191,6 +208,22 @@ def main() -> None:
         frames[0].save(OUT / f"screen_{name}.gif", save_all=True,
                        append_images=frames[1:], duration=90, loop=0)
     print(f"screen_*.png/gif      {len(SCENES)} ฉาก  (320x240)")
+
+    for name, clock in SKY_CLOCKS.items():
+        sc = sky_scene(clock)
+        # cycle 6 = จังหวะที่มาสคอตเดินมาถึงกลางจอพอดี — ที่ cycle 0 มันยังอยู่นอกจอ
+        # แล้วภาพตรวจจะไม่มีสิ่งที่ต้องตรวจ (มาสคอตยืนบนพื้น + contrast กับฟ้า)
+        img = screen.render(sc, 0.25, 6)
+        img.save(OUT / f"sky_{name}.png")
+        big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
+        big.save(OUT / f"sky_{name}@{args.scale}x.png")
+        frames = [
+            screen.render(sc, (f % FRAMES) / FRAMES, f // FRAMES)
+            for f in range(FRAMES * STROLL_LOOPS)
+        ]
+        frames[0].save(OUT / f"sky_{name}.gif", save_all=True,
+                       append_images=frames[1:], duration=90, loop=0)
+    print(f"sky_*.png/gif         {len(SKY_CLOCKS)} ช่วงเวลา")
     print(f"\nout/ -> {OUT}")
 
 

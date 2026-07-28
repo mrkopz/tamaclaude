@@ -10,9 +10,12 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import mascot
+from . import mascot, sky
 from .config import L, PAL
+from .mascot import BODY
 from .props import BOX_X0, BOX_X1, BOX_Y1
+
+BODY_CX = BODY[0] + BODY[2] / 2  # กึ่งกลางลำตัวในหน่วย unit — จุดที่เงาต้องอยู่ใต้
 from .render import draw_rects, quantize565
 
 _FONTS: dict[int, ImageFont.FreeTypeFont] = {}
@@ -152,16 +155,32 @@ def slot_x(i: int, n: int) -> int:
     return round((L.screen.width - n * L.slots.width) / 2) + i * L.slots.width
 
 
+# เงาใต้เท้า — กว้าง 11 unit (แคบกว่าช่วงขา 14 unit) วางอยู่ใต้เส้นขอบฟ้าทั้งก้อน
+# ขนาดคงที่ ไม่ยุบตามความสูงที่กระโดด: หน้าที่ของมันคือปักหมุดว่า "พื้นอยู่ตรงนี้"
+# เงาที่ยุบตามจะกลายเป็นสิ่งที่ต้องมองแทนที่จะเป็นสิ่งที่ทำให้มองตัวละครถูก
+SHADOW_W = 11.0
+
+
+def _shadow(draw: ImageDraw.ImageDraw, cx: float, color: str | None) -> None:
+    if color is None:
+        return
+    half = SHADOW_W * L.slots.unit_px / 2
+    y = L.sky.horizon
+    # แคปซูล ไม่ใช่วงรี — ฝั่ง LVGL วาดด้วย lv_draw_rect ที่ radius ถูก clamp ครึ่งด้านสั้น
+    # ซึ่งได้แคปซูล ถ้า preview ใช้วงรีจริง สองฝั่งจะไม่ตรงกัน
+    draw.rounded_rectangle([round(cx - half), y, round(cx + half), y + 4],
+                           radius=2, fill=quantize565(color))
+
+
 def _slot(draw: ImageDraw.ImageDraw, i: int, sess: Session | None, s: Screen,
           phase: float, cycle: int, n: int) -> None:
     sw, top, sh = L.slots.width, L.slots.top, L.slots.height
     if sess is None:
         return
     x = slot_x(i, n)
-    # ไม่สลับสีพื้นหลัง slot — เส้นคั่นบางๆ พอ พื้นหลังเป็นแถบทำให้ prop
-    # ของตัวหนึ่งไปตกบนพื้นของอีก slot แล้วอ่านผิดว่าเป็นของตัวข้างๆ
-    if i:  # เส้นคั่นเฉพาะระหว่างตัวที่อยู่ติดกัน
-        draw.rectangle([x, top + 12, x, top + sh - 24], fill=quantize565(PAL.bg_slot))
+    # ไม่มีทั้งพื้นหลัง slot สลับสีและเส้นคั่น — ฉากเป็นผืนเดียวกันทั้งจอ เส้นแบ่งใดๆ
+    # ตัดมันออกเป็นชิ้น ส่วนหน้าที่เดิมของเส้นคั่น (กันไม่ให้ prop ของตัวหนึ่งอ่านเป็น
+    # ของตัวข้างๆ) ตอนนี้เงาใต้เท้าทำแทน: มันบอกว่าแต่ละตัวยืนอยู่ตรงไหน
 
     px = L.slots.unit_px
     foot_px = top + sh - L.slots.baseline_pad
@@ -169,6 +188,12 @@ def _slot(draw: ImageDraw.ImageDraw, i: int, sess: Session | None, s: Screen,
     ox = x + sw / 2 - (BOX_X0 + BOX_X1) / 2 * px
 
     p = phase + sess.phase_offset
+    # เงาเกาะกับ *ลำตัว* ไม่ใช่กึ่งกลาง slot — build_centered จัดกึ่งกลางกรอบที่รวม prop
+    # ด้วย ท่าที่ถือของชิ้นใหญ่จึงมีลำตัวเยื้องไปจากกึ่งกลาง slot
+    bx0, _, bx1, _ = mascot.state_box(sess.state)
+    body_cx = x + sw / 2 + (BODY_CX - (bx0 + bx1) / 2) * px
+    _shadow(draw, body_cx, sky.shadow_color(s.clock, s.connected))
+
     rects = mascot.build_centered(sess.state, p % 1.0, s.connected, cycle + int(p))
     draw_rects(draw, rects, px, ox, oy)
 
@@ -214,8 +239,11 @@ def _stroll(draw: ImageDraw.ImageDraw, s: Screen, phase: float, cycle: int) -> N
     state, x = stroll_pose(cycle + phase)
     px = L.slots.unit_px
     foot_px = L.slots.top + L.slots.height - L.slots.baseline_pad
+    ox = x - BOX_X0 * px
+    # ตัวเดินเล่นใช้ build() ตรงๆ ไม่ผ่าน build_centered จึงไม่มี dx มาชดเชย
+    _shadow(draw, ox + BODY_CX * px, sky.shadow_color(s.clock, s.connected))
     draw_rects(draw, mascot.build(state, phase, s.connected, cycle), px,
-               x - BOX_X0 * px, foot_px - BOX_Y1 * px)
+               ox, foot_px - BOX_Y1 * px)
 
 
 CARD_H = 36
@@ -374,6 +402,10 @@ def _idle_clock(draw: ImageDraw.ImageDraw, s: Screen) -> None:
 def render(s: Screen, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     img = Image.new("RGB", (L.screen.width, L.screen.height), quantize565(PAL.bg))
     draw = ImageDraw.Draw(img)
+    # ฉากอยู่หลังทุกอย่าง กินเต็มจอใต้แถบบน — มาสคอตยืนทับ ยอมให้บังดวงอาทิตย์/ดาว
+    # การถูกบังคือระยะลึก ไม่ใช่ของหาย และตอนไม่มี session (ซึ่งเป็นเกือบตลอดเวลา)
+    # ฟ้าโล่งทั้งแถบอยู่แล้ว
+    sky.draw(draw, s.clock, s.connected, cycle + phase)
     _topbar(draw, s)
     n = min(len(s.sessions), L.slots.count)
     if n == 0:

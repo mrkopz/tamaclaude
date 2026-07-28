@@ -20,3 +20,9 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
 // ระดับฝ่าเท้าไม่ขยับ — จัดกึ่งกลางเฉพาะแกน x
 void ct_mascot_build_centered(ct_rects_t *out, ct_state_t state, float phase, bool connected,
                               int cycle);
+
+// ระยะที่ build_centered เลื่อนสถานะนั้นไป (unit) — ต้องเรียกหลัง ct_mascot_init
+//
+// เงาใต้เท้าต้องเกาะกึ่งกลาง *ลำตัว* ไม่ใช่กึ่งกลาง slot: build_centered จัดกึ่งกลาง
+// กรอบที่รวม prop ด้วย ท่าที่ถือของชิ้นใหญ่จึงมีลำตัวเยื้องออกจากกึ่งกลาง slot
+float ct_mascot_center_dx(ct_state_t state);

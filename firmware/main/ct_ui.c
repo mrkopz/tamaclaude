@@ -50,6 +50,41 @@ static bool s_connected = false;
 #define USAGE_TOP_W 34
 #define USAGE_TOP_H 6
 
+// --- ฉากท้องฟ้า ---------------------------------------------------------------
+// ฟ้า 22..93 แล้วพื้นดินลงไปถึงก้นจอ — วาดในผืนเดียวหลังทุกอย่าง
+// ตรรกะทั้งหมดต้องตรงกับ tools/gen/sky.py
+typedef enum {
+    CT_SKY_NIGHT = 0,
+    CT_SKY_DAWN,
+    CT_SKY_DAY,
+    CT_SKY_DUSK,
+    CT_SKY_PHASE_COUNT,
+    CT_SKY_NONE,  // ไม่ต่อลิงก์ หรือยังไม่รู้เวลา -> ไม่มีฉากเลย
+} ct_sky_phase_t;
+
+static const uint16_t SKY_BG[CT_SKY_PHASE_COUNT] = {CT_COL_SKY_NIGHT, CT_COL_SKY_DAWN,
+                                                    CT_COL_SKY_DAY, CT_COL_SKY_DUSK};
+static const uint16_t SKY_GROUND[CT_SKY_PHASE_COUNT] = {
+    CT_COL_GROUND_NIGHT, CT_COL_GROUND_DAWN, CT_COL_GROUND_DAY, CT_COL_GROUND_DUSK};
+static const uint16_t SKY_GRASS[CT_SKY_PHASE_COUNT] = {
+    CT_COL_GRASS_NIGHT, CT_COL_GRASS_DAWN, CT_COL_GRASS_DAY, CT_COL_GRASS_DUSK};
+static const uint16_t SKY_SHADOW[CT_SKY_PHASE_COUNT] = {
+    CT_COL_SHADOW_NIGHT, CT_COL_SHADOW_DAWN, CT_COL_SHADOW_DAY, CT_COL_SHADOW_DUSK};
+// กลางคืนไม่มีเมฆ ช่องแรกจึงไม่ถูกใช้
+static const uint16_t SKY_CLOUD[CT_SKY_PHASE_COUNT] = {0, CT_COL_CLOUD_DAWN, CT_COL_CLOUD_DAY,
+                                                       CT_COL_CLOUD_DUSK};
+
+// เงาใต้เท้า — กว้าง 11 unit วางใต้เส้นขอบฟ้า ตรงกับ SHADOW_W ใน tools/gen/screen.py
+#define SHADOW_W_UNIT 11.0f
+#define SHADOW_H 5
+// กึ่งกลางลำตัวในหน่วย unit (BODY = 1.0 กว้าง 14.0 ใน tools/gen/mascot.py)
+#define BODY_CX 8.0f
+
+static lv_obj_t *s_sky;
+static ct_sky_phase_t s_sky_phase = CT_SKY_NONE;
+static float s_sky_hours = -1.0f;  // เวลาที่ใช้หาตำแหน่งดวง — <0 คือไม่รู้
+static int s_cloud_shift = -1;     // เมฆเลื่อนไปกี่พิกเซลแล้ว ใช้ตัดสินว่าต้องวาดใหม่ไหม
+
 static lv_obj_t *s_stroll;  // มาสคอตเดินข้ามจอตอนไม่มี session — กินแถบ slot ทั้งแถบ
 static lv_obj_t *s_dot, *s_link, *s_clock_small, *s_overflow, *s_usage_top;
 static lv_obj_t *s_usage_track, *s_usage_fill;
@@ -73,6 +108,159 @@ static lv_color_t ct_color(uint16_t c)
 static int slot_x(int i, int n)
 {
     return (int)lroundf((CT_SCREEN_WIDTH - n * CT_SLOTS_WIDTH) / 2.0f) + i * CT_SLOTS_WIDTH;
+}
+
+// "14:32" -> 14.533 · คืนค่าติดลบเมื่ออ่านไม่ได้
+// ติดลบไม่ใช่เที่ยงคืน แต่คือ "ยังไม่รู้เวลา" — ตอนบูตก่อน sync ครั้งแรก clock เป็น "--:--"
+// ต้องตกมาทางนี้ ไม่ใช่ไปโผล่เป็นฉากกลางดึก
+static float ct_clock_hours(const char *c)
+{
+    for (int i = 0; i < 5; i++) {
+        if (c[i] == '\0') return -1.0f;
+    }
+    if (c[2] != ':') return -1.0f;
+    for (int i = 0; i < 5; i++) {
+        if (i == 2) continue;
+        if (c[i] < '0' || c[i] > '9') return -1.0f;
+    }
+    int h = (c[0] - '0') * 10 + (c[1] - '0');
+    int m = (c[3] - '0') * 10 + (c[4] - '0');
+    if (h > 23 || m > 59) return -1.0f;
+    return (float)h + (float)m / 60.0f;
+}
+
+// ชั่วโมง -> ช่วง — กระโดดที่ขอบ ไม่ผสมสีระหว่างช่วง
+static ct_sky_phase_t sky_phase_at(float t)
+{
+    if (t < CT_SKY_DAWN_HOUR || t >= CT_SKY_NIGHT_HOUR) return CT_SKY_NIGHT;
+    if (t < CT_SKY_DAY_HOUR) return CT_SKY_DAWN;
+    if (t < CT_SKY_DUSK_HOUR) return CT_SKY_DAY;
+    return CT_SKY_DUSK;
+}
+
+// สัดส่วนของเส้นทาง (0..1) -> จุดกึ่งกลางดวงบนส่วนโค้ง
+// ที่ u=0 และ u=1 ดวงอยู่บนเส้นขอบฟ้าพอดี (จมครึ่งดวง) ที่ขอบจอทั้งสองข้าง
+static void sky_arc(float u, float *x, float *y)
+{
+    *x = -(float)CT_SKY_ARC_PAD + u * (float)(CT_SCREEN_WIDTH + 2 * CT_SKY_ARC_PAD);
+    *y = (float)CT_SKY_HORIZON - sinf((float)M_PI * u) * (float)CT_SKY_ARC_PEAK;
+}
+
+// ดวงอาทิตย์ 05:00->19:00 · ดวงจันทร์ 19:00->05:00 — มีดวงใดดวงหนึ่งบนฟ้าเสมอ
+static void sky_disc(float t, float *x, float *y, uint16_t *color)
+{
+    if (t >= CT_SKY_DAWN_HOUR && t < CT_SKY_NIGHT_HOUR) {
+        sky_arc((t - CT_SKY_DAWN_HOUR) / (float)(CT_SKY_NIGHT_HOUR - CT_SKY_DAWN_HOUR), x, y);
+        ct_sky_phase_t p = sky_phase_at(t);
+        *color = (p == CT_SKY_DAWN || p == CT_SKY_DUSK) ? CT_COL_SUN_LOW : CT_COL_SUN;
+        return;
+    }
+    float span = (float)(24 - CT_SKY_NIGHT_HOUR + CT_SKY_DAWN_HOUR);
+    sky_arc(fmodf(t - CT_SKY_NIGHT_HOUR + 24.0f, 24.0f) / span, x, y);
+    *color = CT_COL_MOON;
+}
+
+static void fill_rect(lv_layer_t *layer, int x0, int y0, int x1, int y1, uint16_t color,
+                      int radius)
+{
+    if (x1 < x0 || y1 < y0) return;
+    lv_draw_rect_dsc_t dsc;
+    lv_draw_rect_dsc_init(&dsc);
+    dsc.bg_opa = LV_OPA_COVER;
+    dsc.border_width = 0;
+    dsc.bg_color = ct_color(color);
+    dsc.radius = radius;
+    lv_area_t a = {.x1 = x0, .y1 = y0, .x2 = x1, .y2 = y1};
+    lv_draw_rect(layer, &dsc, &a);
+}
+
+static void draw_stars(lv_layer_t *layer, ct_sky_phase_t phase)
+{
+    if (phase == CT_SKY_DAY) return;
+    if (phase != CT_SKY_NIGHT) {
+        // ฟ้ายังสว่างเกินกว่าจะเห็นทั้งหมด — ดวงแรกๆ สีหรี่ ไม่กะพริบ
+        for (int i = 0; i < CT_SKY_LOW_STAR_N; i++) {
+            int x = ct_sky_stars[i][0], y = ct_sky_stars[i][1];
+            fill_rect(layer, x, y, x, y, CT_COL_STAR_DIM, 0);
+        }
+        return;
+    }
+    for (int i = 0; i < CT_SKY_STARS_COUNT; i++) {
+        int x = ct_sky_stars[i][0], y = ct_sky_stars[i][1];
+        if (i >= CT_SKY_TWINKLE_N) {
+            fill_rect(layer, x, y, x, y, CT_COL_STAR, 0);
+        } else if ((s_cycle + i * 2) % 3 == 0) {
+            // กะพริบเฉพาะดวงแรกๆ ที่ 1 วินาทีต่อขั้น — เร็วกว่านี้อ่านเป็นสัญญาณเตือน
+            fill_rect(layer, x, y, x, y, CT_COL_STAR_DIM, 0);
+        } else {
+            fill_rect(layer, x, y, x + 1, y + 1, CT_COL_STAR, 0);
+        }
+    }
+}
+
+static void draw_clouds(lv_layer_t *layer, ct_sky_phase_t phase, float t)
+{
+    if (phase == CT_SKY_NIGHT) return;
+    uint16_t color = SKY_CLOUD[phase];
+    float span = (float)(CT_SCREEN_WIDTH + 2 * CT_SKY_CLOUD_PAD);
+    for (int i = 0; i < CT_SKY_CLOUDS_COUNT; i++) {
+        float base_x = ct_sky_clouds[i][0];
+        int y = ct_sky_clouds[i][1], w = ct_sky_clouds[i][2];
+        float x = fmodf(base_x + t * (float)CT_SKY_CLOUD_SPEED_PX_S, span) - CT_SKY_CLOUD_PAD;
+        int xi = (int)lroundf(x);
+        fill_rect(layer, xi, y, xi + w, y + 9, color, 4);
+        // ก้อนบนทำให้อ่านเป็นเมฆ ไม่ใช่แถบ — เยื้องซ้ายของกึ่งกลาง ไม่ใช่สมมาตร
+        int bx = (int)lroundf(x + w * 0.2f), bw = (int)lroundf(w * 0.45f);
+        fill_rect(layer, bx, y - 5, bx + bw, y + 4, color, 4);
+    }
+}
+
+// กอหญ้างอกขึ้นจากเส้นขอบฟ้าไปในฟ้า — ก้านกลางสูงสุด ขนาบด้วยก้านสั้นสองข้าง
+// งอกขึ้น ไม่ใช่ห้อยลง: หญ้าที่ยื่นลงไปในพื้นอ่านเป็นรอยขีดบนดิน ไม่ใช่ต้นไม้
+static void draw_grass(lv_layer_t *layer, ct_sky_phase_t phase)
+{
+    uint16_t color = SKY_GRASS[phase];
+    int y = CT_SKY_HORIZON - 1;
+    for (int i = 0; i < CT_SKY_GRASS_X_COUNT; i++) {
+        int x = ct_sky_grass_x[i];
+        int main = 2 + i % 4, side = 1 + i % 3;  // สูงเท่ากันหมดอ่านเป็นรั้ว ไม่ใช่หญ้า
+        fill_rect(layer, x, y - main, x, y, color, 0);
+        fill_rect(layer, x - 2, y - side, x - 2, y, color, 0);
+        fill_rect(layer, x + 2, y - (side + 1) % 3, x + 2, y, color, 0);
+    }
+}
+
+static void sky_draw_cb(lv_event_t *e)
+{
+    if (s_sky_phase == CT_SKY_NONE) return;  // ไม่มีฉาก = ปล่อยให้เป็นพื้นจอเปล่า
+
+    lv_layer_t *layer = lv_event_get_layer(e);
+    ct_sky_phase_t phase = s_sky_phase;
+    fill_rect(layer, 0, CT_SLOTS_TOP, CT_SCREEN_WIDTH - 1, CT_SKY_HORIZON - 1, SKY_BG[phase], 0);
+
+    draw_stars(layer, phase);
+    float x, y;
+    uint16_t color;
+    sky_disc(s_sky_hours, &x, &y, &color);
+    int cx = (int)lroundf(x), cy = (int)lroundf(y), r = CT_SKY_DISC_R;
+    fill_rect(layer, cx - r, cy - r, cx + r, cy + r, color, LV_RADIUS_CIRCLE);
+    draw_clouds(layer, phase, (float)s_cycle + s_phase);
+
+    // พื้นดินวาดทับหลังสุด — ครึ่งล่างของดวงและเมฆที่ต่ำเกินไปถูกตัดที่เส้นขอบฟ้าเอง
+    fill_rect(layer, 0, CT_SKY_HORIZON, CT_SCREEN_WIDTH - 1, CT_SCREEN_HEIGHT - 1,
+              SKY_GROUND[phase], 0);
+    draw_grass(layer, phase);
+}
+
+// เงาใต้เท้า — ปักหมุดว่าพื้นอยู่ตรงไหน ทำให้ท่ากระโดดอ่านเป็นกระโดด ไม่ใช่ลอย
+// ขนาดคงที่ ไม่ยุบตามความสูงที่กระโดด
+static void draw_shadow(lv_layer_t *layer, float body_cx)
+{
+    if (s_sky_phase == CT_SKY_NONE) return;  // ไม่มีพื้นก็ไม่มีเงา
+    float half = SHADOW_W_UNIT * CT_SLOTS_UNIT_PX / 2.0f;
+    fill_rect(layer, (int)lroundf(body_cx - half), CT_SKY_HORIZON,
+              (int)lroundf(body_cx + half), CT_SKY_HORIZON + SHADOW_H - 1,
+              SKY_SHADOW[s_sky_phase], LV_RADIUS_CIRCLE);
 }
 
 // --- การวาดมาสคอต ------------------------------------------------------------
@@ -121,9 +309,11 @@ static void slot_draw_cb(lv_event_t *e)
     // แต่ละตัวเดินคนละจังหวะเล็กน้อย ไม่งั้นดูเป็นหุ่นยนต์ชุดเดียวกัน
     float phase = fmodf(s_phase + slot->index * 0.17f, 1.0f);
 
+    ct_state_t state = s_snap.sessions[slot->index].state;
+    draw_shadow(layer, ox + (BODY_CX + ct_mascot_center_dx(state)) * px);
+
     ct_rects_t rects;
-    ct_mascot_build_centered(&rects, s_snap.sessions[slot->index].state, phase, s_connected,
-                             s_cycle + slot->index);
+    ct_mascot_build_centered(&rects, state, phase, s_connected, s_cycle + slot->index);
     draw_mascot_rects(layer, &rects, ox, oy);
 }
 
@@ -175,10 +365,14 @@ static void stroll_draw_cb(lv_event_t *e)
 
     const float px = CT_SLOTS_UNIT_PX;
     float foot = coords.y1 + CT_SLOTS_HEIGHT - CT_SLOTS_BASELINE_PAD;
+    float ox = coords.x1 + x - CT_BOX_X0 * px;
+
+    // ตัวเดินเล่นใช้ build() ตรงๆ ไม่ผ่าน build_centered จึงไม่มี dx มาชดเชย
+    draw_shadow(layer, ox + BODY_CX * px);
 
     ct_rects_t rects;
     ct_mascot_build(&rects, state, s_phase, s_connected, s_cycle);
-    draw_mascot_rects(layer, &rects, coords.x1 + x - CT_BOX_X0 * px, foot - CT_BOX_Y1 * px);
+    draw_mascot_rects(layer, &rects, ox, foot - CT_BOX_Y1 * px);
 }
 
 // --- ตัวช่วยสร้าง widget ------------------------------------------------------
@@ -198,6 +392,39 @@ static lv_obj_t *plain_label(lv_obj_t *parent, const lv_font_t *font, uint16_t c
     lv_obj_set_style_text_color(l, ct_color(color), 0);
     lv_label_set_text(l, "");
     return l;
+}
+
+// ฉากอยู่หลังทุกอย่าง — ต้องสร้างก่อน widget อื่นทั้งหมด เพราะ LVGL เรียงชั้นตามลำดับสร้าง
+// ผืนเดียวตั้งแต่ใต้แถบบนถึงก้นจอ: card วาดพื้นทึบของตัวเองทับอยู่แล้ว
+static void build_sky(lv_obj_t *scr)
+{
+    s_sky = plain_obj(scr, CT_SCREEN_WIDTH, CT_SCREEN_HEIGHT - CT_TOPBAR_HEIGHT);
+    lv_obj_set_pos(s_sky, 0, CT_TOPBAR_HEIGHT);
+    lv_obj_add_event_cb(s_sky, sky_draw_cb, LV_EVENT_DRAW_MAIN, NULL);
+}
+
+// วาดฟ้าใหม่เฉพาะส่วนที่ขยับจริง — พื้นดินกับหญ้านิ่งตลอดช่วง ไม่ต้องแตะ
+// แถบฟ้า 320x71 = 22720 px ซึ่งน้อยกว่าที่แถบมาสคอตวาดใหม่ทุกเฟรมอยู่แล้ว
+static void invalidate_sky_band(void)
+{
+    lv_area_t a = {.x1 = 0, .y1 = CT_SLOTS_TOP, .x2 = CT_SCREEN_WIDTH - 1,
+                   .y2 = CT_SKY_HORIZON - 1};
+    lv_obj_invalidate_area(s_sky, &a);
+}
+
+// ช่วงเวลาเปลี่ยนเมื่อ clock เปลี่ยน (นาทีละครั้ง) หรือสถานะลิงก์เปลี่ยน
+// ต้องวาดใหม่ทั้งผืนตอนช่วงเปลี่ยน เพราะพื้นดินกับหญ้าเปลี่ยนสีด้วย
+static void update_sky(void)
+{
+    ct_sky_phase_t was = s_sky_phase;
+    float hours = s_connected ? ct_clock_hours(s_snap.clock) : -1.0f;
+    s_sky_hours = hours;
+    s_sky_phase = hours < 0.0f ? CT_SKY_NONE : sky_phase_at(hours);
+    if (s_sky_phase != was) {
+        lv_obj_invalidate(s_sky);
+    } else if (s_sky_phase != CT_SKY_NONE) {
+        invalidate_sky_band();  // ดวงเลื่อนไปตามนาทีที่เดิน
+    }
 }
 
 static void build_topbar(lv_obj_t *scr)
@@ -395,6 +622,7 @@ void ct_ui_init(void)
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
 
+    build_sky(scr);
     build_topbar(scr);
     build_slots(scr);
     build_stroll(scr);
@@ -648,6 +876,7 @@ void ct_ui_set_snapshot(const ct_snapshot_t *snap)
         lv_obj_add_flag(s_overflow, LV_OBJ_FLAG_HIDDEN);
     }
 
+    update_sky();
     layout_slots();
     layout_cards();
     layout_usage();
@@ -662,6 +891,7 @@ void ct_ui_set_connected(bool connected)
     lv_label_set_text(s_link, connected ? "tamaclaude" : "no link");
     lv_obj_set_style_text_color(s_link,
                                 ct_color(connected ? CT_COL_TEXT : CT_COL_TEXT_DIM), 0);
+    update_sky();  // หลุดลิงก์ = ฉากหายทั้งผืน clock ที่ค้างอยู่ไม่ใช่เวลาจริงอีกต่อไป
     layout_slots();
     for (int i = 0; i < CT_SLOTS_COUNT; i++) lv_obj_invalidate(s_slots[i].canvas);
     lv_obj_invalidate(s_stroll);
@@ -680,6 +910,16 @@ void ct_ui_tick(void)
         lv_obj_invalidate(s_slots[i].canvas);
     }
     if (s_snap.session_count == 0) lv_obj_invalidate(s_stroll);
+
+    // ฟ้าวาดใหม่ตอนเมฆขยับถึงพิกเซลถัดไป (~4 ครั้ง/วิ) หรือตอนวินาทีเดิน (ดาวกะพริบ)
+    // ไม่ใช่ทุกเฟรม — ที่ 60ms ต่อเฟรมจะได้ 16 ครั้ง/วิ โดยที่ภาพเปลี่ยนแค่ 4 ครั้ง
+    if (s_sky_phase != CT_SKY_NONE) {
+        int shift = (int)(((float)s_cycle + s_phase) * (float)CT_SKY_CLOUD_SPEED_PX_S);
+        if (shift != s_cloud_shift || second_passed) {
+            s_cloud_shift = shift;
+            invalidate_sky_band();
+        }
+    }
 
     // countdown เดินด้วยนาฬิกาของบอร์ดเอง ไม่ใช่ snapshot — เวลารีเซ็ตเป็นค่าสัมบูรณ์
     // BLE หลุดแล้วตัวเลขนี้ยังจริง ส่วนเปอร์เซ็นต์หยุดนิ่ง (ซึ่งถูก มันหยุดจริง)
