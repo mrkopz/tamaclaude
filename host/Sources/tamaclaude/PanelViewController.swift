@@ -37,8 +37,8 @@ final class PanelViewController: NSViewController {
         gear.target = self
         gear.action = #selector(gearClicked)
         gear.setContentHuggingPriority(.required, for: .horizontal)
-        // เมนูเด้งด้วยการกด ไม่ใช่การปล่อย — เหมือนปุ่มที่มีเมนูทุกตัวใน macOS
-        gear.setButtonType(.momentaryChange)
+        // เมนูเด้งตอนกดลง ไม่ใช่ตอนปล่อย — เหมือนปุ่มที่มีเมนูทุกตัวใน macOS
+        gear.cell?.sendAction(on: .leftMouseDown)
 
         let header = NSStackView(views: [heading, NSView(), gear])
         header.orientation = .horizontal
@@ -81,8 +81,9 @@ final class PanelViewController: NSViewController {
             footer.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
         view = root
-        // snapshot แรกมาช้ากว่าการเปิดแผงได้ — แผงเปล่าดูเหมือนแอปพัง
-        showSessions(Snapshot(clock: "", date: ""))
+        // view ถูกโหลดตอนแผงเปิดครั้งแรก ซึ่งช้ากว่า snapshot แรกเสมอ — แถวที่มาก่อนหน้านั้น
+        // อยู่ใน `sessions` แล้วและต้องรอด ตัวนี้เผื่อไว้เฉพาะกรณีที่ยังไม่เคยมี snapshot เลย
+        if shownRows.isEmpty { showSessions(Snapshot(clock: "", date: "")) }
     }
 
     private func separator() -> NSView {

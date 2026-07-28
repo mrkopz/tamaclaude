@@ -7,7 +7,7 @@ import TamaCore
 /// ไม่ได้สั่ง daemon อีกตัวจากระยะไกล แต่ *เป็น* daemon เอง (โปรเซสเดียว socket เดียว)
 /// เพราะสิทธิ์ Bluetooth ผูกกับ .app ที่ถูกปล่อยผ่าน LaunchServices เท่านั้น
 /// ถ้าแยกโปรเซสจะได้ daemon ที่ไม่มีสิทธิ์ต่อบอร์ด
-final class MenuBarApp: NSObject, NSApplicationDelegate {
+final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private let ble = BLETransport()
     private var daemon: Daemon!
@@ -52,10 +52,10 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
 
         panel.onGear = { [weak self] button in self?.showGearMenu(from: button) }
         popover.contentViewController = panel
+        popover.delegate = self
         // ไม่ใช้ .transient เพราะเมนูเฟืองที่เด้งจากในตัว popover จะปิดมันไปด้วย
         // ปิดเองด้วยตัวดักคลิกแทน แลกโค้ดไม่กี่บรรทัดกับแผงที่ไม่หายไปใต้เมนูของตัวเอง
         popover.behavior = .applicationDefined
-        showBoards([])
         refreshLink()
 
         if let saved = UserDefaults.standard.string(forKey: Self.preferredKey),
@@ -213,25 +213,27 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
     // MARK: - popover เปิด/ปิด
 
     @objc private func togglePanel() {
-        popover.isShown ? closePanel() : openPanel()
+        popover.isShown ? popover.performClose(nil) : openPanel()
     }
 
     private func openPanel() {
         guard let button = statusItem.button else { return }
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         // แอปที่ไม่มี Dock ไม่ได้ active เองตอนคลิกแถบเมนู ปุ่มในแผงจะกดไม่ติด
         NSApp.activate(ignoringOtherApps: true)
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         // popover ที่ไม่ใช่ .transient ไม่ปิดตัวเอง — คลิกนอกแอปคือสัญญาณเดียวที่เหลือ
         outsideClicks = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]
         ) { [weak self] _ in
-            self?.closePanel()
+            self?.popover.performClose(nil)
         }
         setHighlighted(true)
     }
 
-    private func closePanel() {
-        popover.performClose(nil)
+    /// เก็บกวาดที่ `popoverDidClose` ที่เดียว ไม่ใช่ที่ทุกจุดที่สั่งปิด — ทางปิดมีหลายทาง
+    /// (ปุ่มบนแถบเมนู, คลิกนอกแอป, ระบบสั่งปิดเอง) ตัวดักคลิกที่ค้างอยู่แม้แผงหายไปแล้ว
+    /// คือ monitor ที่ไม่มีวันถูกถอด
+    func popoverDidClose(_ notification: Notification) {
         if let outsideClicks { NSEvent.removeMonitor(outsideClicks) }
         outsideClicks = nil
         setHighlighted(false)
