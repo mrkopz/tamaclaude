@@ -421,20 +421,19 @@ func runAllTests() {
         equal(
             MenuBadge.from([UsageSnap(percent: 60, remaining: w / 2)]),
             MenuBadge(percent: 60, isAlarming: true),
-            "60% with half the window left is ahead of pace, red before 85%")
+            "60% with half the window left is ahead of pace")
         equal(
             MenuBadge.from([UsageSnap(percent: 90, remaining: 0)])?.isAlarming, nil,
             "a rolled window is unknown even at 90% — it cannot alarm about a number it lost")
-        // เกณฑ์แดงต้องเป็น `>=` เหมือนทั้งสองฝั่งที่วาดแถบโควตา ไม่งั้นที่ 85% พอดี
-        // จอแดงแต่แถบเมนูไม่แดง
+        // pace เป็นเกณฑ์เดียว — เลขสูงๆ ที่ยังตามเวลาทันไม่ใช่เรื่องต้องเตือน
         equal(
-            MenuBadge.from([UsageSnap(percent: 85, remaining: UsageSnap.unknown)]),
-            MenuBadge(percent: 85, isAlarming: true),
-            "the red threshold is reached at 85, not passed at 86")
+            MenuBadge.from([UsageSnap(percent: 90, remaining: w / 10)]),
+            MenuBadge(percent: 90, isAlarming: false),
+            "90% with a tenth of the window left is exactly on pace, so no colour")
         equal(
-            MenuBadge.from([UsageSnap(percent: 84, remaining: UsageSnap.unknown)]),
-            MenuBadge(percent: 84, isAlarming: false),
-            "below the threshold with no countdown means no pace check either")
+            MenuBadge.from([UsageSnap(percent: 99, remaining: UsageSnap.unknown)]),
+            MenuBadge(percent: 99, isAlarming: false),
+            "no countdown means no pace to be ahead of, and no fixed threshold to trip")
         // นาฬิกาสองฝั่งไม่ตรงกันทำให้ countdown ยาวเกินหน้าต่างได้ ถ้าปล่อยให้ elapsed ติดลบ
         // แม้แต่ 0% ก็จะแซง pace แล้วแถบเมนูแดงตั้งแต่หน้าต่างยังไม่เริ่ม
         equal(

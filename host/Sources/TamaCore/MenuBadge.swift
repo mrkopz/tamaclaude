@@ -21,11 +21,6 @@ public struct MenuBadge: Equatable, Sendable {
         self.isAlarming = isAlarming
     }
 
-    /// เกณฑ์แดง — ต้องตรงกับ `crit_pct` ใน `tools/layout.toml` ซึ่งเป็นเจ้าของค่านี้
-    /// ทั้งสองฝั่งที่วาดแถบโควตา (`ct_ui.c`, `tools/gen/screen.py`) เทียบด้วย `>=`
-    /// แถบเมนูจึงต้องเทียบแบบเดียวกัน ไม่งั้นที่ 85% พอดีจอแดงแต่แถบเมนูไม่แดง
-    public static let critPercent = 85
-
     /// `nil` แปลว่าไม่มีอะไรจะบอก ให้กลับไปเป็นไอคอนเดิม
     ///
     /// "ไม่รู้" กับ "ศูนย์" คนละเรื่อง (ADR-0001) — `0%` ที่เดาเอาบนแถบเมนูคือคำโกหก
@@ -38,12 +33,18 @@ public struct MenuBadge: Equatable, Sendable {
         return MenuBadge(percent: session.percent, isAlarming: alarming(session))
     }
 
-    /// แซง pace = แดงก่อนถึงเกณฑ์ — "60% ตอนเหลือเวลาอีกครึ่ง" เป็นปัญหาคนละแบบ
-    /// กับ "60% ตอนหมดเวลาพอดี" คิดด้วยจำนวนเต็มล้วนเพื่อไม่ให้เกณฑ์ขึ้นกับการปัดทศนิยม
+    /// แซง pace เป็นเกณฑ์*เดียว* — ไม่มีเกณฑ์เปอร์เซ็นต์ตายตัวบนแถบเมนู
     ///
-    /// ต้องตรงกับ `usage_bar_color` ใน `firmware/main/ct_ui.c` และ `tools/gen/screen.py`
+    /// จอบนโต๊ะมีเกณฑ์ `crit_pct` ด้วยเพราะมันไล่สีสามขั้นอยู่แล้ว เลข 85 จึงเป็น
+    /// *ขั้นสุดท้าย* ของการไล่ แต่แถบเมนูมีสองสถานะ สีจึงต้องตอบคำถามเดียว
+    /// คือ "ต้องช้าลงไหม" ซึ่ง 90% ตอนเหลือเวลาอีกนิดเดียวไม่ใช่ — โควตานั้นถูกใช้
+    /// ตามแผนพอดี สีแดงที่ขึ้นทุกครั้งที่ใกล้หมดหน้าต่างคือสีที่ขึ้นตอนไม่มีอะไรให้ทำ
+    /// แล้วมันจะหยุดเป็นสัญญาณ
+    ///
+    /// สูตร pace ต้องตรงกับ `usage_bar_color` ใน `firmware/main/ct_ui.c`
+    /// และ `tools/gen/screen.py` — เกณฑ์เปอร์เซ็นต์เท่านั้นที่ไม่เอามา
     private static func alarming(_ snap: UsageSnap) -> Bool {
-        if snap.percent >= critPercent { return true }
+        // ไม่รู้ว่าเหลือเวลาเท่าไร = เทียบ pace ไม่ได้ = ไม่มีเหตุให้เตือน
         guard snap.remaining != UsageSnap.unknown else { return false }
         let window = UsageReader.sessionWindow
         // countdown ที่ยาวกว่าหน้าต่างแปลว่านาฬิกาสองฝั่งไม่ตรงกัน ไม่ใช่ว่าเวลาเดินถอยหลัง
