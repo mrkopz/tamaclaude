@@ -34,6 +34,17 @@ public enum UsageReader {
         return [session, weekly]
     }
 
+    /// เวลาที่ cache ถูกเขียนครั้งล่าสุด — คนละเรื่องกับ `resets_at` ของหน้าต่าง
+    ///
+    /// ใช้ตอบคำถาม "ค่านี้อายุเท่าไร" ซึ่งเป็นคนละคำถามกับ "ท่อยังเดินอยู่ไหม" ค่าที่
+    /// เก่ายังถูกได้ (เปอร์เซ็นต์ขยับก็ต่อเมื่อมีการเรียก Claude) แต่ผู้ใช้ควรรู้ว่าเก่าแค่ไหน
+    public static func stamp(from url: URL = Paths.usageCache) -> Date? {
+        guard let text = try? String(contentsOf: url, encoding: .utf8),
+            let raw = parse(text)["TIMESTAMP"], let seconds = TimeInterval(raw)
+        else { return nil }
+        return Date(timeIntervalSince1970: seconds)
+    }
+
     static func parse(_ text: String) -> [String: String] {
         var out: [String: String] = [:]
         for line in text.split(whereSeparator: \.isNewline) {

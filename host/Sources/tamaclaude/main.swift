@@ -18,7 +18,9 @@ usage:
 --usage-poll:
   reads the claude.ai sessionKey from ~/.tamaclaude/session-key (mode 600, never argv).
   set TAMACLAUDE_ORG_ID to pin an organization instead of discovering one.
+  prints one `org <id> <name>` line per organization, then a status line.
   exit 0 wrote the cache · 2 the key was rejected · 3 the key file is unusable · 1 other
+  the menu bar app runs this for you on a timer; set the key from its gear menu.
 
 daemon options:
   --print       also print every snapshot to stdout
@@ -99,12 +101,17 @@ case "--usage-poll":
     // โปรเซสอายุสั้นโดยตั้งใจ ไม่ใช่ daemon — ตัวจับเวลาอยู่ที่ผู้เรียก
     // exit code แยก "ผู้ใช้ต้องไปแปะ key ใหม่" ออกจาก "เน็ตสะดุด เดี๋ยวก็หาย"
     do {
-        print(try UsagePoll.run(cache: cacheTarget(args)))
+        print(PollOutput.render(try UsagePoll.run(cache: cacheTarget(args))))
     } catch let failure as UsagePoll.Failure {
-        Log.info(failure.message)
+        // สถานะออก stdout ทางเดียว รวมถึงตอนล้มเหลว — ผู้เรียกอ่านที่เดียวได้ทุกกรณี
+        // และไม่ต้องมีไฟล์สถานะตัวที่สองให้ค้างเป็นค่าเก่าตอนลูกตายกลางคัน
+        // รายการ org ไปด้วยแม้รอบนี้ล้ม ไม่งั้นการพินไว้ที่ org ที่หายไปจะล็อกตัวเอง:
+        // ยิงพลาดทุกรอบ และไม่เคยได้รายการมาให้ผู้เรียกเปลี่ยนใจ
+        print(PollOutput.render(UsagePoll.Report(orgs: failure.orgs, summary: failure.message)))
         exit(failure.code)
     } catch {
-        fail("usage poll failed: \(error)")
+        print("usage poll failed: \(error)")
+        exit(1)
     }
 
 case "--daemon":

@@ -14,6 +14,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     /// จำบอร์ดที่ผู้ใช้เลือกไว้ข้ามการเปิดปิดแอป
     private static let preferredKey = "preferredBoard"
+    /// รอบการยิงโควตา และ org ที่เลือก — จำข้ามการเปิดปิดแอปเหมือนบอร์ด
+    private static let intervalKey = "quotaRefresh"
+    private static let orgKey = "preferredOrg"
+
+    private var poller: UsagePoller!
 
     private let popover = NSPopover()
     private let panel = PanelViewController()
@@ -30,6 +35,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         title: "Show usage on the board", action: #selector(toggleStatusline), keyEquivalent: "")
     private let loginItem = NSMenuItem(
         title: "Launch at login", action: #selector(toggleLogin), keyEquivalent: "")
+    private let keyItem = NSMenuItem(
+        title: "Set session key…", action: #selector(setSessionKey), keyEquivalent: "")
+    private let refreshItem = NSMenuItem(title: "Refresh quota", action: nil, keyEquivalent: "")
+    /// รายการ org โผล่ต่อเมื่อมีมากกว่าหนึ่ง — บัญชีปกติมีอันเดียวและไม่มีอะไรให้เลือก
+    private let orgItem = NSMenuItem(title: "Organization", action: nil, keyEquivalent: "")
     private let brightness = NSSlider(value: 100, minValue: 5, maxValue: 100, target: nil,
                                       action: nil)
 
@@ -51,6 +61,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusItem.button?.action = #selector(togglePanel)
 
         panel.onGear = { [weak self] button in self?.showGearMenu(from: button) }
+        // บรรทัด "key หมดอายุ" กดได้เอง — ที่ที่บอกว่าพังคือที่ที่ควรแก้ได้
+        panel.onKeyProblem = { [weak self] in self?.setSessionKey() }
         popover.contentViewController = panel
         popover.delegate = self
         // ไม่ใช้ .transient เพราะเมนูเฟืองที่เด้งจากในตัว popover จะปิดมันไปด้วย
@@ -81,12 +93,30 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return
         }
 
+        poller = UsagePoller(
+            interval: PollInterval.stored(
+                UserDefaults.standard.object(forKey: Self.intervalKey) as? Int),
+            preferredOrg: UserDefaults.standard.string(forKey: Self.orgKey),
+            launch: PollProcess.launcher())
+        poller.onChange = { [weak self] in self?.redrawQuota() }
+        showQuotaMenus()
+
+        // เครื่องหลับไปสองชั่วโมงแล้วตื่นมาเจอตัวเลขเมื่อสองชั่วโมงที่แล้ว คือหน้าจอที่โกหก
+        // รอบถัดไปยังอีกไกล ยิงทันทีหนึ่งรอบตรงนี้จึงเป็นการซ่อมที่ถูกเวลาที่สุด
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(woke), name: NSWorkspace.didWakeNotification, object: nil)
+
+        // นาฬิกาตัวเดียวขับทั้งสถานะบอร์ดและตัวจับเวลาโควตา — ตัวจับเวลาสองตัวในโปรเซส
+        // เดียวกันไม่ได้ทำให้อะไรเที่ยงขึ้น มีแต่จะต้องมาไล่ดูว่าใครยิงก่อนใคร
         Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             self?.refreshLink()
+            self?.poller.tick()
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        // ฆ่าลูกก่อนตาย ไม่งั้นลูกกำพร้ายิงต่อโดยไม่มีใครอ่านผล
+        poller?.stop()
         daemon?.stop()
     }
 
@@ -104,6 +134,16 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(.separator())
 
         menu.addItem(brightnessItem())
+        menu.addItem(.separator())
+
+        keyItem.target = self
+        menu.addItem(keyItem)
+
+        // เมนูย่อยสองอันนี้เป็นของ `showIntervals`/`showOrgs` — ที่นี่แค่หาที่ให้มันยืน
+        // การ `= NSMenu()` ตรงนี้จะล้างรายการที่เพิ่งเติมไปเมื่อครู่ เพราะเมนูถูกสร้าง
+        // แบบ lazy คือ *หลัง* การเติมครั้งแรกเสมอ
+        menu.addItem(refreshItem)
+        menu.addItem(orgItem)
         menu.addItem(.separator())
 
         hooksItem.target = self
@@ -210,6 +250,64 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         panel.showSessions(snapshot)
     }
 
+    /// รอบการยิง — ติ๊กตัวที่ใช้อยู่ ไม่มีตัวเลือก 30 วินาที (เหตุผลอยู่ที่ `PollInterval`)
+    private func showIntervals() {
+        let menu = refreshItem.submenu ?? NSMenu()
+        menu.removeAllItems()
+        refreshItem.title = "Refresh quota: \(poller.interval.title)"
+        for interval in PollInterval.allCases {
+            let item = NSMenuItem(
+                title: interval.title, action: #selector(chooseInterval(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = interval.rawValue
+            item.state = interval == poller.interval ? .on : .off
+            menu.addItem(item)
+        }
+        refreshItem.submenu = menu
+    }
+
+    /// org ที่ยิงอยู่ — ซ่อนทั้งอันเมื่อมีอันเดียว เพราะไม่มีอะไรให้ตัดสินใจ
+    ///
+    /// ติ๊กอ่านจากตัวที่ *ยิงจริง* ไม่ใช่จากค่าที่จำไว้ ตัวที่จำไว้แล้วหายไปจากบัญชี
+    /// จะทำให้ไม่มีติ๊กสักอันทั้งที่กำลังยิงอยู่ตัวหนึ่ง
+    private func showOrgs() {
+        let orgs = poller.orgs
+        orgItem.isHidden = orgs.count < 2
+        let current = poller.currentOrg
+        orgItem.title = "Organization: \(orgs.first(where: { $0.id == current })?.name ?? "—")"
+
+        let menu = orgItem.submenu ?? NSMenu()
+        menu.removeAllItems()
+        for org in orgs {
+            let item = NSMenuItem(
+                title: org.name, action: #selector(chooseOrg(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = org.id
+            item.state = org.id == current ? .on : .off
+            menu.addItem(item)
+        }
+        orgItem.submenu = menu
+    }
+
+    /// แผงท้ายมีสองบรรทัดที่พูดคนละเรื่อง — ท่อพัง กับ ค่าเก่าแค่ไหน
+    ///
+    /// บรรทัดสรุปจากลูก (เช่น `HTTP 503`) ไปอยู่ใน tooltip ไม่ใช่บรรทัดที่สาม: มันตอบ
+    /// คำถามที่เกิดขึ้นนานๆ ครั้ง ("ทำไมค่าถึงเก่า") การให้มันกินที่ถาวรคือการเอาเสียง
+    /// รบกวนไปวางไว้ตรงหน้าตลอดเวลา
+    private func redrawQuota() {
+        panel.showQuota(
+            problem: PanelText.keyProblem(poller.blocked),
+            figures: PanelText.figures(stamp: UsageReader.stamp()),
+            detail: poller.status)
+        showQuotaMenus()
+    }
+
+    /// สองเมนูนี้เปลี่ยนพร้อมกันเสมอ — ทั้งคู่วาดจากสถานะของ poller ก้อนเดียวกัน
+    private func showQuotaMenus() {
+        showIntervals()
+        showOrgs()
+    }
+
     // MARK: - popover เปิด/ปิด
 
     @objc private func togglePanel() {
@@ -220,6 +318,9 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let button = statusItem.button else { return }
         // แอปที่ไม่มี Dock ไม่ได้ active เองตอนคลิกแถบเมนู ปุ่มในแผงจะกดไม่ติด
         NSApp.activate(ignoringOtherApps: true)
+        // อายุของค่าเดินตลอดเวลาแต่ไม่มีใครเห็นตอนแผงปิด — คิดใหม่ตอนเปิดพอ
+        // ดีกว่าอ่าน cache จากดิสก์ทุกวินาทีเพื่อข้อความที่ไม่มีใครมอง
+        redrawQuota()
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         // popover ที่ไม่ใช่ .transient ไม่ปิดตัวเอง — คลิกนอกแอปคือสัญญาณเดียวที่เหลือ
         outsideClicks = NSEvent.addGlobalMonitorForEvents(
@@ -254,6 +355,9 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func showGearMenu(from button: NSButton) {
         statuslineItem.state = StatuslineInstaller.isInstalled ? .on : .off
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        // ไฟล์ key แก้จากข้างนอกได้เหมือนกัน — อ่านสภาพจริงทุกครั้งที่เมนูเด้ง
+        keyItem.title = SessionKeyFile.isUsable() ? "Replace session key…" : "Set session key…"
+        showQuotaMenus()
         gearMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: -2), in: button)
     }
 
@@ -268,6 +372,62 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             UserDefaults.standard.removeObject(forKey: Self.preferredKey)
         }
         showBoards(boards)
+    }
+
+    @objc private func chooseInterval(_ sender: NSMenuItem) {
+        let interval = PollInterval.stored(sender.representedObject as? Int)
+        poller.interval = interval
+        UserDefaults.standard.set(interval.rawValue, forKey: Self.intervalKey)
+        // เลือกรอบใหม่แล้วต้องเห็นผลเดี๋ยวนี้ ไม่ใช่รออีกหนึ่งรอบเพื่อพิสูจน์ว่ามันทำงาน
+        poller.pollNow()
+        showIntervals()
+    }
+
+    @objc private func chooseOrg(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        poller.preferredOrg = id
+        UserDefaults.standard.set(id, forKey: Self.orgKey)
+        poller.pollNow()
+        showOrgs()
+    }
+
+    /// ช่องกรอกแบบปิดบังตัวอักษร แล้วแอปเขียนไฟล์ mode 600 ให้เอง
+    ///
+    /// ไม่ให้ผู้ใช้ไปสร้างไฟล์เอง: `sessionKey` เป็น credential เต็มบัญชี คนที่ลืม
+    /// `chmod 600` จะเปิดบัญชีทั้งใบให้ทุกคนบนเครื่องโดยไม่รู้ตัว · key ไม่เคยถูก
+    /// ใส่กลับเข้าช่องกรอกและไม่เคยโผล่ในข้อความไหน แม้แต่ตอนล้มเหลว
+    @objc private func setSessionKey() {
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        field.placeholderString = "sessionKey cookie from claude.ai"
+
+        let a = NSAlert()
+        a.messageText = "Set the claude.ai session key"
+        a.informativeText =
+            "Browser DevTools → Application → Cookies → claude.ai → sessionKey.\n"
+            + "It is a full account credential; tamaclaude stores it readable only by you."
+        a.accessoryView = field
+        a.addButton(withTitle: "Save")
+        a.addButton(withTitle: "Cancel")
+        // แอปไม่มีหน้าต่าง ช่องกรอกจึงไม่ได้โฟกัสเอง ผู้ใช้จะพิมพ์ลงที่ว่าง
+        NSApp.activate(ignoringOtherApps: true)
+        a.window.initialFirstResponder = field
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+
+        do {
+            try SessionKeyFile.write(field.stringValue)
+        } catch let failure as UsagePoll.Failure {
+            alert("Could not save the session key", failure.message)
+            return
+        } catch {
+            alert("Could not save the session key", "\(error)")
+            return
+        }
+        // ตั้ง key ใหม่แล้วกลับมายิงเองทันที ไม่ต้องปิดเปิดแอป
+        poller.keyWasSet()
+    }
+
+    @objc private func woke() {
+        poller?.pollNow()
     }
 
     @objc private func brightnessChanged() {
