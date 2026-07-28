@@ -170,6 +170,19 @@ final class PanelViewController: NSViewController {
         button.cell?.sendAction(on: .leftMouseDown)
     }
 
+    /// บอกความสูงที่เนื้อในต้องการใหม่ หลังจากอะไรก็ตามที่ทำให้มันเปลี่ยน
+    ///
+    /// NSPopover โตตาม autolayout ได้ แต่ไม่หดกลับเอง — ความสูงสูงสุดที่มันเคยโตค้างอยู่
+    /// จนปิดแผง แถวที่หายไป (session ปิด, บรรทัด key พังที่ซ่อนตัว, การ์ดที่ซ่อน)
+    /// จึงกลายเป็นช่องว่างท้ายแผงแทนที่จะหายไปด้วย
+    private func resize() {
+        // ถูกเรียกได้ก่อน view โหลด — snapshot แรกมาถึงก่อนที่ผู้ใช้จะเปิดแผงเสมอ
+        guard isViewLoaded else { return }
+        view.layoutSubtreeIfNeeded()
+        let size = view.fittingSize
+        if preferredContentSize != size { preferredContentSize = size }
+    }
+
     private func separator() -> NSView {
         let line = NSBox()
         line.boxType = .separator
@@ -233,6 +246,7 @@ final class PanelViewController: NSViewController {
         // `nil` = ไม่รู้อะไรเลยทั้งสองหน้าต่าง ซึ่งไม่ใช่ 0% สองใบ — ซ่อนทั้งช่อง
         // แล้วเหลือแต่บรรทัดอายุที่พูดว่ายังไม่เคยมีตัวเลข
         cards.isHidden = quota == nil
+        defer { resize() }
         guard let quota else { return }
         // การ์ดมาเป็นคู่เสมอจาก `QuotaCard.cards` — ใบที่หายไปแปลว่าสัญญาเปลี่ยน ไม่ใช่ค่าหาย
         if let session = quota.first { sessionCard.show(session) }
@@ -262,5 +276,6 @@ final class PanelViewController: NSViewController {
             label.lineBreakMode = .byTruncatingTail
             sessions.addArrangedSubview(label)
         }
+        resize()
     }
 }

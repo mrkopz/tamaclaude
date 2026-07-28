@@ -202,7 +202,11 @@ final class QuotaBarView: NSView {
         let radius = Self.height / 2
         let track = NSBezierPath(roundedRect: bar, xRadius: radius, yRadius: radius)
         // รางยังต้องเห็นแม้ไม่มีค่า — แถบที่หายไปทั้งอันอ่านเหมือนแผงวาดไม่เสร็จ
-        NSColor.quaternaryLabelColor.setFill()
+        //
+        // `tertiary` ไม่ใช่ `quaternary`: รางไม่ได้วาดบนพื้นแผง แต่วาดบนพื้นการ์ดที่จาง
+        // อยู่แล้วอีกที ระดับจางที่สุดซ้อนบนของจางจึงกลืนไปกับพื้น — ส่วนที่ยังไม่ถูกใช้
+        // หายไปทั้งท่อน แล้วเนื้อแถบอ่านเป็นขีดลอยๆ ที่ไม่รู้ว่ายาวเทียบกับอะไร
+        NSColor.tertiaryLabelColor.setFill()
         track.fill()
 
         if percent != UsageSnap.unknown {
