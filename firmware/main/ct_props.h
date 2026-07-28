@@ -20,7 +20,7 @@ typedef enum {
 } ct_prop_t;
 
 #define CT_HEAD_CX 8.0f  // กึ่งกลางลำตัวในแนวนอน
-#define CT_HAND_X 16.6f  // ขอบซ้ายของพื้นที่ prop ที่ถือ
+#define CT_HAND_X 17.2f  // ขอบซ้ายของพื้นที่ prop ที่ถือ (แขนจบที่ 16.5)
 #define CT_HAND_Y 2.4f
 
 void ct_prop_build(ct_rects_t *out, ct_prop_t prop, float phase, bool connected);

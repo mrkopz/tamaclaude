@@ -17,13 +17,13 @@ from .config import L, PAL
 from .props import BOX_X0, BOX_X1, PROPS
 from .rects import Rect, RectList, bounds, move, outline_pass
 
-GW = L.mascot.grid_w  # 16 — ความกว้างซิลลูเอ็ตรวมปุ่มข้าง
+GW = L.mascot.grid_w  # 17 — ความกว้างซิลลูเอ็ตรวมแขนสองข้าง
 GH = L.mascot.grid_h  # 11.2
 
 # --- โครงร่าง (พิกัด unit) -------------------------------------------------
 # สัดส่วนวัดจากภาพอ้างอิง ลำตัวกว้าง 14 เป็นฐานของทุกค่า
 BODY = (1.0, 0.0, 14.0, 8.0)  # x, y, w, h
-NUB_Y, NUB_H, NUB_W = 2.8, 1.9, 1.0
+NUB_Y, NUB_H, NUB_W = 2.8, 2.5, 1.5
 LEG_TOP, LEG_H = 8.0, 3.2
 # ขาและช่องว่างวัดจากภาพอ้างอิง: ขานอกกว้างกว่าขาใน ช่องกลางกว้างกว่าช่องข้าง
 LEG_SPANS = ((1.00, 2.46), (4.50, 2.20), (9.29, 2.20), (12.53, 2.46))  # x, w

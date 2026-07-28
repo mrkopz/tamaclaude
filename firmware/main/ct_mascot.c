@@ -12,8 +12,8 @@
 #define BODY_W 14.0f
 #define BODY_H 8.0f
 #define NUB_Y 2.8f
-#define NUB_H 1.9f
-#define NUB_W 1.0f
+#define NUB_H 2.5f
+#define NUB_W 1.5f
 #define LEG_TOP 8.0f
 #define LEG_H 3.2f
 #define EYE_L 3.36f

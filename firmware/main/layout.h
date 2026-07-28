@@ -30,13 +30,13 @@
 #define CT_STROLL_PAUSE_S            2.5f
 #define CT_STROLL_PAD_PX             96
 
-#define CT_MASCOT_GRID_W             16
+#define CT_MASCOT_GRID_W             17
 #define CT_MASCOT_GRID_H             11.2f
 #define CT_MASCOT_OUTLINE            0.34f
 
 // กรอบวาดมาสคอตรวม prop (หน่วย unit) — มาจาก tools/gen/props.py
 #define CT_BOX_X0                    -0.5f
-#define CT_BOX_X1                    22.0f
+#define CT_BOX_X1                    23.4f
 #define CT_BOX_Y0                    -5.6f
 #define CT_BOX_Y1                    11.2f
 
