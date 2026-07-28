@@ -52,17 +52,18 @@ typedef enum {
     MOOD_COUNT,
 } mood_id_t;
 
+// bob วัดเป็น unit — 1 unit = CT_SLOTS_UNIT_PX พิกเซล ต่ำกว่า 0.5 unit จะมองแทบไม่เห็นบนจอ
 static const mood_t MOODS[MOOD_COUNT] = {
-    [MOOD_IDLE]      = {EYE_OPEN,   GAIT_STAND, 0.00f, 0.20f, 1.0f, 0.00f, 0.00f, true,  0.0f},
-    [MOOD_WORKING]   = {EYE_FOCUS,  GAIT_STAND, 0.03f, 0.15f, 2.4f, 0.00f, 0.00f, true,  0.0f},
-    [MOOD_WALKING]   = {EYE_OPEN,   GAIT_WALK,  0.00f, 0.22f, 2.0f, 0.00f, 0.00f, true,  0.0f},
-    [MOOD_WAITING]   = {EYE_OPEN,   GAIT_STAND, 0.00f, 0.28f, 0.7f, 0.00f, 0.40f, true,  0.0f},
-    [MOOD_SLEEPING]  = {EYE_SLEEP,  GAIT_SIT,   0.10f, 0.10f, 0.35f, 0.00f, 0.00f, false, 0.0f},
-    [MOOD_ALERT]     = {EYE_WIDE,   GAIT_STAND, 0.00f, 0.48f, 3.2f, 0.20f, 0.00f, false, 0.0f},
-    [MOOD_CELEBRATE] = {EYE_HAPPY,  GAIT_STAND, -0.05f, 0.88f, 2.6f, 0.00f, 0.00f, false, 0.0f},
+    [MOOD_IDLE]      = {EYE_OPEN,   GAIT_STAND, 0.00f, 0.75f, 1.0f, 0.00f, 0.00f, true,  0.0f},
+    [MOOD_WORKING]   = {EYE_FOCUS,  GAIT_STAND, 0.03f, 0.50f, 2.4f, 0.00f, 0.00f, true,  0.0f},
+    [MOOD_WALKING]   = {EYE_OPEN,   GAIT_WALK,  0.00f, 0.75f, 2.0f, 0.00f, 0.00f, true,  0.0f},
+    [MOOD_WAITING]   = {EYE_OPEN,   GAIT_STAND, 0.00f, 1.00f, 0.7f, 0.00f, 0.40f, true,  0.0f},
+    [MOOD_SLEEPING]  = {EYE_SLEEP,  GAIT_SIT,   0.10f, 0.50f, 0.35f, 0.00f, 0.00f, false, 0.0f},
+    [MOOD_ALERT]     = {EYE_WIDE,   GAIT_STAND, 0.00f, 0.90f, 3.2f, 0.20f, 0.00f, false, 0.0f},
+    [MOOD_CELEBRATE] = {EYE_HAPPY,  GAIT_STAND, -0.05f, 1.25f, 2.6f, 0.00f, 0.00f, false, 0.0f},
     [MOOD_ERROR]     = {EYE_DEAD,   GAIT_SIT,   0.12f, 0.00f, 1.0f, 0.08f, 0.00f, false, 0.0f},
     // ท่าเปลี่ยนผ่าน — phase ทำหน้าที่เป็นความคืบหน้า 0->1 ไม่ใช่ลูปวน
-    [MOOD_ENTERING]  = {EYE_OPEN,   GAIT_WALK,  0.00f, 0.30f, 4.0f, 0.00f, 0.00f, true,  0.0f},
+    [MOOD_ENTERING]  = {EYE_OPEN,   GAIT_WALK,  0.00f, 1.00f, 4.0f, 0.00f, 0.00f, true,  0.0f},
     [MOOD_LEAVING]   = {EYE_SQUINT, GAIT_SIT,   0.30f, 0.00f, 1.0f, 0.00f, 0.00f, false, 1.0f},
 };
 
@@ -199,7 +200,10 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
     uint16_t body_c, ink, edge;
     skin(connected, state, &body_c, &ink, &edge);
 
+    // ปัด dy ลงตารางพิกเซลก่อน ไม่งั้นแต่ละ rect ปัดคนละทางแล้วเห็นแค่เส้นขอบกระพริบ
+    // แทนที่จะเห็นทั้งตัวเลื่อนขึ้นลงพร้อมกัน
     float dy = -fabsf(sinf(phase * (float)M_PI * m->bob_hz)) * m->bob;
+    dy = roundf(dy * CT_SLOTS_UNIT_PX) / (float)CT_SLOTS_UNIT_PX;
     float dx = sinf(phase * (float)M_PI * 12.0f) * m->shake;
 
     // ท่ามุดหาย: ยิ่ง phase เดินหน้า ยิ่งแบนลงติดพื้นและขาหด

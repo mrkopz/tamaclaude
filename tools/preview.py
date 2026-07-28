@@ -21,7 +21,11 @@ from gen.props import BOX_X0, BOX_X1, BOX_Y0, BOX_Y1  # noqa: E402
 from gen.render import quantize565, render_rects  # noqa: E402
 
 OUT = REPO_DIR / "out"
-BOX = (BOX_X0, BOX_Y0, BOX_X1, BOX_Y1)
+# กรอบพรีวิวต้องเผื่อขอบล่างด้วย — BOX_Y1 คือระดับฝ่าเท้าพอดี ขอบหนา outline
+# ยื่นต่ำกว่านั้น ถ้าไม่เผื่อ เฟรมที่มาสคอตอยู่ต่ำสุดจะโดนตัดขอบล่างหายไป
+# (บนจอจริงไม่โดนตัด เพราะใต้ฝ่าเท้ายังมี baseline_pad)
+BOX_Y_BOT = BOX_Y1 + L.mascot.outline
+BOX = (BOX_X0, BOX_Y0, BOX_X1, BOX_Y_BOT)
 SESSION_WINDOW = L.usage.session_window
 WEEKLY_WINDOW = L.usage.weekly_window
 FRAMES = 12  # เฟรมต่อหนึ่งลูป (~1 วินาที)
@@ -41,7 +45,7 @@ def contact_sheet(px: int = 7, cols: int = 6) -> Image.Image:
     """ทุกสถานะเรียงในภาพเดียว — ใช้ตัดสินว่ามาสคอตสื่ออารมณ์ได้จริงไหม"""
     states = mascot.all_states()
     cw = round((BOX_X1 - BOX_X0) * px)
-    ch = round((BOX_Y1 - BOX_Y0) * px)
+    ch = round((BOX_Y_BOT - BOX_Y0) * px)
     pad, label_h = 8, 16
     rows = (len(states) + cols - 1) // cols
     W = cols * (cw + pad) + pad

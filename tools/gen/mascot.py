@@ -111,18 +111,19 @@ BLINK_FROM, BLINK_TO = 0.88, 0.94
 BLINK_EVERY = 4
 
 
+# bob วัดเป็น unit — 1 unit = unit_px พิกเซล ต่ำกว่า 0.5 unit จะมองแทบไม่เห็นบนจอ
 MOODS: dict[str, Mood] = {
-    "idle":      Mood(eye="open",   bob=0.20, bob_hz=1.0),
-    "working":   Mood(eye="focus",  bob=0.15, bob_hz=2.4, squash=0.03),
-    "walking":   Mood(eye="open",   gait="walk", bob=0.22, bob_hz=2.0),
-    "waiting":   Mood(eye="open",   bob=0.28, bob_hz=0.7, look=0.40),
-    "sleeping":  Mood(eye="sleep",  gait="sit", squash=0.10, bob=0.10, bob_hz=0.35,
+    "idle":      Mood(eye="open",   bob=0.75, bob_hz=1.0),
+    "working":   Mood(eye="focus",  bob=0.50, bob_hz=2.4, squash=0.03),
+    "walking":   Mood(eye="open",   gait="walk", bob=0.75, bob_hz=2.0),
+    "waiting":   Mood(eye="open",   bob=1.00, bob_hz=0.7, look=0.40),
+    "sleeping":  Mood(eye="sleep",  gait="sit", squash=0.10, bob=0.50, bob_hz=0.35,
                       blink=False),
-    "alert":     Mood(eye="wide",   bob=0.48, bob_hz=3.2, shake=0.20, blink=False),
-    "celebrate": Mood(eye="happy",  bob=0.88, bob_hz=2.6, squash=-0.05, blink=False),
+    "alert":     Mood(eye="wide",   bob=0.90, bob_hz=3.2, shake=0.20, blink=False),
+    "celebrate": Mood(eye="happy",  bob=1.25, bob_hz=2.6, squash=-0.05, blink=False),
     "error":     Mood(eye="dead",   gait="sit", squash=0.12, shake=0.08, blink=False),
     # ท่าเปลี่ยนผ่าน — phase ทำหน้าที่เป็นความคืบหน้า 0→1 ไม่ใช่ลูปวน
-    "entering":  Mood(eye="open",   gait="walk", bob=0.30, bob_hz=4.0),
+    "entering":  Mood(eye="open",   gait="walk", bob=1.00, bob_hz=4.0),
     "leaving":   Mood(eye="squint", gait="sit", squash=0.30, sink=1.0, blink=False),
 }
 
@@ -175,7 +176,10 @@ def build(
     m = MOODS[mood_name]
     skin, ink, edge = _skin(connected, state)
 
+    # ปัด dy ลงตารางพิกเซลก่อน ไม่งั้นแต่ละ rect ปัดคนละทางแล้วเห็นแค่เส้นขอบกระพริบ
+    # แทนที่จะเห็นทั้งตัวเลื่อนขึ้นลงพร้อมกัน
     dy = -abs(math.sin(phase * math.pi * m.bob_hz)) * m.bob
+    dy = round(dy * L.slots.unit_px) / L.slots.unit_px
     dx = math.sin(phase * math.pi * 12.0) * m.shake
 
     # ท่ามุดหาย: ยิ่ง phase เดินหน้า ยิ่งแบนลงติดพื้นและขาหด
