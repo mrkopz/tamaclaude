@@ -222,9 +222,14 @@ static void build_topbar(lv_obj_t *scr)
     s_usage_top = plain_label(bar, &lv_font_montserrat_12, CT_COL_GOOD);
     lv_obj_add_flag(s_usage_top, LV_OBJ_FLAG_HIDDEN);
 
-    s_usage_track = plain_obj(bar, USAGE_TOP_W, USAGE_TOP_H);
+    // กรอบขาวรอบราง — พื้นรางสีเดียวกับพื้นหลังจอ ทำให้ส่วนที่ยังไม่ถูกใช้กลืนหาย
+    // เห็นแต่ "ใช้ไปเท่าไร" ไม่เห็น "เหลือเท่าไร" กรอบตีขอบให้รู้ความยาวเต็ม
+    s_usage_track = plain_obj(bar, USAGE_TOP_W + 2, USAGE_TOP_H + 2);
     lv_obj_set_style_bg_color(s_usage_track, ct_color(CT_COL_BG), 0);
     lv_obj_set_style_bg_opa(s_usage_track, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_usage_track, 1, 0);
+    lv_obj_set_style_border_color(s_usage_track, ct_color(CT_COL_OUTLINE), 0);
+    lv_obj_set_style_border_opa(s_usage_track, LV_OPA_COVER, 0);
     lv_obj_add_flag(s_usage_track, LV_OBJ_FLAG_HIDDEN);
 
     s_usage_fill = plain_obj(s_usage_track, USAGE_TOP_W, USAGE_TOP_H);

@@ -129,9 +129,13 @@ def _topbar(draw: ImageDraw.ImageDraw, s: Screen) -> None:
 
         # แถบสั้นให้เหลือบแล้วรู้ทันทีว่าเหลือเท่าไร โดยไม่ต้องอ่านตัวเลข
         # สูง 6px บนแถบ 22px อ่านออก — ที่อ่านไม่ออกคือแถบบางในแผงเต็ม ไม่ใช่ตรงนี้
+        # กรอบขาวรอบราง — พื้นรางสีเดียวกับพื้นหลังจอ ทำให้ส่วนที่ยังไม่ถูกใช้กลืนหาย
+        # เห็นแต่ "ใช้ไปเท่าไร" ไม่เห็น "เหลือเท่าไร" กรอบตีขอบให้รู้ความยาวเต็ม
         bw, bh = 34, 6
-        bx, by = right - bw, h // 2 - bh // 2
-        draw.rectangle([bx, by, bx + bw - 1, by + bh - 1], fill=quantize565(PAL.bg))
+        ox, oy = right - bw - 2, h // 2 - (bh + 2) // 2
+        draw.rectangle([ox, oy, ox + bw + 1, oy + bh + 1],
+                       fill=quantize565(PAL.bg), outline=quantize565(PAL.outline), width=1)
+        bx, by = ox + 1, oy + 1
         if u.pct is not None:
             fill_w = round(bw * min(max(u.pct, 0), 100) / 100)
             if fill_w:
