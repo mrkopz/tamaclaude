@@ -14,8 +14,22 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 from .config import L, PAL
-from .props import BOX_X0, BOX_X1, EYE_MAG, EYE_R, EYE_S, EYE_Y, PROPS, magnifier_glass
-from .rects import Rect, RectList, bounds, move, outline_pass
+from .props import (
+    HEAD_CX,
+    BOX_X0,
+    BOX_X1,
+    EYE_MAG,
+    EYE_R,
+    EYE_S,
+    EYE_Y,
+    PROPS,
+    HAM_STRIKE,
+    HAM_WINDUP,
+    hammer_anvil,
+    hammer_stage,
+    magnifier_glass,
+)
+from .rects import Rect, RectList, bounds, move, outline_pass, scaled
 
 GW = L.mascot.grid_w  # 17 — ความกว้างซิลลูเอ็ตรวมแขนสองข้าง
 GH = L.mascot.grid_h  # 11.2
@@ -81,23 +95,28 @@ def _legs(gait: str, phase: float, color: str, extra_lift: float = 0.0) -> RectL
 
 
 # --- ลำตัว -----------------------------------------------------------------
-def _body(squash: float, color: str, arm_dy: tuple[float, float] = (0.0, 0.0)) -> RectList:
-    """squash > 0 = เตี้ยลงกว้างขึ้น (ยึดฝ่าเท้าเป็นหลัก)
+def _body(color: str, arm_dy: tuple[float, float] = (0.0, 0.0)) -> RectList:
+    """ลำตัวกับแขนสองข้างในสัดส่วนปกติ — การยุบตัวทำทีหลังด้วย _squashed()
 
     arm_dy เลื่อนแขน (nub) ทีละข้าง — ท่าพิมพ์ใช้ค่าคนละเครื่องหมายจึงอ่านเป็นสลับมือ
     """
     bx, by, bw, bh = BODY
-    nh = bh * (1.0 - squash)
-    nw = bw * (1.0 + squash * 0.45)
-    nx = bx - (nw - bw) / 2.0
-    ny = by + (bh - nh)
-    ncx = nx + nw
-    ay = ny + (NUB_Y - by) * (nh / bh)
     return [
-        Rect(nx, ny, nw, nh, color),
-        Rect(nx - NUB_W, ay + arm_dy[0], NUB_W, NUB_H, color),
-        Rect(ncx, ay + arm_dy[1], NUB_W, NUB_H, color),
+        Rect(bx, by, bw, bh, color),
+        Rect(bx - NUB_W, NUB_Y + arm_dy[0], NUB_W, NUB_H, color),
+        Rect(bx + bw, NUB_Y + arm_dy[1], NUB_W, NUB_H, color),
     ]
+
+
+def _squashed(rects: RectList, squash: float) -> RectList:
+    """ยุบทั้งตัวรอบฝ่าเท้า — ลำตัว ขา และตา ต้องยุบเป็นก้อนเดียวกัน
+
+    ถ้ายุบเฉพาะลำตัว ก้นลำตัวจะค้างอยู่ที่เดิมและขายาวเท่าเดิม อ่านเป็นกล่องเตี้ยลง
+    บนขาชุดเดิม ไม่ใช่ตัวที่โดนกระแทก ฝ่าเท้าไม่ขยับเพราะระดับที่ยืนต้องคงที่
+    """
+    if squash == 0.0:
+        return rects
+    return scaled(rects, 1.0 + squash * 0.45, 1.0 - squash, HEAD_CX, FOOT_Y)
 
 
 # --- อารมณ์ ----------------------------------------------------------------
@@ -113,6 +132,7 @@ class Mood:
     scan: float = 0.0  # กวาดสายตาซ้าย->ขวาแล้ววกกลับ (unit) — ท่าอ่านโค้ด
     arm: float = 0.0   # ระยะที่แขนขยับสลับข้าง (unit) — ท่าพิมพ์
     blink: bool = True  # ตาลืมเท่านั้นที่กะพริบได้
+    strike: bool = False  # ใช้จังหวะทุบของ props.hammer_stage() แทนการกระเด้งเป็นคลื่น
     sink: float = 0.0  # >0 = จมลงดินตามความคืบหน้าของ phase (ท่ามุดหาย)
 
 
@@ -129,6 +149,8 @@ MOODS: dict[str, Mood] = {
     # ท่านั่งพิมพ์ — ตัวแทบไม่กระเด้ง เพราะสัญญาณอยู่ที่สายตาที่กวาดอ่านกับแขนที่พิมพ์
     "typing":    Mood(eye="focus",  bob=0.30, bob_hz=2.0, squash=0.03, scan=1.0,
                       arm=0.70),
+    # ท่าทุบ — ไม่กระเด้งเป็นคลื่น แต่ยืดตัวตอนเงื้อและยุบตัวตอนกระแทกตามจังหวะค้อน
+    "hammering": Mood(eye="focus",  strike=True, bob=0.35, bob_hz=2.0),
     "walking":   Mood(eye="open",   gait="walk", bob=0.75, bob_hz=2.0),
     "waiting":   Mood(eye="open",   bob=1.00, bob_hz=0.7, look=0.40),
     "sleeping":  Mood(eye="sleep",  gait="sit", squash=0.10, bob=0.50, bob_hz=0.35,
@@ -148,7 +170,7 @@ STATES: dict[str, tuple[str, str | None]] = {
     "idle":      ("idle", None),
     "reading":   ("working", "magnifier"),
     "writing":   ("typing", "laptop"),
-    "building":  ("working", "hammer"),
+    "building":  ("hammering", "hammer"),
     "searching": ("working", "globe"),
     "thinking":  ("idle", "dots"),
     "waiting":   ("waiting", "query"),
@@ -162,6 +184,11 @@ STATES: dict[str, tuple[str, str | None]] = {
     "conducting": ("working", "crew"),
     "beacon": ("working", "beacon"),
 }
+
+
+# ท่าที่มีของประกอบเยอะจนแน่นช่อง — ย่อลงเล็กน้อยเพื่อให้ยังมีที่หายใจรอบตัว
+# ย่อทั้งฉาก (ตัว + หมวก + ค้อน + แท่น) พร้อมกัน สัดส่วนภายในจึงไม่เพี้ยน
+STATE_SCALE: dict[str, float] = {"building": 0.875}
 
 
 def _skin(connected: bool, state: str) -> tuple[str, str, str]:
@@ -193,42 +220,62 @@ def build(
     # ปัด dy ลงตารางพิกเซลก่อน ไม่งั้นแต่ละ rect ปัดคนละทางแล้วเห็นแค่เส้นขอบกระพริบ
     # แทนที่จะเห็นทั้งตัวเลื่อนขึ้นลงพร้อมกัน
     dy = -abs(math.sin(phase * math.pi * m.bob_hz)) * m.bob
+    # ท่าทุบเดินตาม timeline ของค้อน ไม่ใช่คลื่น: ยืดตัวตอนเงื้อ ยุบตัวตอนกระแทก
+    # (ยุบด้วย squash ซึ่งยึดฝ่าเท้าไว้ ไม่ใช่ dy บวก ที่จะดันขาจมลงใต้พื้น)
+    stage = hammer_stage(phase) if m.strike else -1
+    if stage == HAM_WINDUP:  # เงื้อค้าง — ตัวยกลอยขึ้นทั้งตัว
+        dy = -0.5
+    elif stage == HAM_STRIKE:  # แรงลง — ตัวหยุดนิ่งที่พื้น ที่ยุบคือ squash ไม่ใช่ dy
+        dy = 0.0
     dy = round(dy * L.slots.unit_px) / L.slots.unit_px
     dx = math.sin(phase * math.pi * 12.0) * m.shake
 
     # ท่ามุดหาย: ยิ่ง phase เดินหน้า ยิ่งแบนลงติดพื้นและขาหด
     squash = m.squash + m.sink * phase * 0.60
+    if m.strike:
+        squash += {HAM_WINDUP: -0.04, HAM_STRIKE: 0.15}.get(stage, 0.03)
     # แขนพิมพ์ — แขนข้างลำตัวสลับขึ้นลงสองรอบต่อลูป ไม่มีแขนพาดหน้าแล็ปท็อป
     # (แขนที่เอื้อมมาข้างหน้าอ่านเป็น "กดจอ" ไม่ใช่ "พิมพ์อยู่หลังจอ")
     arm = m.arm * math.sin(phase * math.pi * 4.0)
-    silhouette = _body(squash, skin, (arm, -arm)) + _legs(
-        m.gait, phase, skin, m.sink * phase * LEG_H * 0.9
+    silhouette = _squashed(
+        _body(skin, (arm, -arm)) + _legs(m.gait, phase, skin, m.sink * phase * LEG_H * 0.9),
+        squash,
     )
     silhouette = move(silhouette, dx, dy)
 
     eye_kind = m.eye
+    if stage == HAM_STRIKE:  # หลับตาเบ่งตอนแรงลง — เฟรมสั้นๆ นี้คือที่ที่น้ำหนักอยู่
+        eye_kind = "squint"
     if m.blink and cycle % BLINK_EVERY == BLINK_EVERY - 1 and BLINK_FROM <= phase < BLINK_TO:
         eye_kind = "blink"
 
-    # ตาเลื่อนตามลำตัวที่ถูก squash
-    eye_dy = dy + BODY[3] * squash
     look = m.look * math.sin(phase * math.pi * 2.0)
     # กวาดสายตา: ไล่จากซ้ายไปขวาแล้ววกกลับทันที = อ่านทีละบรรทัด ไม่ใช่ส่ายไปมา
     # สองบรรทัดต่อลูป — ช้ากว่านี้จะอ่านเป็นเหม่อ ไม่ใช่กำลังไล่โค้ด
     look += m.scan * ((phase * 2.0 % 1.0) - 0.5) * 2.0
     mag = EYE_MAG if prop_name == "magnifier" else 1.0  # ตาข้างที่อยู่หลังเลนส์
     eyes = _eye(EYE_L, eye_kind, look, ink) + _eye(EYE_R, eye_kind, look, ink, mag)
-    eyes = move(eyes, dx, eye_dy)
+    eyes = move(_squashed(eyes, squash), dx, dy)  # ตายุบไปกับลำตัว ไม่ใช่ค้างอยู่บนหน้าที่เตี้ยลง
 
     out: RectList = []
     if L.mascot.outline:
         out += outline_pass(silhouette, L.mascot.outline, edge)
     out += silhouette
+    if prop_name == "hammer":  # แท่นวางอยู่กับพื้น จึงไม่เลื่อนตาม dy ที่ลำตัวขยับ
+        out += hammer_anvil(phase, connected)
     if prop_name == "magnifier":  # กระจกอยู่ใต้ตา ขอบเลนส์อยู่บนตา
-        out += move(magnifier_glass(phase, connected), dx, dy)
+        out += move(_squashed(magnifier_glass(phase, connected), squash), dx, dy)
     out += eyes
     if prop_name:
-        out += move(PROPS[prop_name](phase, connected), dx, dy)
+        # หมวกกับค้อนอยู่ติดตัว จึงต้องยุบลงพร้อมลำตัวเหมือนตา ไม่ใช่ค้างอยู่ที่เดิม
+        # (prop อื่นวางอยู่หน้าลำตัวหรือลอยเหนือหัว ซึ่งไม่ได้เกาะกับความสูงของตัว)
+        # หมวกกับค้อนอยู่ติดตัว จึงต้องต่ำลงพร้อมหัวที่ยุบ ไม่ใช่ค้างอยู่ที่เดิม
+        # เลื่อนอย่างเดียวไม่ยุบตาม: หมวกแข็งและค้อนเป็นเหล็ก จะแบนไปกับตัวไม่ได้
+        prop_dy = dy + (FOOT_Y * squash if m.strike else 0.0)
+        out += move(PROPS[prop_name](phase, connected), dx, prop_dy)
+    if state in STATE_SCALE:  # ย่อทั้งฉากโดยยึดฝ่าเท้าและกึ่งกลางลำตัว
+        k = STATE_SCALE[state]
+        out = scaled(out, k, k, HEAD_CX, FOOT_Y)
     return out
 
 

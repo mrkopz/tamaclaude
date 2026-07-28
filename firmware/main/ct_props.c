@@ -150,19 +150,139 @@ static void laptop(ct_rects_t *o, float phase, bool connected)
           CT_LID_Y + (CT_LID_H - APPLE_H * APPLE_PX) / 2.0f, mark);
 }
 
-// ค้อน — Bash (ทุบเป็นจังหวะ มีประกายตอนกระแทก)
+// ท่าของการทุบในเฟรมนี้ — ค้อน ตัวมาสคอต ชิ้นงาน และประกาย ต้องอ่านค่าเดียวกัน
+// ถ้าแต่ละชิ้นคิดจังหวะเอง จะได้ภาพที่ตัวยุบตอนค้อนยังลอย หรือประกายมาก่อนโดน
+ct_ham_stage_t ct_prop_hammer_stage(float phase)
+{
+    if (phase < CT_HAM_T_WINDUP) return CT_HAM_READY;
+    if (phase < CT_HAM_T_STRIKE) return CT_HAM_WINDUP;
+    if (phase < CT_HAM_T_RECOVER) return CT_HAM_STRIKE;
+    return CT_HAM_RECOVER;
+}
+
+// แท่นเหล็กกับชิ้นงานร้อน — วาดแยกจาก hammer() เพราะห้ามกระเด้งตามตัวมาสคอต
+// ของที่วางอยู่กับพื้นต้องนิ่ง ถ้าเลื่อนตาม dy ของลำตัวจะอ่านเป็นแท่นลอยได้
+// (ct_mascot.c จึงเรียกอันนี้แยกโดยไม่ move ตาม dy เหมือน prop ชิ้นอื่น)
+void ct_prop_hammer_anvil(ct_rects_t *o, float phase, bool connected)
+{
+    bool strike = ct_prop_hammer_stage(phase) == CT_HAM_STRIKE;
+    // แท่นเป็นเทาสองโทน ไม่ใช่สีหมึก — สีหมึกจมหายไปกับพื้นหลังช่อง เหลือชิ้นงานลอยเดี่ยว
+    uint16_t block = c(connected, CT_COL_STEEL);
+    uint16_t base = c(connected, CT_COL_TEXT_DIM);
+    // ชิ้นงานวาบเป็นเหลืองสว่างในเฟรมที่โดนกระแทก แล้วคืนเป็นแดงร้อน
+    uint16_t hot = c(connected, strike ? CT_COL_ACCENT : CT_COL_ALERT);
+    float h = strike ? CT_HOT_DOWN_H : CT_HOT_UP_H;
+    // ฐานกว้างกว่าบล็อก จึงอ่านเป็นของตั้งอยู่กับพื้น ไม่ใช่ก้อนลอย (จบที่ระดับฝ่าเท้า 11.2)
+    ct_rects_add(o, CT_ANVIL_CX - 2.6f, 10.4f, 5.2f, 0.8f, base);
+    ct_rects_add(o, CT_ANVIL_CX - 1.9f, CT_ANVIL_TOP, 3.8f, 1.7f, block);  // บล็อกเหล็ก
+    // ชิ้นงานร้อน — ยุบตอนโดนทุบ
+    ct_rects_add(o, CT_ANVIL_CX - 1.25f, CT_ANVIL_TOP - h, 2.5f, h, hot);
+}
+
+// หมวกนิรภัย — พีระมิดขั้นบันได กว้างขึ้นทีละขั้นจนจบที่ปีกที่ยื่นพ้นลำตัวข้างละ 1
+// '#' คือด้านที่รับแสง '+' คือริ้วเงา — ริ้วแนวตั้งสลับกันคือสิ่งที่ทำให้หมวกมีสัน
+// ไม่ใช่โดมเรียบ และอ่านออกว่าเป็นหมวกนิรภัยตั้งแต่แวบแรก
+#define HAT_ROWS 5
+#define HAT_COLS 15
+static const char *const HAT_ART[HAT_ROWS] = {
+    ".....##+##.....",
+    "....+##+##+....",
+    "...+##+#+##+...",
+    "..++#######++..",
+    "+++++++++++++++",
+};
+#define HAT_W 16.0f  // ปีกกว้างกว่านี้เริ่มอ่านเป็นหมวกชาวนา
+#define HAT_X0 0.0f
+#define HAT_ROW_H 0.96f  // ห้าแถวรวม 4.8 — สูงกว่านี้ยอดหมวกจะโผล่พ้นกรอบวาดตอนตัวกระเด้ง
+
+// แปลง HAT_ART เป็น rect ทีละช่วงสีติดกัน ไม่ใช่ทีละช่อง
+static void hat(ct_rects_t *o, uint16_t light, uint16_t dark)
+{
+    const float u = HAT_W / HAT_COLS;
+    for (int row = 0; row < HAT_ROWS; row++) {
+        const char *line = HAT_ART[row];
+        float y = -HAT_ROWS * HAT_ROW_H + row * HAT_ROW_H;
+        for (int col = 0; col < HAT_COLS;) {
+            char ch = line[col];
+            if (ch == '.') {
+                col++;
+                continue;
+            }
+            int run = 1;
+            while (col + run < HAT_COLS && line[col + run] == ch) run++;
+            ct_rects_add(o, HAT_X0 + col * u, y, run * u, HAT_ROW_H,
+                         ch == '#' ? light : dark);
+            col += run;
+        }
+    }
+}
+
+// ค้อนในท่าหนึ่ง — สามท่าคีย์ ไม่ใช่การหมุนต่อเนื่อง
+// renderer วาดได้แต่สี่เหลี่ยมแกนตั้งฉาก การหมุนจริงจึงทำไม่ได้ ท่าคีย์สามท่า
+// (ตั้งพัก / เงื้อทแยงขึ้น / ฟาดทแยงลง) ให้สายตาเติมส่วนที่ขาดเองอยู่แล้ว
+static void hammer_tool(ct_rects_t *o, ct_ham_stage_t stage, uint16_t grip, uint16_t head,
+                        uint16_t face)
+{
+    float hx, hy;
+    if (stage == CT_HAM_READY || stage == CT_HAM_RECOVER) {
+        // ตั้งพักข้างตัว — ด้ามเอียงขวาเป็นสองขั้น ปลายล่างจบในระดับมือ ไม่ลอยห่างจากแขน
+        ct_rects_add(o, 16.9f, 2.2f, CT_HAM_GRIP_W, 3.2f, grip);
+        ct_rects_add(o, 17.8f, -1.2f, CT_HAM_GRIP_W, 3.6f, grip);
+        hx = 16.6f;
+        hy = -3.6f;
+    } else {
+        // ด้ามทแยง 45 องศาจากมือ — ขึ้นตอนเงื้อ ลงตอนฟาด (สะท้อนรอบระดับมือเดียวกัน)
+        bool up = stage == CT_HAM_WINDUP;
+        float y0 = up ? 3.6f : 2.6f;
+        float step = up ? -CT_HAM_STEP : CT_HAM_STEP;
+        for (int i = 0; i < CT_HAM_N; i++) {
+            ct_rects_add(o, 17.0f + i * CT_HAM_STEP, y0 + i * step, CT_HAM_BLK, CT_HAM_BLK,
+                         grip);
+        }
+        // หัวค้อนต้องคาบปลายด้ามไว้เสมอ ไม่งั้นเห็นเป็นก้อนเทาลอยแยกจากด้าม
+        // ตอนฟาด ก้นหัวจบที่ผิวชิ้นงานที่ยุบแล้วพอดี = จุดที่แรงลงจริง
+        hx = up ? 18.8f : CT_ANVIL_CX - CT_HAM_HEAD_W / 2.0f;
+        hy = up ? -1.0f : CT_ANVIL_TOP - CT_HOT_DOWN_H - CT_HAM_HEAD_H;
+    }
+    ct_rects_add(o, hx, hy, CT_HAM_HEAD_W, CT_HAM_HEAD_H, head);
+    // ครึ่งล่างของหัวเข้ม = หน้าค้อนที่ฟาดลงไป ทำให้ก้อนเทาไม่แบนเป็นก้อนเดียว
+    ct_rects_add(o, hx, hy + CT_HAM_HEAD_H / 2.0f, CT_HAM_HEAD_W, CT_HAM_HEAD_H / 2.0f, face);
+}
+
+// ประกายกระเด็นจากจุดกระแทก — สามทิศที่ไม่สมมาตรกัน จึงอ่านเป็นเศษที่กระเด็นจริง
+// ไม่ใช่เอฟเฟกต์ที่ก๊อปวางสองข้าง
+static const float SPARK_DIRS[3][2] = {{2.5f, -3.8f}, {3.1f, -0.6f}, {1.9f, 1.9f}};
+
+// หมวกวิศวกร + ค้อน — Bash (เงื้อแล้วฟาดชิ้นงานบนแท่น หนึ่งครั้งต่อลูป)
+// ค้อนแกว่งอย่างเดียวอ่านได้แค่ "ถือของ" — ท่าที่อ่านออกว่ากำลังสั่งงานเครื่องคือครบชุด:
+// หมวกบอกว่าเป็นคนคุมงาน ค้อนคือเครื่องมือ แท่นคือสิ่งที่ถูกลงแรง
+// น้ำหนักของการกระแทกมาจากจังหวะ (เงื้อค้าง -> ฟาดสองเฟรม -> คืนตัว) ไม่ใช่จากขนาด
 static void hammer(ct_rects_t *o, float phase, bool connected)
 {
-    uint16_t col = c(connected, CT_COL_ACCENT);
-    uint16_t head = c(connected, CT_COL_TEXT_DIM);
-    bool down = fmodf(phase, 0.5f) < 0.25f;
-    float x = CT_HAND_X + 0.3f;
-    float y = CT_HAND_Y + (down ? 2.0f : 0.0f);
-    ct_rects_add(o, x + 1.7f, y + 1.8f, 1.3f, 3.4f, col);  // ด้าม
-    ct_rects_add(o, x, y, 4.8f, 2.0f, head);               // หัวค้อน
-    if (down) {
-        ct_rects_add(o, x - 0.9f, y + 4.4f, 1.0f, 1.0f, CT_COL_ACCENT);
-        ct_rects_add(o, x + 4.7f, y + 4.4f, 1.0f, 1.0f, CT_COL_ACCENT);
+    ct_ham_stage_t stage = ct_prop_hammer_stage(phase);
+    hat(o, c(connected, CT_COL_ACCENT), c(connected, CT_COL_ACCENT_DARK));
+    // เงาของหัวค้อนต้องเป็นเทากลาง ไม่ใช่สีหมึก — สีหมึกเกือบเท่าพื้นหลังช่อง
+    // ครึ่งล่างของหัวจะหายไปกับฉาก เหลือหัวค้อนบางเป็นขีด
+    hammer_tool(o, stage, c(connected, CT_COL_CLAY_DARK), c(connected, CT_COL_TEXT_DIM),
+                c(connected, CT_COL_GRAY));
+
+    // หยดเหงื่อกระเด็นออกข้างหมวก ตั้งแต่เงื้อจนฟาด — สัญญาณว่ากำลังออกแรง ไม่ใช่กำลังเล่น
+    if (stage == CT_HAM_WINDUP || stage == CT_HAM_STRIKE) {
+        uint16_t drop = c(connected, CT_COL_GLASS);
+        float fly = stage == CT_HAM_STRIKE ? 1.2f : 0.0f;
+        float x = 1.0f - fly, y = -1.2f - fly;
+        ct_rects_add(o, x, y, 1.3f, 1.3f, drop);
+        ct_rects_add(o, x + 0.3f, y - 0.8f, 0.7f, 0.8f, drop);
+    }
+
+    if (stage == CT_HAM_STRIKE) {
+        // กระเด็นออกครึ่งทางในเฟรมที่สองของการฟาด — เฟรมเดียวจะอ่านเป็นจุดค้าง ไม่ใช่ประกาย
+        float t = phase < (CT_HAM_T_STRIKE + CT_HAM_T_RECOVER) / 2.0f ? 0.0f : 1.0f;
+        uint16_t spark = c(connected, CT_COL_ACCENT);
+        for (int i = 0; i < 3; i++) {
+            ct_rects_add(o, CT_ANVIL_CX - 0.6f + SPARK_DIRS[i][0] * t,
+                         CT_ANVIL_TOP - 1.4f + SPARK_DIRS[i][1] * t, 1.2f, 1.2f, spark);
+        }
     }
 }
 

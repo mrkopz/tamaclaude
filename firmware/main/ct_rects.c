@@ -8,6 +8,17 @@ void ct_rects_move_from(ct_rects_t *rs, int from, float dx, float dy)
     }
 }
 
+void ct_rects_scale_from(ct_rects_t *rs, int from, float sx, float sy, float ox, float oy)
+{
+    for (int i = from; i < rs->count; i++) {
+        ct_rect_t *r = &rs->items[i];
+        r->x = ox + (r->x - ox) * sx;
+        r->y = oy + (r->y - oy) * sy;
+        r->w *= sx;
+        r->h *= sy;
+    }
+}
+
 void ct_rects_outline_pass(ct_rects_t *dst, const ct_rects_t *src, float width, uint16_t color)
 {
     for (int i = 0; i < src->count; i++) {

@@ -4,6 +4,7 @@
   prop ถือ  อยู่ช่วง x 17.2..23.4 — นอกลำตัว ไม่ทับตา ไม่ทับขา
   prop ลอย  อยู่ช่วง y -5.6..-0.1 เหนือหัว
   ยกเว้นแว่นขยาย ที่ตั้งใจให้ทับตาข้างขวา (ท่ายกส่อง) — เลนส์กลวงจึงยังเห็นตา
+  ยกเว้นค้อน ที่กินหัว (หมวกวิศวกร) และพื้นด้านขวา (ปุ่มแดง) เพิ่มจากช่อง prop ปกติ
 """
 
 from __future__ import annotations
@@ -187,18 +188,166 @@ def laptop(phase: float, connected: bool = True) -> RectList:
     return out
 
 
+# ค้อน + หมวกวิศวกร + แท่นเหล็ก — ทั้งชุดคือ prop เดียวกัน (Bash) จึงใช้ค่าคงที่ร่วมกัน
+# หนึ่งลูปคือการทุบหนึ่งครั้งที่มีจังหวะเงื้อนำ ไม่ใช่ค้อนเด้งขึ้นลงสองรอบ:
+# จังหวะเงื้อคือสิ่งที่ทำให้การกระแทกมีน้ำหนัก ถ้าตัดทิ้งจะเหลือแค่ของขยับไปมา
+HAM_READY, HAM_WINDUP, HAM_STRIKE, HAM_RECOVER = 0, 1, 2, 3
+# ขอบเขตของแต่ละท่าในลูป — ท่าฟาดสั้นที่สุด (สองเฟรม) เพราะการกระแทกต้องคม
+HAM_T_WINDUP, HAM_T_STRIKE, HAM_T_RECOVER = 0.25, 0.45, 0.62
+
+ANVIL_CX = 20.0  # กลางแท่น = ปลายทางที่หัวค้อนตกลงมา
+ANVIL_TOP = 8.7  # ผิวบนของบล็อก = ก้นของชิ้นงานร้อน ทั้งตอนยุบและไม่ยุบ
+HOT_UP_H, HOT_DOWN_H = 1.3, 0.7  # ชิ้นงานยุบลงราวครึ่งหนึ่งตอนโดนทุบ
+
+HAM_HEAD_W, HAM_HEAD_H = 4.0, 2.4  # หัวค้อน
+HAM_GRIP_W = 1.4  # ความหนาของด้าม
+HAM_STEP = 0.65  # ระยะไล่ของบล็อกด้ามต่อชิ้น ทั้งสองแกน = ทแยง 45 องศาพอดี
+HAM_BLK = 1.4  # ด้านของบล็อกด้าม — ใหญ่กว่า step จึงเหลื่อมกันเป็นเส้นทึบ ไม่ขาดเป็นจุด
+HAM_N = 5  # จำนวนบล็อกด้าม
+
+
+def hammer_stage(phase: float) -> int:
+    """ท่าของการทุบในเฟรมนี้ — ค้อน ตัวมาสคอต ชิ้นงาน และประกาย ต้องอ่านค่าเดียวกัน
+
+    ถ้าแต่ละชิ้นคิดจังหวะเอง จะได้ภาพที่ตัวยุบตอนค้อนยังลอย หรือประกายมาก่อนโดน
+    (mascot.py import ไปใช้กำหนดท่าตัวมาสคอตด้วย)
+    """
+    if phase < HAM_T_WINDUP:
+        return HAM_READY
+    if phase < HAM_T_STRIKE:
+        return HAM_WINDUP
+    if phase < HAM_T_RECOVER:
+        return HAM_STRIKE
+    return HAM_RECOVER
+
+
+def hammer_anvil(phase: float, connected: bool = True) -> RectList:
+    """แท่นเหล็กกับชิ้นงานร้อน — วาดแยกจาก hammer() เพราะห้ามกระเด้งตามตัวมาสคอต
+
+    ของที่วางอยู่กับพื้นต้องนิ่ง ถ้าเลื่อนตาม dy ของลำตัวจะอ่านเป็นแท่นลอยได้
+    (mascot.py จึงเรียกอันนี้แยกโดยไม่ move ตาม dy เหมือน prop ชิ้นอื่น)
+    """
+    strike = hammer_stage(phase) == HAM_STRIKE
+    # แท่นเป็นเทาสองโทน ไม่ใช่สีหมึก — สีหมึกจมหายไปกับพื้นหลังช่อง เหลือชิ้นงานลอยเดี่ยว
+    block = _c(connected, PAL.steel)
+    base = _c(connected, PAL.text_dim)
+    # ชิ้นงานวาบเป็นเหลืองสว่างในเฟรมที่โดนกระแทก แล้วคืนเป็นแดงร้อน
+    hot = _c(connected, PAL.accent if strike else PAL.alert)
+    h = HOT_DOWN_H if strike else HOT_UP_H
+    return [
+        # ฐานกว้างกว่าบล็อก จึงอ่านเป็นของตั้งอยู่กับพื้น ไม่ใช่ก้อนลอย
+        Rect(ANVIL_CX - 2.6, 10.4, 5.2, 0.8, base),  # ฐานจบพอดีระดับฝ่าเท้า (11.2)
+        Rect(ANVIL_CX - 1.9, ANVIL_TOP, 3.8, 1.7, block),  # บล็อกเหล็ก
+        Rect(ANVIL_CX - 1.25, ANVIL_TOP - h, 2.5, h, hot),  # ชิ้นงานร้อน — ยุบตอนโดนทุบ
+    ]
+
+
+# หมวกนิรภัย — พีระมิดขั้นบันได กว้างขึ้นทีละขั้นจนจบที่ปีกซึ่งกว้างเท่าช่วงแขน
+# '#' คือด้านที่รับแสง '+' คือริ้วเงา — ริ้วแนวตั้งสลับกันคือสิ่งที่ทำให้หมวกมีสัน
+# ไม่ใช่โดมเรียบ และอ่านออกว่าเป็นหมวกนิรภัยตั้งแต่แวบแรก
+HAT_ART = (
+    ".....##+##.....",
+    "....+##+##+....",
+    "...+##+#+##+...",
+    "..++#######++..",
+    "+++++++++++++++",
+)
+HAT_COLS = len(HAT_ART[0])
+HAT_W = 16.0  # ปีกยื่นพ้นลำตัว (1..15) ข้างละ 1 — กว้างกว่านี้เริ่มอ่านเป็นหมวกชาวนา
+HAT_X0 = 0.0
+HAT_ROW_H = 0.96  # ห้าแถวรวม 4.8 — สูงกว่านี้ยอดหมวกจะโผล่พ้นกรอบวาดตอนตัวกระเด้ง
+
+
+def _hat(light: str, dark: str) -> RectList:
+    """แปลง HAT_ART เป็น rect ทีละช่วงสีติดกัน ไม่ใช่ทีละช่อง"""
+    u = HAT_W / HAT_COLS
+    out: RectList = []
+    for row, line in enumerate(HAT_ART):
+        y = -len(HAT_ART) * HAT_ROW_H + row * HAT_ROW_H
+        col = 0
+        while col < HAT_COLS:
+            ch = line[col]
+            if ch == ".":
+                col += 1
+                continue
+            run = 1
+            while col + run < HAT_COLS and line[col + run] == ch:
+                run += 1
+            out.append(
+                Rect(HAT_X0 + col * u, y, run * u, HAT_ROW_H, light if ch == "#" else dark)
+            )
+            col += run
+    return out
+
+
+def _hammer_tool(stage: int, grip: str, head: str, face: str) -> RectList:
+    """ค้อนในท่าหนึ่ง — สามท่าคีย์ ไม่ใช่การหมุนต่อเนื่อง
+
+    renderer วาดได้แต่สี่เหลี่ยมแกนตั้งฉาก การหมุนจริงจึงทำไม่ได้ ท่าคีย์สามท่า
+    (ตั้งพัก / เงื้อทแยงขึ้น / ฟาดทแยงลง) ให้สายตาเติมส่วนที่ขาดเองอยู่แล้ว
+    """
+    out: RectList = []
+    if stage in (HAM_READY, HAM_RECOVER):
+        # ตั้งพักข้างตัว — ด้ามเอียงขวาเป็นสองขั้น ปลายล่างจบในระดับมือ ไม่ลอยห่างจากแขน
+        out.append(Rect(16.9, 2.2, HAM_GRIP_W, 3.2, grip))
+        out.append(Rect(17.8, -1.2, HAM_GRIP_W, 3.6, grip))
+        hx, hy = 16.6, -3.6
+    else:
+        # ด้ามทแยง 45 องศาจากมือ — ขึ้นตอนเงื้อ ลงตอนฟาด (สะท้อนรอบระดับมือเดียวกัน)
+        up = stage == HAM_WINDUP
+        y0 = 3.6 if up else 2.6
+        step = -HAM_STEP if up else HAM_STEP
+        for i in range(HAM_N):
+            out.append(Rect(17.0 + i * HAM_STEP, y0 + i * step, HAM_BLK, HAM_BLK, grip))
+        # หัวค้อนต้องคาบปลายด้ามไว้เสมอ ไม่งั้นเห็นเป็นก้อนเทาลอยแยกจากด้าม
+        # ตอนฟาด ก้นหัวจบที่ผิวชิ้นงานที่ยุบแล้วพอดี = จุดที่แรงลงจริง
+        hx = ANVIL_CX - HAM_HEAD_W / 2.0
+        hy = -1.0 if up else ANVIL_TOP - HOT_DOWN_H - HAM_HEAD_H
+        if up:
+            hx = 18.8
+    out.append(Rect(hx, hy, HAM_HEAD_W, HAM_HEAD_H, head))
+    # ครึ่งล่างของหัวเข้ม = หน้าค้อนที่ฟาดลงไป ทำให้ก้อนเทาไม่แบนเป็นก้อนเดียว
+    out.append(Rect(hx, hy + HAM_HEAD_H / 2.0, HAM_HEAD_W, HAM_HEAD_H / 2.0, face))
+    return out
+
+
+# ประกายกระเด็นจากจุดกระแทก — สามทิศที่ไม่สมมาตรกัน จึงอ่านเป็นเศษที่กระเด็นจริง
+# ไม่ใช่เอฟเฟกต์ที่ก๊อปวางสองข้าง (ทิศมาจากไฟล์ต้นแบบ คูณสเกลของตารางนี้)
+SPARK_DIRS = ((2.5, -3.8), (3.1, -0.6), (1.9, 1.9))
+
+
 def hammer(phase: float, connected: bool = True) -> RectList:
-    """ค้อน — Bash  (ทุบเป็นจังหวะ มีประกายตอนกระแทก)"""
-    col = _c(connected, PAL.accent)
-    head = _c(connected, PAL.text_dim)
-    down = phase % 0.5 < 0.25
-    x = HAND_X + 0.3
-    y = HAND_Y + (2.0 if down else 0.0)
-    out = [Rect(x + 1.7, y + 1.8, 1.3, 3.4, col)]  # ด้าม
-    out.append(Rect(x, y, 4.8, 2.0, head))  # หัวค้อน
-    if down:
-        out.append(Rect(x - 0.9, y + 4.4, 1.0, 1.0, PAL.accent))
-        out.append(Rect(x + 4.7, y + 4.4, 1.0, 1.0, PAL.accent))
+    """หมวกวิศวกร + ค้อน — Bash  (เงื้อแล้วฟาดชิ้นงานบนแท่น หนึ่งครั้งต่อลูป)
+
+    ค้อนแกว่งอย่างเดียวอ่านได้แค่ "ถือของ" — ท่าที่อ่านออกว่ากำลังสั่งงานเครื่องคือ
+    ครบชุด: หมวกบอกว่าเป็นคนคุมงาน ค้อนคือเครื่องมือ แท่นคือสิ่งที่ถูกลงแรง
+    น้ำหนักของการกระแทกมาจากจังหวะ (เงื้อค้าง -> ฟาดสองเฟรม -> คืนตัว) ไม่ใช่จากขนาด
+    """
+    stage = hammer_stage(phase)
+    out = _hat(_c(connected, PAL.accent), _c(connected, PAL.accent_dark))
+    out += _hammer_tool(
+        stage,
+        _c(connected, PAL.clay_dark),
+        _c(connected, PAL.text_dim),
+        # เงาของหัวค้อนต้องเป็นเทากลาง ไม่ใช่สีหมึก — สีหมึกเกือบเท่าพื้นหลังช่อง
+        # ครึ่งล่างของหัวจะหายไปกับฉาก เหลือหัวค้อนบางเป็นขีด
+        _c(connected, PAL.gray),
+    )
+
+    # หยดเหงื่อกระเด็นออกข้างหมวก ตั้งแต่เงื้อจนฟาด — สัญญาณว่ากำลังออกแรง ไม่ใช่กำลังเล่น
+    if stage in (HAM_WINDUP, HAM_STRIKE):
+        drop = _c(connected, PAL.glass)
+        fly = 1.2 if stage == HAM_STRIKE else 0.0
+        x, y = 1.0 - fly, -1.2 - fly
+        out.append(Rect(x, y, 1.3, 1.3, drop))
+        out.append(Rect(x + 0.3, y - 0.8, 0.7, 0.8, drop))
+
+    if stage == HAM_STRIKE:
+        # กระเด็นออกครึ่งทางในเฟรมที่สองของการฟาด — เฟรมเดียวจะอ่านเป็นจุดค้าง ไม่ใช่ประกาย
+        t = 0.0 if phase < (HAM_T_STRIKE + HAM_T_RECOVER) / 2.0 else 1.0
+        spark = _c(connected, PAL.accent)
+        for dx, dy in SPARK_DIRS:
+            out.append(Rect(ANVIL_CX - 0.6 + dx * t, ANVIL_TOP - 1.4 + dy * t, 1.2, 1.2, spark))
     return out
 
 
