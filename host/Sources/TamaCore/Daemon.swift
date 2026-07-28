@@ -78,6 +78,8 @@ public final class Daemon {
         guard let data = try? snapshot.encoded() else { return }
         guard data != lastSent else { return }
         lastSent = data
+        Log.debug("publish \(snapshot.sessions.map { "\($0.project):\($0.state.rawValue)" })"
+            + " cards=\(snapshot.cards.count)")
         for t in transports where t.isConnected {
             t.send(data)
         }
