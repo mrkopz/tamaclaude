@@ -1,21 +1,24 @@
 import AppKit
 import TamaCore
 
-/// แบดจ์บนแถบเมนูในรูปภาพเดียว — แถบ pill สั้นๆ กับเปอร์เซ็นต์
+/// แบดจ์บนแถบเมนูในรูปภาพเดียว — แถบวัดสั้นๆ กับเปอร์เซ็นต์
 ///
 /// อยู่คนละไฟล์กับ `MenuBarApp` เพราะเป็นคนละเหตุผลที่จะแก้: ไฟล์นั้นเปลี่ยนเมื่อเมนู
 /// มีรายการใหม่หรือ daemon ต่อสายใหม่ ไฟล์นี้เปลี่ยนเมื่อหน้าตาของแบดจ์เปลี่ยน
 enum MenuBadgeImage {
-    private static let barWidth: CGFloat = 34
-    private static let barHeight: CGFloat = 11
+    private static let barWidth: CGFloat = 35
+    private static let barHeight: CGFloat = 10
     private static let gap: CGFloat = 5
-    /// 17 คือเพดานที่ปลอดภัยของภาพบนแถบเมนู — สูงกว่านี้ระบบย่อให้เองแล้วเส้นขอบ 1 px
-    /// กลายเป็นเส้นเบลอครึ่งพิกเซล ความสูงนี้ต้องพอให้ขีด pace ล้นแถบได้ทั้งบนและล่าง
-    private static let height: CGFloat = 17
+    /// สูงกว่านี้ระบบย่อภาพให้เองแล้วเส้นขอบ 1 px กลายเป็นเส้นเบลอครึ่งพิกเซล
+    private static let height: CGFloat = 16
     private static let border: CGFloat = 1
-    /// ขีด pace ล้นขอบแถบข้างละ 2 px เหมือนบนจอ — ตรงที่มันทับเนื้อแถบพอดี
-    /// สีเดียวกันทำให้มันหายไป ส่วนที่ล้นออกมาคือส่วนที่มองเห็นได้เสมอ
-    private static let paceOvershoot: CGFloat = 2
+    /// มุมมนพอไม่ให้เป็นกล่องแข็ง แต่ไม่ถึงครึ่งความสูง — pill อ่านเหมือนปุ่มหรือป้าย
+    /// ส่วนนี่คือเครื่องวัด ปลายแถบที่โค้งจนกลมทำให้ 3% แรกกับ 3% สุดท้ายกินพื้นที่
+    /// ไม่เท่ากับ 3% ตรงกลาง
+    private static let radius: CGFloat = 2.5
+    /// ช่องว่างระหว่างขอบกับเนื้อแถบ — ขอบที่ติดเนื้อกลายเป็นก้อนเดียวกัน แล้ว "เต็มแค่ไหน"
+    /// ต้องเดาจากน้ำหนักสีแทนที่จะอ่านจากระยะ
+    private static let padding: CGFloat = 1.5
 
     /// ไอคอนตอนไม่มีอะไรจะบอก — `0%` ที่เดาเอาคือคำโกหกที่ดูเหมือนค่าที่วัดมา
     /// ส่วนแถบเปล่าดูเหมือนแอปพัง
@@ -48,45 +51,64 @@ enum MenuBadgeImage {
 
         let image = NSImage(size: size, flipped: false) { _ in
             // หดเข้ามาครึ่งเส้น เพราะ stroke วาดคร่อมเส้นทาง ครึ่งนอกจะถูกขอบภาพตัดทิ้ง
-            let bar = NSRect(
-                x: border / 2, y: (height - barHeight) / 2,
+            let shell = NSRect(
+                x: border / 2, y: (height - barHeight) / 2 + border / 2,
                 width: barWidth - border, height: barHeight - border)
-            let pill = NSBezierPath(
-                roundedRect: bar, xRadius: bar.height / 2, yRadius: bar.height / 2)
+            let outline = NSBezierPath(roundedRect: shell, xRadius: radius, yRadius: radius)
+
+            // เนื้อแถบอยู่ในกรอบ ไม่ใช่*เป็น*กรอบ — เว้นขอบในทั้งสี่ด้านเท่ากัน
+            let inset = border / 2 + padding
+            let track = shell.insetBy(dx: inset, dy: inset)
+            let trackPath = NSBezierPath(
+                roundedRect: track, xRadius: max(0, radius - inset),
+                yRadius: max(0, radius - inset))
             // รางจางแต่ยังเห็น — แถบที่ไม่มีรางบอกไม่ได้ว่า 20% นี้คือ 20% ของเท่าไร
             ink.withAlphaComponent(0.25).setFill()
-            pill.fill()
+            trackPath.fill()
 
-            let filled = bar.width * CGFloat(min(100, max(0, badge.percent))) / 100
+            let filled = track.width * CGFloat(min(100, max(0, badge.percent))) / 100
             if filled > 0 {
-                // ตัดด้วย clip ไม่ใช่วาด pill ที่แคบลง ไม่งั้นปลายซ้ายของเนื้อแถบ
+                // ตัดด้วย clip ไม่ใช่วาดรางที่แคบลง ไม่งั้นปลายซ้ายของเนื้อแถบ
                 // จะโค้งตามความยาวของตัวเอง แทนที่จะโค้งตามราง
                 NSGraphicsContext.saveGraphicsState()
                 NSBezierPath(
-                    rect: NSRect(x: bar.minX, y: bar.minY, width: filled, height: bar.height)
+                    rect: NSRect(
+                        x: track.minX, y: track.minY, width: filled, height: track.height)
                 ).setClip()
                 ink.setFill()
-                pill.fill()
+                trackPath.fill()
                 NSGraphicsContext.restoreGraphicsState()
             }
 
-            // ขอบทึบวาดทับท้ายสุด — บนพื้นแถบเมนูที่มีวอลเปเปอร์อยู่ข้างหลัง รางจางๆ
-            // อย่างเดียวหายไปกับพื้น เส้นขอบคือสิ่งที่บอกว่าแถบเริ่มและจบตรงไหน
-            ink.setStroke()
-            pill.lineWidth = border
-            pill.stroke()
-
-            // ขีด "ควรใช้ถึงไหนแล้ว" — ขีดอยู่ขวาของเนื้อแถบ = ใช้ช้ากว่าเวลา
+            // ขีด "ควรใช้ถึงไหนแล้ว" — อยู่ขวาของเนื้อแถบ = ใช้ช้ากว่าเวลา
             // อยู่ซ้าย = ใช้เร็วเกินไป ภาษาเดียวกับแผงบนบอร์ด
+            //
+            // สูงเท่าแถบพอดี จึงพาดผ่านเนื้อแถบเต็มๆ ได้ — ตรงที่ทับเนื้อจะเจาะเป็นร่องโปร่ง
+            // แทนการวาดหมึกทับหมึกซึ่งมองไม่เห็น ส่วนตรงที่อยู่บนรางว่างยังวาดด้วยหมึก
             if badge.pace != MenuBadge.unknown {
-                let at = bar.minX + bar.width * CGFloat(min(100, max(0, badge.pace))) / 100
-                ink.setFill()
-                NSBezierPath(
-                    rect: NSRect(
-                        x: min(at, barWidth - border), y: bar.minY - paceOvershoot,
-                        width: border, height: bar.height + 2 * paceOvershoot)
-                ).fill()
+                let pace = CGFloat(min(100, max(0, badge.pace))) / 100
+                let at = min(track.minX + track.width * pace, shell.maxX - border / 2)
+                let mark = NSRect(
+                    x: at, y: shell.minY - border / 2, width: border, height: barHeight)
+                NSGraphicsContext.saveGraphicsState()
+                if badge.pace <= badge.percent {
+                    NSGraphicsContext.current?.compositingOperation = .clear
+                } else {
+                    ink.setFill()
+                }
+                NSBezierPath(rect: mark).fill()
+                NSGraphicsContext.restoreGraphicsState()
             }
+
+            // ขอบทึบวาดท้ายสุด — บนพื้นแถบเมนูที่มีวอลเปเปอร์อยู่ข้างหลัง รางจางๆ อย่างเดียว
+            // หายไปกับพื้น เส้นขอบคือสิ่งที่บอกว่าแถบเริ่มและจบตรงไหน
+            //
+            // ต้องมาหลังขีด pace: ขีดที่สูงเท่าแถบพาดทับเส้นขอบบนล่างด้วย และร่องโปร่ง
+            // ที่เจาะทะลุขอบทำให้กรอบขาดเป็นสองท่อน วาดขอบทับทีหลังจึงได้ทั้งขีดเต็มความสูง
+            // และกรอบที่ยังเป็นกรอบ
+            ink.setStroke()
+            outline.lineWidth = border
+            outline.stroke()
 
             text.draw(
                 at: NSPoint(x: barWidth + gap, y: (height - textSize.height) / 2),
