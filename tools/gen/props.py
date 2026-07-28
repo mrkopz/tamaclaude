@@ -245,8 +245,9 @@ def hammer_anvil(phase: float, connected: bool = True) -> RectList:
 # หมวกนิรภัย — พีระมิดขั้นบันได กว้างขึ้นทีละขั้นจนจบที่ปีกซึ่งกว้างเท่าช่วงแขน
 # '#' คือด้านที่รับแสง '+' คือริ้วเงา — ริ้วแนวตั้งสลับกันคือสิ่งที่ทำให้หมวกมีสัน
 # ไม่ใช่โดมเรียบ และอ่านออกว่าเป็นหมวกนิรภัยตั้งแต่แวบแรก
+# ยอดบนสุดเว้าหายไปหนึ่งช่องตรงกลาง — ร่องบนสันหมวกจริง และกันไม่ให้ยอดอ่านเป็นจุกแหลม
 HAT_ART = (
-    ".....##+##.....",
+    ".....##.##.....",
     "....+##+##+....",
     "...+##+#+##+...",
     "..++#######++..",
@@ -324,7 +325,7 @@ def hammer(phase: float, connected: bool = True) -> RectList:
     น้ำหนักของการกระแทกมาจากจังหวะ (เงื้อค้าง -> ฟาดสองเฟรม -> คืนตัว) ไม่ใช่จากขนาด
     """
     stage = hammer_stage(phase)
-    out = _hat(_c(connected, PAL.accent), _c(connected, PAL.accent_dark))
+    out = _hat(_c(connected, PAL.accent), _c(connected, PAL.accent_warm))
     out += _hammer_tool(
         stage,
         _c(connected, PAL.clay_dark),

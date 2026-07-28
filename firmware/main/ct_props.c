@@ -182,10 +182,11 @@ void ct_prop_hammer_anvil(ct_rects_t *o, float phase, bool connected)
 // หมวกนิรภัย — พีระมิดขั้นบันได กว้างขึ้นทีละขั้นจนจบที่ปีกที่ยื่นพ้นลำตัวข้างละ 1
 // '#' คือด้านที่รับแสง '+' คือริ้วเงา — ริ้วแนวตั้งสลับกันคือสิ่งที่ทำให้หมวกมีสัน
 // ไม่ใช่โดมเรียบ และอ่านออกว่าเป็นหมวกนิรภัยตั้งแต่แวบแรก
+// ยอดบนสุดเว้าหายไปหนึ่งช่องตรงกลาง — ร่องบนสันหมวกจริง และกันไม่ให้ยอดอ่านเป็นจุกแหลม
 #define HAT_ROWS 5
 #define HAT_COLS 15
 static const char *const HAT_ART[HAT_ROWS] = {
-    ".....##+##.....",
+    ".....##.##.....",
     "....+##+##+....",
     "...+##+#+##+...",
     "..++#######++..",
@@ -260,7 +261,7 @@ static const float SPARK_DIRS[3][2] = {{2.5f, -3.8f}, {3.1f, -0.6f}, {1.9f, 1.9f
 static void hammer(ct_rects_t *o, float phase, bool connected)
 {
     ct_ham_stage_t stage = ct_prop_hammer_stage(phase);
-    hat(o, c(connected, CT_COL_ACCENT), c(connected, CT_COL_ACCENT_DARK));
+    hat(o, c(connected, CT_COL_ACCENT), c(connected, CT_COL_ACCENT_WARM));
     // เงาของหัวค้อนต้องเป็นเทากลาง ไม่ใช่สีหมึก — สีหมึกเกือบเท่าพื้นหลังช่อง
     // ครึ่งล่างของหัวจะหายไปกับฉาก เหลือหัวค้อนบางเป็นขีด
     hammer_tool(o, stage, c(connected, CT_COL_CLAY_DARK), c(connected, CT_COL_TEXT_DIM),
