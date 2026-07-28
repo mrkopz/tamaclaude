@@ -1,6 +1,6 @@
 import Foundation
 
-/// สิ่งเดียวที่ไอคอนบนแถบเมนูต้องรู้: เลขของหน้าต่าง 5 ชม. กับ "ต้องแดงไหม"
+/// สิ่งเดียวที่ไอคอนบนแถบเมนูต้องรู้: เลขของหน้าต่าง 5 ชม. กับเวลาที่เดินไปถึงไหน
 ///
 /// แยกจากโค้ดวาดเพราะกฎว่าเมื่อไรควรเตือนเป็นตรรกะล้วน ทดสอบได้โดยไม่ต้องมีหน้าจอ
 /// ส่วนโค้ดวาดเหลือแค่ "เอาสองค่านี้ไปทำภาพ"
@@ -8,17 +8,31 @@ import Foundation
 /// เลือกหน้าต่าง 5 ชม. ตัวเดียว (ไม่ใช่ weekly) ด้วยเหตุผลเดียวกับแถบย่อบนจอ:
 /// มันขยับเร็วพอจะเปลี่ยนการตัดสินใจภายในวันเดียว ส่วน weekly รอดูตอนกดเปิดแผงได้
 public struct MenuBadge: Equatable, Sendable {
+    /// ไม่รู้ — ค่าเดียวกับ `UsageSnap.unknown` เพราะเป็นความไม่รู้ก้อนเดียวกัน
+    /// ที่เดินทางมาจากสาย
+    public static let unknown = UsageSnap.unknown
+
     public var percent: Int
+    /// เวลาในหน้าต่างเดินไปกี่เปอร์เซ็นต์แล้ว — ตำแหน่งของขีด pace บนแถบ
+    ///
+    /// เก็บเป็นตำแหน่ง ไม่ใช่แค่ "แซงหรือยัง" เพราะขีดตอบคำถามที่สีตอบไม่ได้:
+    /// แซงไป*เท่าไร* และอีกนานไหมกว่าเวลาจะไล่ทัน
+    public var pace: Int
+
+    public init(percent: Int, pace: Int) {
+        self.percent = percent
+        self.pace = pace
+    }
+
     /// แดง — ไม่มีเหลือง ไม่มีเขียว บนแถบเมนู
     ///
     /// จอบนโต๊ะไล่สีสามขั้นได้เพราะมีที่ให้ไล่ แต่ไอคอน 16 px ที่ผู้ใช้เหลือบครึ่งวินาที
     /// มีคำถามเดียวคือ "ต้องช้าลงไหม" สีที่แปลว่า "ยังไหว" กับ "สบายมาก"
     /// กินความสนใจเท่ากับสีที่แปลว่า "มีปัญหา" ทั้งที่บอกน้อยกว่า
-    public var isAlarming: Bool
-
-    public init(percent: Int, isAlarming: Bool) {
-        self.percent = percent
-        self.isAlarming = isAlarming
+    ///
+    /// ไม่รู้ว่าเวลาเดินไปถึงไหน = เทียบ pace ไม่ได้ = ไม่มีเหตุให้เตือน
+    public var isAlarming: Bool {
+        pace != Self.unknown && percent > pace
     }
 
     /// `nil` แปลว่าไม่มีอะไรจะบอก ให้กลับไปเป็นไอคอนเดิม
@@ -30,7 +44,7 @@ public struct MenuBadge: Equatable, Sendable {
         // countdown ถึงศูนย์ = หน้าต่างหมุนไปแล้ว เปอร์เซ็นต์ที่ยังถืออยู่เป็นของหน้าต่างที่ตายแล้ว
         // `UsageReader` ล้างให้ตั้งแต่ต้นทางอยู่แล้ว แต่สัญญาของแบดจ์คือค่าบนสาย ไม่ใช่ผู้อ่าน
         guard session.remaining != 0 else { return nil }
-        return MenuBadge(percent: session.percent, isAlarming: alarming(session))
+        return MenuBadge(percent: session.percent, pace: pace(session))
     }
 
     /// แซง pace เป็นเกณฑ์*เดียว* — ไม่มีเกณฑ์เปอร์เซ็นต์ตายตัวบนแถบเมนู
@@ -43,12 +57,14 @@ public struct MenuBadge: Equatable, Sendable {
     ///
     /// สูตร pace ต้องตรงกับ `usage_bar_color` ใน `firmware/main/ct_ui.c`
     /// และ `tools/gen/screen.py` — เกณฑ์เปอร์เซ็นต์เท่านั้นที่ไม่เอามา
-    private static func alarming(_ snap: UsageSnap) -> Bool {
-        // ไม่รู้ว่าเหลือเวลาเท่าไร = เทียบ pace ไม่ได้ = ไม่มีเหตุให้เตือน
-        guard snap.remaining != UsageSnap.unknown else { return false }
+    ///
+    /// การหารลงพื้นไม่ทำให้เกณฑ์เพี้ยน: `percent > floor(pace)` ให้ผลเดียวกับ
+    /// `percent * window > elapsed * 100` ทุกกรณี เพราะ percent เป็นจำนวนเต็ม
+    private static func pace(_ snap: UsageSnap) -> Int {
+        guard snap.remaining != UsageSnap.unknown else { return unknown }
         let window = UsageReader.sessionWindow
         // countdown ที่ยาวกว่าหน้าต่างแปลว่านาฬิกาสองฝั่งไม่ตรงกัน ไม่ใช่ว่าเวลาเดินถอยหลัง
         let elapsed = min(window, max(0, window - snap.remaining))
-        return snap.percent * window > elapsed * 100
+        return elapsed * 100 / window
     }
 }

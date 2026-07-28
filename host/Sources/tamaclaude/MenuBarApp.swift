@@ -7,7 +7,7 @@ import TamaCore
 /// ไม่ได้สั่ง daemon อีกตัวจากระยะไกล แต่ *เป็น* daemon เอง (โปรเซสเดียว socket เดียว)
 /// เพราะสิทธิ์ Bluetooth ผูกกับ .app ที่ถูกปล่อยผ่าน LaunchServices เท่านั้น
 /// ถ้าแยกโปรเซสจะได้ daemon ที่ไม่มีสิทธิ์ต่อบอร์ด
-final class MenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private let ble = BLETransport()
     private var daemon: Daemon!
@@ -15,10 +15,14 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// จำบอร์ดที่ผู้ใช้เลือกไว้ข้ามการเปิดปิดแอป
     private static let preferredKey = "preferredBoard"
 
-    private let linkItem = NSMenuItem(title: "Scanning…", action: nil, keyEquivalent: "")
+    private let popover = NSPopover()
+    private let panel = PanelViewController()
+    private lazy var gearMenu: NSMenu = buildMenu()
+    /// ตัวดักคลิกนอกแอปตอน popover เปิด — มีอยู่ก็ต่อเมื่อ popover เปิดอยู่
+    private var outsideClicks: Any?
+
     private let boardItem = NSMenuItem(title: "Board", action: nil, keyEquivalent: "")
     private var boards: [Board] = []
-    private let sessionItem = NSMenuItem(title: "No sessions", action: nil, keyEquivalent: "")
     private let hooksItem = NSMenuItem(
         title: "Install hooks in ~/.claude/settings.json", action: #selector(installHooks),
         keyEquivalent: "")
@@ -35,7 +39,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
         var highlighted: Bool
     }
     private var lastDrawn: Drawn?
-    private var menuIsOpen = false
+    private var panelIsOpen = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Paths.ensureStateDir()
@@ -43,7 +47,16 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         showBadge(nil)
-        statusItem.menu = buildMenu()
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(togglePanel)
+
+        panel.onGear = { [weak self] button in self?.showGearMenu(from: button) }
+        popover.contentViewController = panel
+        popover.delegate = self
+        // ไม่ใช้ .transient เพราะเมนูเฟืองที่เด้งจากในตัว popover จะปิดมันไปด้วย
+        // ปิดเองด้วยตัวดักคลิกแทน แลกโค้ดไม่กี่บรรทัดกับแผงที่ไม่หายไปใต้เมนูของตัวเอง
+        popover.behavior = .applicationDefined
+        refreshLink()
 
         if let saved = UserDefaults.standard.string(forKey: Self.preferredKey),
             let id = UUID(uuidString: saved) {
@@ -79,18 +92,15 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - เมนู
 
+    /// เมนูเดิมทั้งอัน ลบแค่สองบรรทัดบนที่ย้ายไปอยู่ท้าย popover แล้ว
+    ///
+    /// เฟืองเด้ง NSMenu ไม่ใช่หน้า Settings ที่วาดเอง — ติ๊กถูก, submenu, slider ในเมนู
+    /// และ Quit ทำงานถูกอยู่แล้ว การวาดใหม่เป็น NSView คือการรื้อของที่ใช้ได้
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.delegate = self
-        linkItem.isEnabled = false
-        sessionItem.isEnabled = false
-        menu.addItem(linkItem)
-        menu.addItem(sessionItem)
-        menu.addItem(.separator())
-
         boardItem.submenu = NSMenu()
         menu.addItem(boardItem)
-        showBoards([])
+        showBoards(boards)
         menu.addItem(.separator())
 
         menu.addItem(brightnessItem())
@@ -138,12 +148,12 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - อัปเดตหน้าตา
 
-    /// สถานะบอร์ดอยู่ในบรรทัดแรกของเมนู ไม่ใช่ที่ไอคอน
+    /// สถานะบอร์ดอยู่ท้าย popover ไม่ใช่ที่ไอคอน
     ///
     /// เคยหรี่ไอคอนตอนต่อบอร์ดไม่ติด แต่พอไอคอนกลายเป็นตัวเลขโควตา การหรี่กลับกลาย
     /// เป็นการทำให้ข้อมูลที่ยังถูกต้องอยู่ (โควตาไม่ได้มาจากบอร์ด) ดูเหมือนใช้ไม่ได้
     private func refreshLink() {
-        linkItem.title = ble.isConnected ? "Board connected" : "Looking for the board…"
+        panel.showBoard(connected: ble.isConnected)
     }
 
     /// รายการบอร์ดที่สแกนเจอ — ติ๊กตัวที่ผู้ใช้เลือกไว้ และวงเล็บบอกตัวที่กำลังคุยอยู่จริง
@@ -182,7 +192,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// วาดแบดจ์ใหม่เฉพาะตอนภาพจะเปลี่ยนจริง — `show` ถูกเรียกทุกครั้งที่ snapshot ขยับ
     /// ซึ่งรวมถึงนาฬิกาที่เดินทุกนาที ส่วนโควตาขยับนานๆ ครั้ง
     private func showBadge(_ badge: MenuBadge?) {
-        let drawn = Drawn(badge: badge, highlighted: menuIsOpen)
+        let drawn = Drawn(badge: badge, highlighted: panelIsOpen)
         guard drawn != lastDrawn || statusItem.button?.image == nil else { return }
         lastDrawn = drawn
         guard let badge else {
@@ -191,33 +201,60 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
             statusItem.button?.toolTip = "tamaclaude — no usage figures yet"
             return
         }
-        statusItem.button?.image = MenuBadgeImage.make(badge, highlighted: menuIsOpen)
+        statusItem.button?.image = MenuBadgeImage.make(badge, highlighted: panelIsOpen)
         statusItem.button?.toolTip = MenuBadgeImage.description(badge)
     }
 
     private func show(_ snapshot: Snapshot) {
         showBadge(MenuBadge.from(snapshot.usage))
-        if snapshot.sessions.isEmpty {
-            sessionItem.title = "No sessions"
-            return
+        panel.showSessions(snapshot)
+    }
+
+    // MARK: - popover เปิด/ปิด
+
+    @objc private func togglePanel() {
+        popover.isShown ? popover.performClose(nil) : openPanel()
+    }
+
+    private func openPanel() {
+        guard let button = statusItem.button else { return }
+        // แอปที่ไม่มี Dock ไม่ได้ active เองตอนคลิกแถบเมนู ปุ่มในแผงจะกดไม่ติด
+        NSApp.activate(ignoringOtherApps: true)
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        // popover ที่ไม่ใช่ .transient ไม่ปิดตัวเอง — คลิกนอกแอปคือสัญญาณเดียวที่เหลือ
+        outsideClicks = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] _ in
+            self?.popover.performClose(nil)
         }
-        let parts = snapshot.sessions.map { "\($0.project) · \($0.state.rawValue)" }
-        var text = parts.joined(separator: "\n")
-        if snapshot.overflow > 0 { text += "\n+\(snapshot.overflow) more" }
-        sessionItem.title = text
+        setHighlighted(true)
     }
 
-    // MARK: - เมนูเปิด/ปิด
+    /// เก็บกวาดที่ `popoverDidClose` ที่เดียว ไม่ใช่ที่ทุกจุดที่สั่งปิด — ทางปิดมีหลายทาง
+    /// (ปุ่มบนแถบเมนู, คลิกนอกแอป, ระบบสั่งปิดเอง) ตัวดักคลิกที่ค้างอยู่แม้แผงหายไปแล้ว
+    /// คือ monitor ที่ไม่มีวันถูกถอด
+    func popoverDidClose(_ notification: Notification) {
+        if let outsideClicks { NSEvent.removeMonitor(outsideClicks) }
+        outsideClicks = nil
+        setHighlighted(false)
+    }
 
-    /// ปุ่มบนแถบเมนูถูกถมด้วยสีเน้นตอนเมนูเปิด ภาพที่ไม่ใช่ template จึงต้องวาดใหม่
-    func menuWillOpen(_ menu: NSMenu) {
-        menuIsOpen = true
+    /// ปุ่มบนแถบเมนูถูกถมด้วยสีเน้นตอนแผงเปิด ภาพที่ไม่ใช่ template จึงต้องวาดใหม่
+    ///
+    /// ต้องถมเอง: การถมมาฟรีกับ `statusItem.menu` เท่านั้น ปุ่มที่เด้ง popover
+    /// ดูเหมือนไม่ได้ถูกกดถ้าไม่บอก
+    private func setHighlighted(_ on: Bool) {
+        panelIsOpen = on
+        statusItem.button?.highlight(on)
         showBadge(lastDrawn?.badge)
     }
 
-    func menuDidClose(_ menu: NSMenu) {
-        menuIsOpen = false
-        showBadge(lastDrawn?.badge)
+    /// ติ๊กถูกสองอันอ่านค่าจริงทุกครั้งที่เมนูเด้ง ไม่ใช่ครั้งเดียวตอนสร้างเมนู —
+    /// ทั้งคู่แก้ที่อื่นได้ (settings.json, หน้า Login Items ของระบบ) โดยแอปไม่รู้เรื่อง
+    private func showGearMenu(from button: NSButton) {
+        statuslineItem.state = StatuslineInstaller.isInstalled ? .on : .off
+        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        gearMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: -2), in: button)
     }
 
     // MARK: - การกระทำ
