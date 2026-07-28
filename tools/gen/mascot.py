@@ -95,17 +95,28 @@ def _legs(gait: str, phase: float, color: str, extra_lift: float = 0.0) -> RectL
 
 
 # --- ลำตัว -----------------------------------------------------------------
-def _body(color: str, arm_dy: tuple[float, float] = (0.0, 0.0)) -> RectList:
+def _body(
+    color: str, arm_dy: tuple[float, float] = (0.0, 0.0), arm_out: float = 0.0
+) -> RectList:
     """ลำตัวกับแขนสองข้างในสัดส่วนปกติ — การยุบตัวทำทีหลังด้วย _squashed()
 
     arm_dy เลื่อนแขน (nub) ทีละข้าง — ท่าพิมพ์ใช้ค่าคนละเครื่องหมายจึงอ่านเป็นสลับมือ
+    arm_out > 0 = แขนเป็นสองท่อนลดหลั่นออกนอกตัว (ท่ายกมือค้าง) แทนที่จะเป็นก้อนเดียว
+    ก้อนเดียวที่เลื่อนขึ้นเฉยๆ อ่านเป็น "ไหล่สูงขึ้น" ไม่ใช่ "ยกมือ" — ต้องมีท่อนที่เยื้อง
+    ออกไปนอกซิลลูเอ็ต สายตาถึงจะเห็นเป็นแขนที่กางขึ้น
     """
     bx, by, bw, bh = BODY
-    return [
-        Rect(bx, by, bw, bh, color),
-        Rect(bx - NUB_W, NUB_Y + arm_dy[0], NUB_W, NUB_H, color),
-        Rect(bx + bw, NUB_Y + arm_dy[1], NUB_W, NUB_H, color),
-    ]
+    out = [Rect(bx, by, bw, bh, color)]
+    if arm_out == 0.0:
+        out.append(Rect(bx - NUB_W, NUB_Y + arm_dy[0], NUB_W, NUB_H, color))
+        out.append(Rect(bx + bw, NUB_Y + arm_dy[1], NUB_W, NUB_H, color))
+        return out
+    h = NUB_H * 0.8  # แต่ละท่อนเตี้ยกว่าแขนปกติ สองท่อนรวมกันจึงไม่ยาวเกินสัดส่วนเดิม
+    for side, x0, dy in ((-1.0, bx - NUB_W, arm_dy[0]), (1.0, bx + bw, arm_dy[1])):
+        # ท่อนใน — ติดลำตัว ยกขึ้นครึ่งทางของท่อนนอก จึงอ่านเป็นแขนที่เอียงขึ้น
+        out.append(Rect(x0, NUB_Y + dy + h * 0.5, NUB_W, h, color))
+        out.append(Rect(x0 + side * arm_out, NUB_Y + dy, NUB_W, h, color))  # ท่อนนอก
+    return out
 
 
 def _squashed(rects: RectList, squash: float) -> RectList:
@@ -131,6 +142,8 @@ class Mood:
     look: float = 0.0
     scan: float = 0.0  # กวาดสายตาซ้าย->ขวาแล้ววกกลับ (unit) — ท่าอ่านโค้ด
     arm: float = 0.0   # ระยะที่แขนขยับสลับข้าง (unit) — ท่าพิมพ์
+    arm_up: float = 0.0  # ระยะที่แขนยกค้างพร้อมกันสองข้าง (unit) — ท่าเพ่งพลัง
+    arm_out: float = 0.0  # ระยะที่ท่อนนอกของแขนเยื้องออกนอกตัว (unit) — ใช้คู่กับ arm_up
     blink: bool = True  # ตาลืมเท่านั้นที่กะพริบได้
     strike: bool = False  # ใช้จังหวะทุบของ props.hammer_stage() แทนการกระเด้งเป็นคลื่น
     sink: float = 0.0  # >0 = จมลงดินตามความคืบหน้าของ phase (ท่ามุดหาย)
@@ -158,6 +171,11 @@ MOODS: dict[str, Mood] = {
     "alert":     Mood(eye="wide",   bob=0.90, bob_hz=3.2, shake=0.20, blink=False),
     "celebrate": Mood(eye="happy",  bob=1.25, bob_hz=2.6, squash=-0.05, blink=False),
     "error":     Mood(eye="dead",   gait="sit", squash=0.12, shake=0.08, blink=False),
+    # ท่าส่งสัญญาณ — ตาปกติ ไม่เบิกกว้าง (ตาโตอ่านเป็นตกใจ ซึ่งเป็นสารของ alert)
+    # สารของท่านี้อยู่ที่เสาอากาศกับมือที่ยกค้าง ไม่ใช่ที่หน้า
+    # แขนยกค้างนิ่งพร้อมกันสองข้างแบบเพ่งพลัง — ไม่โยก เพราะการโยกอ่านเป็นโบกมือ
+    # ท่อนนอกเยื้องออกนอกตัว จึงเห็นเป็นมือที่ยกขึ้นจริง ไม่ใช่ไหล่ที่สูงขึ้นเฉยๆ
+    "signalling": Mood(eye="open",   bob=0.45, bob_hz=1.3, arm_up=1.9, arm_out=0.9),
     # ท่าเปลี่ยนผ่าน — phase ทำหน้าที่เป็นความคืบหน้า 0→1 ไม่ใช่ลูปวน
     "entering":  Mood(eye="open",   gait="walk", bob=1.00, bob_hz=4.0),
     "leaving":   Mood(eye="squint", gait="sit", squash=0.30, sink=1.0, blink=False),
@@ -182,7 +200,7 @@ STATES: dict[str, tuple[str, str | None]] = {
     "leaving":   ("leaving", None),
     # ต่อท้ายเสมอ — ลำดับใน dict นี้คือค่าตัวเลขของ enum ใน layout.h
     "conducting": ("working", "crew"),
-    "beacon": ("working", "beacon"),
+    "beacon": ("signalling", "beacon"),
 }
 
 
@@ -237,8 +255,9 @@ def build(
     # แขนพิมพ์ — แขนข้างลำตัวสลับขึ้นลงสองรอบต่อลูป ไม่มีแขนพาดหน้าแล็ปท็อป
     # (แขนที่เอื้อมมาข้างหน้าอ่านเป็น "กดจอ" ไม่ใช่ "พิมพ์อยู่หลังจอ")
     arm = m.arm * math.sin(phase * math.pi * 4.0)
+    arm_lift = m.arm_up  # ยกค้างนิ่ง — ถ้าขยับขึ้นลงจะอ่านเป็นโบกมือ ไม่ใช่ยกค้างเพ่งพลัง
     silhouette = _squashed(
-        _body(skin, (arm, -arm)) + _legs(m.gait, phase, skin, m.sink * phase * LEG_H * 0.9),
+        _body(skin, (arm - arm_lift, -arm - arm_lift), m.arm_out) + _legs(m.gait, phase, skin, m.sink * phase * LEG_H * 0.9),
         squash,
     )
     silhouette = move(silhouette, dx, dy)

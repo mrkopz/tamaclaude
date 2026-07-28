@@ -411,27 +411,64 @@ static void crew(ct_rects_t *o, float phase, bool connected)
     }
 }
 
-// เสาสัญญาณ — LSP/MCP (คลื่นแผ่ออกสองข้างเป็นจังหวะ)
-// "คุยกับบริการอื่นอยู่" ไม่ใช่ "ค้นหา" จึงไม่ใช้ลูกโลกซ้ำ ทุกชิ้นตั้งฉากจึงอ่านออกที่ 3 px/unit
+// เสาอากาศบนหัว — LSP/MCP (คลื่นสว่างไล่ออกด้านข้างทีละชั้น)
+// "คุยกับบริการอื่นอยู่" ไม่ใช่ "ค้นหา" จึงไม่ใช้ลูกโลกซ้ำ เสาอยู่บนหัวไม่ใช่ถือข้างตัว
+// เพราะสัญญาณต้องออกจากตัวมาสคอตเอง ไม่ใช่จากอุปกรณ์ที่ตั้งอยู่ข้างๆ
+// คลื่นแผ่ออกด้านข้าง ไม่ใช่ขึ้นบน — เหนือหัวมีที่แค่ 5.6 unit แต่แนวนอนมีเหลือเฟือ
+// ชั้นที่ไล่ออกข้างจึงเดินได้ไกลกว่าและอ่านเป็นคลื่นวิ่งออกจริง ไม่ใช่ขีดซ้อนกันคาหัว
+#define CT_BEA_TIP_Y (-2.6f)  // กึ่งกลางไฟยอดเสา — สูงกว่านี้ชั้นนอกสุดล้น CT_BOX_Y0 ตอนตัวเด้ง
+#define CT_BEA_MAST_H 3.0f    // ความสูงเสา จากใต้ไฟยอดเสาลงมาจมในหัว
+#define CT_BEA_ARCS 3
+#define CT_BEA_ARC_D0 1.6f  // ระยะจากเสาของชั้นในสุด
+#define CT_BEA_ARC_DD 1.7f  // ไกลขึ้นต่อชั้น
+#define CT_BEA_ARC_H0 1.5f  // ความสูงสันของชั้นในสุด
+#define CT_BEA_ARC_DH 0.7f  // สูงขึ้นต่อชั้น
+#define CT_BEA_ARC_T 0.6f   // ความหนาของส่วนโค้ง
+#define CT_BEA_TIP_R 1.0f   // รัศมีไฟยอดเสา
+
+// ไฟยอดเสาทรงกลม — สองแท่งไขว้กัน มุมทั้งสี่จึงหายไปและอ่านเป็นวงกลมที่ 3 px/unit
+static void beacon_tip(ct_rects_t *o, uint16_t color)
+{
+    float r = CT_BEA_TIP_R, cut = CT_BEA_TIP_R * 0.34f;  // cut = มุมที่ตัดออกแต่ละด้าน
+    float x = CT_HEAD_CX - r, y = CT_BEA_TIP_Y - r;
+    ct_rects_add(o, x + cut, y, 2 * r - 2 * cut, 2 * r, color);  // แท่งตั้ง
+    ct_rects_add(o, x, y + cut, 2 * r, 2 * r - 2 * cut, color);  // แท่งนอน
+}
+
+// ส่วนโค้งชั้นที่ k สองข้างของเสา (0 = ชั้นในสุด) — สันตั้งกับปีกที่ร่นเข้าหาเสา
+// ยิ่งไกลสันยิ่งสูง จึงอ่านเป็นวงที่กว้างขึ้น ไม่ใช่ขีดสามขีดที่ยาวเท่ากัน
+static void beacon_arc(ct_rects_t *o, int k, uint16_t color)
+{
+    float d = CT_BEA_ARC_D0 + k * CT_BEA_ARC_DD;
+    float h = CT_BEA_ARC_H0 + k * CT_BEA_ARC_DH;
+    float t = CT_BEA_ARC_T;
+    float y = CT_BEA_TIP_Y - h / 2.0f;
+    for (int i = 0; i < 2; i++) {
+        float side = i == 0 ? -1.0f : 1.0f;  // ซ้าย/ขวา สมมาตรรอบเสา
+        // ขอบซ้ายของสันตั้ง — ข้างซ้ายต้องถอยอีกหนึ่งความหนา สันสองข้างจึงห่างเสาเท่ากัน
+        float x = CT_HEAD_CX + side * d - (side < 0.0f ? t : 0.0f);
+        float wing = x - side * t;  // ปีกร่นเข้าหาเสาหนึ่งช่วงความหนา
+        ct_rects_add(o, x, y, t, h, color);          // สันตั้ง
+        ct_rects_add(o, wing, y - t, t, t, color);   // ปีกบน
+        ct_rects_add(o, wing, y + h, t, t, color);   // ปีกล่าง
+    }
+}
+
 static void beacon(ct_rects_t *o, float phase, bool connected)
 {
-    uint16_t col = c(connected, CT_COL_ACCENT);
-    uint16_t post = c(connected, CT_COL_TEXT_DIM);
-    // กึ่งกลางพื้นที่ prop — คลื่นแผ่ได้เท่ากันสองข้าง
-    float cx = (CT_HAND_X + CT_BOX_X1) / 2.0f;
-    ct_rects_add(o, cx - 0.5f, CT_HAND_Y + 1.4f, 1.0f, 3.8f, post);  // เสา
-    ct_rects_add(o, cx - 1.8f, CT_HAND_Y + 5.2f, 3.6f, 0.9f, post);  // ฐาน
-    ct_rects_add(o, cx - 0.9f, CT_HAND_Y, 1.8f, 1.4f, col);          // ไฟยอดเสา
+    // ชั้นโผล่สะสมทีละชั้น 1 -> 2 -> 3 แล้ววนใหม่ = สัญญาณที่แผ่ออกไกลขึ้นเรื่อยๆ
+    // ไม่มีชั้นเทาค้างไว้ ชั้นที่ยังไม่ถึงคิวคือไม่วาดเลย จอจึงเหลือแต่คลื่นจริง
+    int step = (int)(phase * CT_BEA_ARCS) % CT_BEA_ARCS;  // ชั้นนอกสุดที่โผล่แล้วในเฟรมนี้
+    // สีเดียวทั้งชุด — หลายสีอ่านเป็นของหลายชิ้น ไม่ใช่คลื่นชุดเดียว
+    uint16_t lit = c(connected, CT_COL_ACCENT);
+    // ไฟยอดเสาแดงคงที่ ไม่กะพริบ — จังหวะทั้งหมดอยู่ที่คลื่นแล้ว ถ้าไฟกะพริบด้วยจะแย่งกันเต้น
+    uint16_t tip = c(connected, CT_COL_ALERT);
+    // เสาเป็นสีขาวเหมือนเส้นขอบตัว จึงอ่านเป็นชิ้นส่วนของมาสคอตเอง ไม่ใช่ของที่พิงอยู่
+    uint16_t mast = connected ? CT_COL_OUTLINE : CT_COL_GRAY;
 
-    for (int i = 0; i < 2; i++) {
-        float t = fmodf(phase + i * 0.5f, 1.0f);
-        // ดับก่อนถึงขอบ อ่านเป็นคลื่นจางหาย ไม่ใช่คลื่นโดนตัด
-        if (t > 0.8f) continue;
-        float spread = 1.0f + t * 1.4f;  // กว้างสุด 2.4 — พอดีขอบ CT_BOX_X1
-        float rise = t * 0.7f;
-        ct_rects_add(o, cx - spread - 0.7f, CT_HAND_Y - rise, 0.7f, 1.9f, col);
-        ct_rects_add(o, cx + spread, CT_HAND_Y - rise, 0.7f, 1.9f, col);
-    }
+    for (int k = 0; k <= step; k++) beacon_arc(o, k, lit);  // สะสมจากชั้นในออกไปข้างนอก
+    ct_rects_add(o, CT_HEAD_CX - 0.5f, CT_BEA_TIP_Y + 0.6f, 1.0f, CT_BEA_MAST_H, mast);  // เสา
+    beacon_tip(o, tip);  // ไฟยอดเสา — กลม ไม่ใช่ก้อนเหลี่ยม
 }
 
 void ct_prop_build(ct_rects_t *out, ct_prop_t prop, float phase, bool connected)

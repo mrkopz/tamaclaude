@@ -48,32 +48,41 @@ typedef struct {
     bool blink;    // ตาลืมเท่านั้นที่กะพริบได้
     bool strike;   // ใช้จังหวะทุบของ ct_prop_hammer_stage() แทนการกระเด้งเป็นคลื่น
     float sink;    // >0 = จมลงดินตามความคืบหน้าของ phase (ท่ามุดหาย)
+    float arm_up;  // ระยะที่แขนยกค้างพร้อมกันสองข้าง (unit) — ท่าเพ่งพลัง
+    float arm_out; // ระยะที่ท่อนนอกของแขนเยื้องออกนอกตัว (unit) — ใช้คู่กับ arm_up
 } mood_t;
 
 typedef enum {
     MOOD_IDLE, MOOD_WORKING, MOOD_TYPING, MOOD_HAMMERING, MOOD_WALKING, MOOD_WAITING,
-    MOOD_SLEEPING, MOOD_ALERT, MOOD_CELEBRATE, MOOD_ERROR, MOOD_ENTERING, MOOD_LEAVING,
+    MOOD_SLEEPING, MOOD_ALERT, MOOD_CELEBRATE, MOOD_ERROR, MOOD_SIGNALLING,
+    MOOD_ENTERING, MOOD_LEAVING,
     MOOD_COUNT,
 } mood_id_t;
 
 // bob วัดเป็น unit — 1 unit = CT_SLOTS_UNIT_PX พิกเซล ต่ำกว่า 0.5 unit จะมองแทบไม่เห็นบนจอ
-// ลำดับฟิลด์: eye, gait, squash, bob, bob_hz, shake, look, scan, arm, blink, strike, sink
+// ลำดับฟิลด์: eye, gait, squash, bob, bob_hz, shake, look, scan, arm, blink, strike, sink,
+// arm_up, arm_out (ท่าที่ไม่ยกแขนไม่ต้องเขียนสองค่าสุดท้าย — C เติม 0 ให้เอง)
 static const mood_t MOODS[MOOD_COUNT] = {
-    [MOOD_IDLE]      = {EYE_OPEN,   GAIT_STAND, 0.00f, 0.75f, 1.0f, 0.00f, 0.00f, 0.00f, 0.00f, true,  false, 0.0f},
-    [MOOD_WORKING]   = {EYE_FOCUS,  GAIT_STAND, 0.03f, 0.50f, 2.4f, 0.00f, 0.00f, 0.00f, 0.00f, true,  false, 0.0f},
+    [MOOD_IDLE]      = {EYE_OPEN,   GAIT_STAND, 0.00f, 0.75f, 1.0f, 0.00f, 0.00f, 0.00f, 0.00f, true,  false, 0.0f, 0.0f, 0.0f},
+    [MOOD_WORKING]   = {EYE_FOCUS,  GAIT_STAND, 0.03f, 0.50f, 2.4f, 0.00f, 0.00f, 0.00f, 0.00f, true,  false, 0.0f, 0.0f, 0.0f},
     // ท่านั่งพิมพ์ — ตัวแทบไม่กระเด้ง เพราะสัญญาณอยู่ที่สายตาที่กวาดอ่านกับแขนที่พิมพ์
-    [MOOD_TYPING]    = {EYE_FOCUS,  GAIT_STAND, 0.03f, 0.30f, 2.0f, 0.00f, 0.00f, 1.00f, 0.70f, true,  false, 0.0f},
+    [MOOD_TYPING]    = {EYE_FOCUS,  GAIT_STAND, 0.03f, 0.30f, 2.0f, 0.00f, 0.00f, 1.00f, 0.70f, true,  false, 0.0f, 0.0f, 0.0f},
     // ท่าทุบ — ไม่กระเด้งเป็นคลื่น แต่ยืดตัวตอนเงื้อและยุบตัวตอนกระแทกตามจังหวะค้อน
-    [MOOD_HAMMERING] = {EYE_FOCUS,  GAIT_STAND, 0.00f, 0.35f, 2.0f, 0.00f, 0.00f, 0.00f, 0.00f, true,  true,  0.0f},
-    [MOOD_WALKING]   = {EYE_OPEN,   GAIT_WALK,  0.00f, 0.75f, 2.0f, 0.00f, 0.00f, 0.00f, 0.00f, true,  false, 0.0f},
-    [MOOD_WAITING]   = {EYE_OPEN,   GAIT_STAND, 0.00f, 1.00f, 0.7f, 0.00f, 0.40f, 0.00f, 0.00f, true,  false, 0.0f},
-    [MOOD_SLEEPING]  = {EYE_SLEEP,  GAIT_SIT,   0.10f, 0.50f, 0.35f, 0.00f, 0.00f, 0.00f, 0.00f, false, false, 0.0f},
-    [MOOD_ALERT]     = {EYE_WIDE,   GAIT_STAND, 0.00f, 0.90f, 3.2f, 0.20f, 0.00f, 0.00f, 0.00f, false, false, 0.0f},
-    [MOOD_CELEBRATE] = {EYE_HAPPY,  GAIT_STAND, -0.05f, 1.25f, 2.6f, 0.00f, 0.00f, 0.00f, 0.00f, false, false, 0.0f},
-    [MOOD_ERROR]     = {EYE_DEAD,   GAIT_SIT,   0.12f, 0.00f, 1.0f, 0.08f, 0.00f, 0.00f, 0.00f, false, false, 0.0f},
+    [MOOD_HAMMERING] = {EYE_FOCUS,  GAIT_STAND, 0.00f, 0.35f, 2.0f, 0.00f, 0.00f, 0.00f, 0.00f, true,  true,  0.0f, 0.0f, 0.0f},
+    [MOOD_WALKING]   = {EYE_OPEN,   GAIT_WALK,  0.00f, 0.75f, 2.0f, 0.00f, 0.00f, 0.00f, 0.00f, true,  false, 0.0f, 0.0f, 0.0f},
+    [MOOD_WAITING]   = {EYE_OPEN,   GAIT_STAND, 0.00f, 1.00f, 0.7f, 0.00f, 0.40f, 0.00f, 0.00f, true,  false, 0.0f, 0.0f, 0.0f},
+    [MOOD_SLEEPING]  = {EYE_SLEEP,  GAIT_SIT,   0.10f, 0.50f, 0.35f, 0.00f, 0.00f, 0.00f, 0.00f, false, false, 0.0f, 0.0f, 0.0f},
+    [MOOD_ALERT]     = {EYE_WIDE,   GAIT_STAND, 0.00f, 0.90f, 3.2f, 0.20f, 0.00f, 0.00f, 0.00f, false, false, 0.0f, 0.0f, 0.0f},
+    [MOOD_CELEBRATE] = {EYE_HAPPY,  GAIT_STAND, -0.05f, 1.25f, 2.6f, 0.00f, 0.00f, 0.00f, 0.00f, false, false, 0.0f, 0.0f, 0.0f},
+    [MOOD_ERROR]     = {EYE_DEAD,   GAIT_SIT,   0.12f, 0.00f, 1.0f, 0.08f, 0.00f, 0.00f, 0.00f, false, false, 0.0f, 0.0f, 0.0f},
+    // ท่าส่งสัญญาณ — ตาปกติ ไม่เบิกกว้าง (ตาโตอ่านเป็นตกใจ ซึ่งเป็นสารของ alert)
+    // สารของท่านี้อยู่ที่เสาอากาศกับมือที่ยกค้าง ไม่ใช่ที่หน้า
+    // แขนยกค้างนิ่งพร้อมกันสองข้างแบบเพ่งพลัง — ไม่โยก เพราะการโยกอ่านเป็นโบกมือ
+    // ท่อนนอกเยื้องออกนอกตัว จึงเห็นเป็นมือที่ยกขึ้นจริง ไม่ใช่ไหล่ที่สูงขึ้นเฉยๆ
+    [MOOD_SIGNALLING] = {EYE_OPEN,  GAIT_STAND, 0.00f, 0.45f, 1.3f, 0.00f, 0.00f, 0.00f, 0.00f, true,  false, 0.0f, 1.9f, 0.9f},
     // ท่าเปลี่ยนผ่าน — phase ทำหน้าที่เป็นความคืบหน้า 0->1 ไม่ใช่ลูปวน
-    [MOOD_ENTERING]  = {EYE_OPEN,   GAIT_WALK,  0.00f, 1.00f, 4.0f, 0.00f, 0.00f, 0.00f, 0.00f, true,  false, 0.0f},
-    [MOOD_LEAVING]   = {EYE_SQUINT, GAIT_SIT,   0.30f, 0.00f, 1.0f, 0.00f, 0.00f, 0.00f, 0.00f, false, false, 1.0f},
+    [MOOD_ENTERING]  = {EYE_OPEN,   GAIT_WALK,  0.00f, 1.00f, 4.0f, 0.00f, 0.00f, 0.00f, 0.00f, true,  false, 0.0f, 0.0f, 0.0f},
+    [MOOD_LEAVING]   = {EYE_SQUINT, GAIT_SIT,   0.30f, 0.00f, 1.0f, 0.00f, 0.00f, 0.00f, 0.00f, false, false, 1.0f, 0.0f, 0.0f},
 };
 
 // visual state = mood + prop — ต้องตรงกับ STATES ใน tools/gen/mascot.py
@@ -95,7 +104,7 @@ static const struct {
     [CT_STATE_ENTERING]  = {MOOD_ENTERING,  CT_PROP_NONE},
     [CT_STATE_LEAVING]   = {MOOD_LEAVING,   CT_PROP_NONE},
     [CT_STATE_CONDUCTING] = {MOOD_WORKING,  CT_PROP_CREW},
-    [CT_STATE_BEACON]    = {MOOD_WORKING,   CT_PROP_BEACON},
+    [CT_STATE_BEACON]    = {MOOD_SIGNALLING, CT_PROP_BEACON},
 };
 
 // ท่าที่มีของประกอบเยอะจนแน่นช่อง ย่อลงเล็กน้อยเพื่อให้ยังมีที่หายใจรอบตัว
@@ -178,11 +187,27 @@ static void legs(ct_rects_t *o, gait_t gait, float phase, uint16_t color, float 
 // --- ลำตัว ------------------------------------------------------------------
 // ลำตัวกับแขนสองข้างในสัดส่วนปกติ — การยุบตัวทำทีหลังด้วย squashed()
 // arm_l/arm_r เลื่อนแขน (nub) ทีละข้าง — ท่าพิมพ์ใช้ค่าคนละเครื่องหมายจึงอ่านเป็นสลับมือ
-static void body(ct_rects_t *o, uint16_t color, float arm_l, float arm_r)
+// arm_out > 0 = แขนเป็นสองท่อนลดหลั่นออกนอกตัว (ท่ายกมือค้าง) แทนที่จะเป็นก้อนเดียว
+// ก้อนเดียวที่เลื่อนขึ้นเฉยๆ อ่านเป็น "ไหล่สูงขึ้น" ไม่ใช่ "ยกมือ" — ต้องมีท่อนที่เยื้อง
+// ออกไปนอกซิลลูเอ็ต สายตาถึงจะเห็นเป็นแขนที่กางขึ้น
+static void body(ct_rects_t *o, uint16_t color, float arm_l, float arm_r, float arm_out)
 {
     ct_rects_add(o, BODY_X, BODY_Y, BODY_W, BODY_H, color);
-    ct_rects_add(o, BODY_X - NUB_W, NUB_Y + arm_l, NUB_W, NUB_H, color);
-    ct_rects_add(o, BODY_X + BODY_W, NUB_Y + arm_r, NUB_W, NUB_H, color);
+    if (arm_out == 0.0f) {
+        ct_rects_add(o, BODY_X - NUB_W, NUB_Y + arm_l, NUB_W, NUB_H, color);
+        ct_rects_add(o, BODY_X + BODY_W, NUB_Y + arm_r, NUB_W, NUB_H, color);
+        return;
+    }
+    // แต่ละท่อนเตี้ยกว่าแขนปกติ สองท่อนรวมกันจึงไม่ยาวเกินสัดส่วนเดิม
+    float h = NUB_H * 0.8f;
+    const float SIDE[2] = {-1.0f, 1.0f};
+    const float X0[2] = {BODY_X - NUB_W, BODY_X + BODY_W};
+    const float DY[2] = {arm_l, arm_r};
+    for (int i = 0; i < 2; i++) {
+        // ท่อนใน — ติดลำตัว ยกขึ้นครึ่งทางของท่อนนอก จึงอ่านเป็นแขนที่เอียงขึ้น
+        ct_rects_add(o, X0[i], NUB_Y + DY[i] + h * 0.5f, NUB_W, h, color);
+        ct_rects_add(o, X0[i] + SIDE[i] * arm_out, NUB_Y + DY[i], NUB_W, h, color);
+    }
 }
 
 // ยุบทั้งตัวรอบฝ่าเท้า — ลำตัว ขา และตา ต้องยุบเป็นก้อนเดียวกัน
@@ -249,7 +274,9 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
     // แขนพิมพ์ — แขนข้างลำตัวสลับขึ้นลงสองรอบต่อลูป ไม่มีแขนพาดหน้าแล็ปท็อป
     // (แขนที่เอื้อมมาข้างหน้าอ่านเป็น "กดจอ" ไม่ใช่ "พิมพ์อยู่หลังจอ")
     float arm = m->arm * sinf(phase * (float)M_PI * 4.0f);
-    body(&silhouette, body_c, arm, -arm);
+    // ยกค้างนิ่ง — ถ้าขยับขึ้นลงจะอ่านเป็นโบกมือ ไม่ใช่ยกค้างเพ่งพลัง
+    float arm_lift = m->arm_up;
+    body(&silhouette, body_c, arm - arm_lift, -arm - arm_lift, m->arm_out);
     legs(&silhouette, m->gait, phase, body_c, m->sink * phase * LEG_H * 0.9f);
     squashed(&silhouette, 0, squash);
     ct_rects_move_from(&silhouette, 0, dx, dy);
