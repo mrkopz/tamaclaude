@@ -681,6 +681,38 @@ func runAllTests() {
         equal(Set(VisualState.allCases.map(\.rawValue)), expected, "no state drifted")
     }
 
+    suite("the foot of the popover says what the menu used to say") {
+        equal(PanelText.board(connected: true), "Board connected", "connected reads plainly")
+        equal(
+            PanelText.board(connected: false), "Looking for the board\u{2026}",
+            "not connected is a search in progress, not a failure")
+
+        equal(
+            PanelText.sessions(Snapshot(clock: "10:00", date: "1 Jan")), ["No sessions"],
+            "an empty snapshot still says something")
+
+        let one = Snapshot(
+            clock: "10:00", date: "1 Jan",
+            sessions: [SessionSnap(project: "tamaclaude", state: .writing)])
+        equal(
+            PanelText.sessions(one), ["tamaclaude \u{00B7} writing"],
+            "a session is its project and its state")
+
+        let many = Snapshot(
+            clock: "10:00", date: "1 Jan", overflow: 2,
+            sessions: [
+                SessionSnap(project: "p1", state: .writing),
+                SessionSnap(project: "p2", state: .thinking),
+            ])
+        equal(
+            PanelText.sessions(many),
+            ["p1 \u{00B7} writing", "p2 \u{00B7} thinking", "+2 more"],
+            "sessions past the slot count are counted on a row of their own")
+        // แถวนี้ต้องมาท้ายสุดเสมอ ไม่งั้น `+N more` อ่านเหมือนอธิบายแถวที่อยู่ใต้มัน
+        equal(
+            PanelText.sessions(many).last, "+2 more", "the count is the last row, never the first")
+    }
+
     suite("hook event decoding") {
         let json = """
             {"session_id":"abc","transcript_path":"/tmp/t.jsonl","cwd":"/Users/x/repo",
