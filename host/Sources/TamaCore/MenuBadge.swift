@@ -57,14 +57,8 @@ public struct MenuBadge: Equatable, Sendable {
     ///
     /// สูตร pace ต้องตรงกับ `usage_bar_color` ใน `firmware/main/ct_ui.c`
     /// และ `tools/gen/screen.py` — เกณฑ์เปอร์เซ็นต์เท่านั้นที่ไม่เอามา
-    ///
-    /// การหารลงพื้นไม่ทำให้เกณฑ์เพี้ยน: `percent > floor(pace)` ให้ผลเดียวกับ
-    /// `percent * window > elapsed * 100` ทุกกรณี เพราะ percent เป็นจำนวนเต็ม
+    /// ตัวสูตรอยู่ที่ `UsageReader` เพราะการ์ดใน popover ใช้ตัวเดียวกัน
     private static func pace(_ snap: UsageSnap) -> Int {
-        guard snap.remaining != UsageSnap.unknown else { return unknown }
-        let window = UsageReader.sessionWindow
-        // countdown ที่ยาวกว่าหน้าต่างแปลว่านาฬิกาสองฝั่งไม่ตรงกัน ไม่ใช่ว่าเวลาเดินถอยหลัง
-        let elapsed = min(window, max(0, window - snap.remaining))
-        return elapsed * 100 / window
+        UsageReader.elapsedPercent(remaining: snap.remaining, window: UsageReader.sessionWindow)
     }
 }

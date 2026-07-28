@@ -660,6 +660,69 @@ func runAllTests() {
             "a countdown longer than the window is clock skew, not negative elapsed time")
     }
 
+    suite("the popover cards say what the board panel says") {
+        let session = UsageReader.sessionWindow
+        let weekly = UsageReader.weeklyWindow
+        // 2023-11-14 22:13:20 UTC — ตรึงโซนเวลาไว้ ไม่งั้นบรรทัดเวลาขึ้นกับเครื่องที่รัน
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        expect(QuotaCard.cards(nil, now: now, calendar: utc) == nil,
+               "no usage at all means no cards, not two empty ones")
+        expect(QuotaCard.cards([UsageSnap(), UsageSnap()], now: now, calendar: utc) == nil,
+               "two unknown windows are still nothing to show")
+
+        let cards = QuotaCard.cards(
+            [UsageSnap(percent: 42, remaining: session / 2), UsageSnap()],
+            now: now, calendar: utc)
+        equal(cards?.count, 2, "there are always two windows, even when one is unknown")
+        equal(cards?[0].percent, 42, "the session card carries the session figure")
+        equal(cards?[0].pace, 50, "half the window gone is the tick at 50")
+        equal(cards?[1].percent, UsageSnap.unknown,
+              "a window without a figure is unknown, never 0%")
+        equal(cards?[1].level, .unknown, "and unknown has a colour of its own, not green")
+        equal(cards?[1].reset, "No reset time yet", "with nothing to count down to")
+
+        // สามขั้นของบอร์ด — แต่ pace แซงเมื่อไรเป็นแดงทันทีแม้ยังไม่ถึง 85
+        equal(QuotaCard.level(percent: 10, pace: 50), .good, "well behind the clock is fine")
+        equal(QuotaCard.level(percent: 60, pace: 90), .warn, "60 is the first step up")
+        equal(QuotaCard.level(percent: 85, pace: 90), .crit, "85 is the last one")
+        equal(QuotaCard.level(percent: 61, pace: 60), .crit,
+              "ahead of the pace is red long before 85")
+        equal(QuotaCard.level(percent: 90, pace: 90), .crit,
+              "exactly on pace is not ahead, but 90 trips the percent threshold anyway")
+        equal(QuotaCard.level(percent: 61, pace: UsageSnap.unknown), .warn,
+              "no pace to overtake leaves only the percent steps")
+        equal(QuotaCard.level(percent: UsageSnap.unknown, pace: 50), .unknown,
+              "an unknown figure has no level to be at")
+
+        // สัมพัทธ์ตอบ "อีกนานไหม" สัมบูรณ์ตอบ "ตอนนั้นคือเมื่อไรของวัน"
+        equal(QuotaCard.resetLine(remaining: 8640, now: now, calendar: utc),
+              "Resets in 2h24m (Tomorrow 00:37)",
+              "both readings on one line, and midnight is tomorrow")
+        equal(QuotaCard.resetLine(remaining: 2700, now: now, calendar: utc),
+              "Resets in 45m (Today 22:58)", "under an hour drops the hours")
+        equal(QuotaCard.resetLine(remaining: 30, now: now, calendar: utc),
+              "Resets in 1m (Today 22:13)", "under a minute rounds up — 0m reads as over")
+        equal(QuotaCard.resetLine(remaining: 3 * 86_400, now: now, calendar: utc),
+              "Resets in 3d0h (Fri 22:13)",
+              "a weekly reset days out needs the day name, not just a clock time")
+        equal(QuotaCard.resetLine(remaining: 0, now: now, calendar: utc), "Resetting now",
+              "a countdown at zero is a rolled window, not a reset in zero minutes")
+        equal(
+            QuotaCard.resetLine(remaining: UsageSnap.unknown, now: now, calendar: utc),
+            "No reset time yet", "no countdown is its own sentence")
+
+        // การ์ด weekly ใช้ความยาวหน้าต่างของตัวเอง — pace ที่คิดด้วยหน้าต่าง 5 ชม.
+        // จะเต็ม 100 ตลอดเวลาแล้วทุกอย่างเป็นสีแดง
+        let fresh = QuotaCard.cards(
+            [UsageSnap(), UsageSnap(percent: 20, remaining: weekly * 3 / 4)],
+            now: now, calendar: utc)
+        equal(fresh?[1].pace, 25, "a quarter into the week is a tick at 25")
+        equal(fresh?[1].level, .good, "20% a quarter of the way in is behind the clock")
+    }
+
     suite("statusline script never breaks the user's own statusline") {
         let script = StatuslineInstaller.script(
             binary: "/Applications/tamaclaude.app/Contents/MacOS/tamaclaude",
@@ -988,19 +1051,20 @@ func runAllTests() {
                "an unusable key file is its own sentence")
 
         let now = Date(timeIntervalSince1970: 1_700_000_000)
-        equal(PanelText.figures(stamp: nil, now: now), "No quota figures yet",
+        equal(PanelText.updated(stamp: nil, now: now), "No quota figures yet",
               "never having figures is an age too")
-        equal(PanelText.figures(stamp: now.addingTimeInterval(-10), now: now),
-              "Quota figures from just now", "seconds are not worth a number")
-        equal(PanelText.figures(stamp: now.addingTimeInterval(-600), now: now),
-              "Quota figures 10 min old", "minutes are")
-        equal(PanelText.figures(stamp: now.addingTimeInterval(-7200), now: now),
-              "Quota figures 2 h old", "hours past the hour")
-        equal(PanelText.figures(stamp: now.addingTimeInterval(-3 * 86400), now: now),
-              "Quota figures 3 d old", "days past two days")
+        // วินาทีมีความหมายที่นี่ที่เดียวในแอป — ทั้งฟีเจอร์เกิดจาก "เลขนี้ค้างหรือเปล่า"
+        equal(PanelText.updated(stamp: now.addingTimeInterval(-12), now: now),
+              "Updated 12s ago", "seconds answer the question the whole panel exists for")
+        equal(PanelText.updated(stamp: now.addingTimeInterval(-600), now: now),
+              "Updated 10m ago", "minutes past the minute")
+        equal(PanelText.updated(stamp: now.addingTimeInterval(-7200), now: now),
+              "Updated 2h ago", "hours past the hour")
+        equal(PanelText.updated(stamp: now.addingTimeInterval(-3 * 86400), now: now),
+              "Updated 3d ago", "days past two days")
         // นาฬิกาเครื่องเดินถอยหลังได้ (sleep, NTP) — อายุติดลบต้องไม่กลายเป็นข้อความประหลาด
-        equal(PanelText.figures(stamp: now.addingTimeInterval(120), now: now),
-              "Quota figures from just now", "a stamp from the future is not a negative age")
+        equal(PanelText.updated(stamp: now.addingTimeInterval(120), now: now),
+              "Updated 0s ago", "a stamp from the future is not a negative age")
     }
 
     suite("the cache says how old its figures are") {

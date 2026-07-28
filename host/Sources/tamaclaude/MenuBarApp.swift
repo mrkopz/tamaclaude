@@ -25,6 +25,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private lazy var gearMenu: NSMenu = buildMenu()
     /// ตัวดักคลิกนอกแอปตอน popover เปิด — มีอยู่ก็ต่อเมื่อ popover เปิดอยู่
     private var outsideClicks: Any?
+    /// นาฬิกาของแผง — เดินเฉพาะตอนแผงเปิด ด้วยเหตุผลเดียวกับตัวดักคลิก
+    private var panelTicks: Timer?
 
     private let boardItem = NSMenuItem(title: "Board", action: nil, keyEquivalent: "")
     private var boards: [Board] = []
@@ -297,7 +299,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func redrawQuota() {
         panel.showQuota(
             problem: PanelText.keyProblem(poller.blocked),
-            figures: PanelText.figures(stamp: UsageReader.stamp()),
+            age: PanelText.updated(stamp: UsageReader.stamp()),
+            cards: QuotaCard.cards(UsageReader.read()),
             detail: poller.status)
         showQuotaMenus()
     }
@@ -318,9 +321,14 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let button = statusItem.button else { return }
         // แอปที่ไม่มี Dock ไม่ได้ active เองตอนคลิกแถบเมนู ปุ่มในแผงจะกดไม่ติด
         NSApp.activate(ignoringOtherApps: true)
-        // อายุของค่าเดินตลอดเวลาแต่ไม่มีใครเห็นตอนแผงปิด — คิดใหม่ตอนเปิดพอ
-        // ดีกว่าอ่าน cache จากดิสก์ทุกวินาทีเพื่อข้อความที่ไม่มีใครมอง
+        // อายุของค่ากับ countdown เดินตลอดเวลาแต่ไม่มีใครเห็นตอนแผงปิด — คิดใหม่ตอนเปิด
+        // แล้วเดินทุกวินาทีตราบใดที่ยังเปิดอยู่ ดีกว่าอ่าน cache จากดิสก์ทุกวินาที
+        // ตลอดเวลาเพื่อข้อความที่ไม่มีใครมอง
         redrawQuota()
+        panelTicks?.invalidate()
+        panelTicks = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.redrawQuota()
+        }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         // popover ที่ไม่ใช่ .transient ไม่ปิดตัวเอง — คลิกนอกแอปคือสัญญาณเดียวที่เหลือ
         outsideClicks = NSEvent.addGlobalMonitorForEvents(
@@ -337,6 +345,10 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func popoverDidClose(_ notification: Notification) {
         if let outsideClicks { NSEvent.removeMonitor(outsideClicks) }
         outsideClicks = nil
+        // ไม่มีใครดูอยู่แล้วยังวาดคือเผาแบตเปล่า — และเป็น timer ที่ไม่มีวันถูกหยุด
+        // ถ้าหยุดที่ทุกจุดที่สั่งปิดแทนที่จะหยุดที่นี่ที่เดียว
+        panelTicks?.invalidate()
+        panelTicks = nil
         setHighlighted(false)
     }
 
