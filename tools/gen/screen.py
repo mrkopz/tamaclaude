@@ -315,6 +315,7 @@ def usage_bar_color(u: Usage) -> str:
 
     "60% ตอนเหลือเวลาอีกครึ่ง" เป็นปัญหาคนละแบบกับ "60% ตอนหมดเวลาพอดี"
     ต้องตรงกับ usage_bar_color ใน firmware/main/ct_ui.c
+    และ MenuBadge.alarming ใน host/Sources/TamaCore/MenuBadge.swift (แถบเมนูใช้สูตร pace เดียวกัน แต่ไม่มีเกณฑ์ %)
     """
     if u.pct is None:
         return PAL.text_dim

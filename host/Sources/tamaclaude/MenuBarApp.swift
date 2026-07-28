@@ -7,7 +7,7 @@ import TamaCore
 /// ไม่ได้สั่ง daemon อีกตัวจากระยะไกล แต่ *เป็น* daemon เอง (โปรเซสเดียว socket เดียว)
 /// เพราะสิทธิ์ Bluetooth ผูกกับ .app ที่ถูกปล่อยผ่าน LaunchServices เท่านั้น
 /// ถ้าแยกโปรเซสจะได้ daemon ที่ไม่มีสิทธิ์ต่อบอร์ด
-final class MenuBarApp: NSObject, NSApplicationDelegate {
+final class MenuBarApp: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private let ble = BLETransport()
     private var daemon: Daemon!
@@ -29,14 +29,20 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
     private let brightness = NSSlider(value: 100, minValue: 5, maxValue: 100, target: nil,
                                       action: nil)
 
+    /// ภาพที่วาดไปแล้ว — ไฮไลต์เป็นส่วนหนึ่งของภาพ ไม่ใช่แค่ค่าโควตา
+    private struct Drawn: Equatable {
+        var badge: MenuBadge?
+        var highlighted: Bool
+    }
+    private var lastDrawn: Drawn?
+    private var menuIsOpen = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         Paths.ensureStateDir()
         Log.toFile = true
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = NSImage(
-            systemSymbolName: "desktopcomputer", accessibilityDescription: "tamaclaude")
-        statusItem.button?.image?.isTemplate = true
+        showBadge(nil)
         statusItem.menu = buildMenu()
 
         if let saved = UserDefaults.standard.string(forKey: Self.preferredKey),
@@ -75,6 +81,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
 
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.delegate = self
         linkItem.isEnabled = false
         sessionItem.isEnabled = false
         menu.addItem(linkItem)
@@ -131,10 +138,12 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
 
     // MARK: - อัปเดตหน้าตา
 
+    /// สถานะบอร์ดอยู่ในบรรทัดแรกของเมนู ไม่ใช่ที่ไอคอน
+    ///
+    /// เคยหรี่ไอคอนตอนต่อบอร์ดไม่ติด แต่พอไอคอนกลายเป็นตัวเลขโควตา การหรี่กลับกลาย
+    /// เป็นการทำให้ข้อมูลที่ยังถูกต้องอยู่ (โควตาไม่ได้มาจากบอร์ด) ดูเหมือนใช้ไม่ได้
     private func refreshLink() {
-        let connected = ble.isConnected
-        linkItem.title = connected ? "Board connected" : "Looking for the board…"
-        statusItem.button?.appearsDisabled = !connected
+        linkItem.title = ble.isConnected ? "Board connected" : "Looking for the board…"
     }
 
     /// รายการบอร์ดที่สแกนเจอ — ติ๊กตัวที่ผู้ใช้เลือกไว้ และวงเล็บบอกตัวที่กำลังคุยอยู่จริง
@@ -170,7 +179,24 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
         boardItem.submenu = menu
     }
 
+    /// วาดแบดจ์ใหม่เฉพาะตอนภาพจะเปลี่ยนจริง — `show` ถูกเรียกทุกครั้งที่ snapshot ขยับ
+    /// ซึ่งรวมถึงนาฬิกาที่เดินทุกนาที ส่วนโควตาขยับนานๆ ครั้ง
+    private func showBadge(_ badge: MenuBadge?) {
+        let drawn = Drawn(badge: badge, highlighted: menuIsOpen)
+        guard drawn != lastDrawn || statusItem.button?.image == nil else { return }
+        lastDrawn = drawn
+        guard let badge else {
+            // ยังไม่เคยรู้โควตาเลย หรือหน้าต่างหมุนไปแล้วโดยไม่มีค่าใหม่ — ถอยไปเป็นไอคอนเดิม
+            statusItem.button?.image = MenuBadgeImage.fallback()
+            statusItem.button?.toolTip = "tamaclaude — no usage figures yet"
+            return
+        }
+        statusItem.button?.image = MenuBadgeImage.make(badge, highlighted: menuIsOpen)
+        statusItem.button?.toolTip = MenuBadgeImage.description(badge)
+    }
+
     private func show(_ snapshot: Snapshot) {
+        showBadge(MenuBadge.from(snapshot.usage))
         if snapshot.sessions.isEmpty {
             sessionItem.title = "No sessions"
             return
@@ -179,6 +205,19 @@ final class MenuBarApp: NSObject, NSApplicationDelegate {
         var text = parts.joined(separator: "\n")
         if snapshot.overflow > 0 { text += "\n+\(snapshot.overflow) more" }
         sessionItem.title = text
+    }
+
+    // MARK: - เมนูเปิด/ปิด
+
+    /// ปุ่มบนแถบเมนูถูกถมด้วยสีเน้นตอนเมนูเปิด ภาพที่ไม่ใช่ template จึงต้องวาดใหม่
+    func menuWillOpen(_ menu: NSMenu) {
+        menuIsOpen = true
+        showBadge(lastDrawn?.badge)
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        menuIsOpen = false
+        showBadge(lastDrawn?.badge)
     }
 
     // MARK: - การกระทำ
