@@ -30,16 +30,25 @@ enum MenuBadgeImage {
     }
 
     /// ปกติเป็น template ขาวดำ ระบบจึงกลับสีให้เองทั้งพื้นสว่าง/มืด และตอนเมนูถูกไฮไลต์
-    /// ตอนต้องเตือนเลิกเป็น template แล้ววาดแดงตรงๆ — สีที่ระบบกลับได้ตามใจ
+    /// ตอนต้องเตือนเลิกเป็น template แล้วทาแดง — สีที่ระบบกลับได้ตามใจ
     /// ไม่สามารถแปลว่า "แดง" ได้
     ///
+    /// แดง*เฉพาะขีด pace* ไม่ใช่ทั้งภาพ — สิ่งที่ผิดปกติคือความสัมพันธ์ระหว่างเนื้อแถบ
+    /// กับขีด ไม่ใช่ตัวเลขหรือตัวแถบ ภาพที่แดงทั้งอันทำให้ตาไม่รู้ว่าจะมองตรงไหน
+    /// และกลืนตัวเลขที่ยังต้องอ่านได้อยู่ไปด้วย · ขีดที่เปลี่ยนสีคือขีดที่ชี้ตัวเอง
+    ///
+    /// ราคาของการเลิกเป็น template คือหมึกที่ระบบเคยกลับให้ต้องเลือกเอง จึงต้องรู้
+    /// appearance ของ *ปุ่มบนแถบเมนู* (ไม่ใช่ของแอป — แถบเมนูมืดได้ทั้งที่แอปสว่าง)
+    /// และผู้เรียกต้องวาดใหม่เมื่อ appearance เปลี่ยน ไม่งั้นหมึกค้างเป็นสีของธีมก่อนหน้า
+    ///
     /// ยกเว้นตอนเมนูเปิด (`highlighted`) ซึ่งระบบถมพื้นปุ่มด้วยสีเน้นแล้ววาดภาพที่ไม่ใช่
-    /// template ทับตรงๆ — แดงบนน้ำเงินอ่านไม่ออก ตอนนั้นกลับไปเป็น template
-    /// เสียสีแดงไปชั่วขณะที่ผู้ใช้กำลังอ่านเมนูอยู่แล้ว ดีกว่าเสียตัวเลขไปทั้งตัว
-    static func make(_ badge: MenuBadge, highlighted: Bool) -> NSImage {
+    /// template ทับตรงๆ — หมึกดำบนน้ำเงินอ่านไม่ออก ตอนนั้นกลับไปเป็น template
+    /// เสียขีดแดงไปชั่วขณะที่ผู้ใช้กำลังอ่านเมนูอยู่แล้ว ดีกว่าเสียตัวเลขไปทั้งตัว
+    static func make(_ badge: MenuBadge, highlighted: Bool, dark: Bool = false) -> NSImage {
         let template = !badge.isAlarming || highlighted
         // ขาวดำมาจาก isTemplate ไม่ใช่จากสีที่วาด — วาดดำแล้วระบบเก็บแค่ alpha ไปใช้
-        let ink: NSColor = template ? .black : .systemRed
+        // ส่วนภาพที่ไม่ใช่ template ต้องเลือกหมึกให้ตรงกับพื้นที่มันไปนั่งเอง
+        let ink: NSColor = template || !dark ? .black : .white
         let text = "\(badge.percent)%" as NSString
         // ตัวเลขความกว้างคงที่ ไม่งั้นไอคอนขยับซ้ายขวาทุกครั้งที่เปอร์เซ็นต์เปลี่ยนหลัก
         let attributes: [NSAttributedString.Key: Any] = [
@@ -91,7 +100,12 @@ enum MenuBadgeImage {
                 let mark = NSRect(
                     x: at, y: shell.minY - border / 2, width: border, height: barHeight)
                 NSGraphicsContext.saveGraphicsState()
-                if badge.pace <= badge.percent {
+                if !template {
+                    // ภาพนี้ไม่ใช่ template ก็ต่อเมื่อเนื้อแถบแซงขีดไปแล้ว — ตรงนี้จึงเป็น
+                    // ขีดที่จมอยู่ในเนื้อแถบเสมอ แดงทับลงไปตรงๆ เห็นชัดกว่าร่องโปร่ง
+                    // และเป็นสิ่งเดียวในภาพที่เปลี่ยนสี
+                    NSColor.systemRed.setFill()
+                } else if badge.pace <= badge.percent {
                     NSGraphicsContext.current?.compositingOperation = .clear
                 } else {
                     ink.setFill()
