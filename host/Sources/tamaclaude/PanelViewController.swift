@@ -21,7 +21,7 @@ final class PanelViewController: NSViewController {
     private static let inset: CGFloat = 14
     /// ที่ยืนของปุ่ม refresh — ปุ่มกับตัวหมุนสลับกันอยู่ในกรอบเดียวขนาดคงที่ ไม่งั้นหัวแผง
     /// ขยับทุกครั้งที่เริ่มยิงและทุกครั้งที่ยิงจบ
-    private static let spot: CGFloat = 16
+    private static let iconSize: CGFloat = 16
 
     /// ชื่อ org ที่ตัวเลขมาจาก — ชื่อแอปตอนที่ยังไม่มี org ให้พูดถึง
     private let heading = NSTextField(labelWithString: PanelText.appName)
@@ -131,14 +131,14 @@ final class PanelViewController: NSViewController {
             stack.topAnchor.constraint(equalTo: root.topAnchor, constant: inset),
             stack.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -inset),
             header.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            holder.widthAnchor.constraint(equalToConstant: Self.spot),
-            holder.heightAnchor.constraint(equalToConstant: Self.spot),
+            holder.widthAnchor.constraint(equalToConstant: Self.iconSize),
+            holder.heightAnchor.constraint(equalToConstant: Self.iconSize),
             refresh.centerXAnchor.constraint(equalTo: holder.centerXAnchor),
             refresh.centerYAnchor.constraint(equalTo: holder.centerYAnchor),
             spinner.centerXAnchor.constraint(equalTo: holder.centerXAnchor),
             spinner.centerYAnchor.constraint(equalTo: holder.centerYAnchor),
-            spinner.widthAnchor.constraint(equalToConstant: Self.spot),
-            spinner.heightAnchor.constraint(equalToConstant: Self.spot),
+            spinner.widthAnchor.constraint(equalToConstant: Self.iconSize),
+            spinner.heightAnchor.constraint(equalToConstant: Self.iconSize),
             body.widthAnchor.constraint(equalTo: stack.widthAnchor),
             cards.widthAnchor.constraint(equalTo: body.widthAnchor),
             sessionCard.widthAnchor.constraint(equalTo: cards.widthAnchor),

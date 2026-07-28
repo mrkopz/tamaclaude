@@ -29,8 +29,7 @@ public enum RefreshControl {
         running: Bool, hasKey: Bool, finished: Date?, now: Date = Date()
     ) -> RefreshState {
         if running {
-            return RefreshState(
-                enabled: false, spinning: true, tooltip: "Checking your quota\u{2026}")
+            return RefreshState(enabled: false, spinning: true, tooltip: "Checking your quota…")
         }
         // ไม่มี key ก็ไม่มีคำถามจะยิง — ปุ่มที่กดแล้วไม่เกิดอะไรแย่กว่าปุ่มที่กดไม่ได้
         guard hasKey else {
@@ -41,7 +40,7 @@ public enum RefreshControl {
         if let left = secondsLeft(finished: finished, now: now) {
             return RefreshState(
                 enabled: false, spinning: false,
-                tooltip: "Just checked \u{00B7} you can check again in \(left)s")
+                tooltip: "Just checked · you can check again in \(left)s")
         }
         return RefreshState(enabled: true, spinning: false, tooltip: "Check your quota now")
     }
@@ -62,9 +61,17 @@ public enum RefreshControl {
     /// การเปิด popover เป็นสัญญาณความตั้งใจที่ชัดพอจะใช้เป็น trigger อยู่แล้ว จึงไม่ต้อง
     /// ให้ผู้ใช้กดปุ่มเพื่อบอกสิ่งที่เขาบอกไปแล้วด้วยการเปิดแผง · `Off` ไม่ยิง เพราะนี่คือ
     /// การยิงเองของแอป ซึ่งเป็นสิ่งเดียวที่ `Off` สั่งห้ามไว้
-    public static func wantsPoll(interval: PollInterval, stamp: Date?, now: Date = Date()) -> Bool {
+    ///
+    /// `polled` (รอบล่าสุดที่*ออกไป*) ไม่ใช่ของซ้ำกับ `stamp` (ค่าล่าสุดที่*กลับมา*) —
+    /// รอบที่ล้มเหลวไม่เคยขยับ `stamp` ถ้าดูแต่ `stamp` การเปิดปิดแผงตอนเน็ตล่มจะยิงลูก
+    /// ทุกครั้งที่ชำเลืองดู ซึ่งเป็นการยิงถี่กว่ารอบที่ผู้ใช้ตั้งไว้ ทั้งที่เขาไม่ได้ขออะไรเลย
+    public static func wantsPoll(
+        interval: PollInterval, stamp: Date?, polled: Date? = nil, now: Date = Date()
+    ) -> Bool {
         guard interval != .off else { return false }
+        let round = TimeInterval(interval.seconds)
+        if let polled, now.timeIntervalSince(polled) < round { return false }
         guard let stamp else { return true }
-        return now.timeIntervalSince(stamp) >= TimeInterval(interval.seconds)
+        return now.timeIntervalSince(stamp) >= round
     }
 }

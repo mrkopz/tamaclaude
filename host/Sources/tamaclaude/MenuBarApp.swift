@@ -314,7 +314,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let hasKey = SessionKeyFile.isUsable()
         panel.showHeading(
             PanelText.heading(orgs: poller.orgs, current: poller.currentOrg, hasKey: hasKey),
-            switchable: PanelText.canSwitchOrg(orgs: poller.orgs))
+            switchable: PanelText.canSwitchOrg(orgs: poller.orgs, hasKey: hasKey))
         panel.showRefresh(
             RefreshControl.state(
                 running: poller.isRunning, hasKey: hasKey, finished: refreshFinished))
@@ -348,7 +348,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // การเปิดแผงคือสัญญาณความตั้งใจที่ชัดพอจะยิงเอง ไม่ต้องรอให้ผู้ใช้กดปุ่มเพื่อบอก
         // สิ่งที่เขาบอกไปแล้วด้วยการเปิด — แต่ยิงเฉพาะตอนค่าที่มีเก่ากว่ารอบที่เขาตั้งไว้
         // ไม่งั้นทุกครั้งที่ชำเลืองดูจะกลายเป็นการยิงหนึ่งรอบ
-        if RefreshControl.wantsPoll(interval: poller.interval, stamp: UsageReader.stamp()) {
+        if RefreshControl.wantsPoll(
+            interval: poller.interval, stamp: UsageReader.stamp(), polled: poller.lastStarted) {
             poller.pollNow()
         }
         // อายุของค่ากับ countdown เดินตลอดเวลาแต่ไม่มีใครเห็นตอนแผงปิด — คิดใหม่ตอนเปิด
@@ -434,10 +435,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard let id = sender.representedObject as? String else { return }
         poller.preferredOrg = id
         UserDefaults.standard.set(id, forKey: Self.orgKey)
-        // เลือก org แล้วต้องเห็นตัวเลขของ org นั้น ไม่ใช่ตัวเลขของ org เดิมค้างอยู่จนครบรอบ
-        // — และไม่ใช่ค้างตลอดกาลเมื่อรอบเป็น `Off`
+        // ลูกที่วิ่งอยู่ถาม org ตัวเก่า คำตอบของมันจึงไม่ใช่สิ่งที่ผู้ใช้เพิ่งขอ ฆ่าทิ้งก่อน
+        // ไม่งั้น `refreshNow` จะถอยออกเพราะมีรอบวิ่งอยู่ แล้วการเลือกจะเงียบไปเฉยๆ
+        // จนกว่าจะครบรอบถัดไป — ซึ่งเมื่อรอบเป็น `Off` แปลว่าตลอดกาล
+        poller.stop()
         poller.refreshNow()
-        manualRefresh = poller.isRunning
         redrawPanel()
     }
 

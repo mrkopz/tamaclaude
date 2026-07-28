@@ -1088,8 +1088,11 @@ func runAllTests() {
         equal(PanelText.heading(orgs: orgs, current: "gone", hasKey: true), "tamaclaude",
               "an id we cannot name is not a name")
 
-        expect(!PanelText.canSwitchOrg(orgs: [orgs[0]]), "one org is not a choice")
-        expect(PanelText.canSwitchOrg(orgs: orgs), "two are")
+        expect(!PanelText.canSwitchOrg(orgs: [orgs[0]], hasKey: true), "one org is not a choice")
+        expect(PanelText.canSwitchOrg(orgs: orgs, hasKey: true), "two are")
+        // หัวแผงที่พูดว่ายังไม่มี org พร้อมลูกศรที่กางรายการ org ได้ คือสองประโยคที่ขัดกันเอง
+        expect(!PanelText.canSwitchOrg(orgs: orgs, hasKey: false),
+               "a list left over from the last key is not a choice either")
     }
 
     suite("the refresh button is the way out, not the way of life") {
@@ -1134,6 +1137,15 @@ func runAllTests() {
         // `Off` คือคำสั่งว่าอย่ายิงเอง — การเปิดแผงยังเป็นการยิงเอง ปุ่มต่างหากที่ไม่ใช่
         expect(!RefreshControl.wantsPoll(interval: .off, stamp: nil, now: now),
                "Off means the app never polls on its own, opening the panel included")
+
+        // รอบที่ล้มเหลวไม่เคยขยับ `stamp` — ถ้าดูแต่ `stamp` การเปิดปิดแผงตอนเน็ตล่มจะยิง
+        // ลูกทุกครั้งที่ชำเลืองดู ซึ่งถี่กว่ารอบที่ผู้ใช้ตั้งไว้ ทั้งที่เขาไม่ได้ขออะไรเลย
+        expect(!RefreshControl.wantsPoll(
+                interval: .minute, stamp: nil, polled: at(-20), now: now),
+               "a round that went out twenty seconds ago is the round this open would fire")
+        expect(RefreshControl.wantsPoll(
+                interval: .minute, stamp: nil, polled: at(-90), now: now),
+               "past the round it fires again, whether or not the last one came back")
     }
 
     suite("a hand on the button beats Off and beats a key that is spent") {
