@@ -51,10 +51,15 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var manualRefresh = false
     private var refreshFinished: Date?
 
-    /// ภาพที่วาดไปแล้ว — ไฮไลต์เป็นส่วนหนึ่งของภาพ ไม่ใช่แค่ค่าโควตา
+    /// ภาพที่วาดไปแล้ว — ไฮไลต์กับธีมของแถบเมนูเป็นส่วนหนึ่งของภาพ ไม่ใช่แค่ค่าโควตา
+    ///
+    /// ภาพตอนเตือนไม่ใช่ template จึงเลือกสีหมึกเองตั้งแต่ตอนวาด สลับ Light/Dark
+    /// แล้วภาพเดิมจะค้างเป็นหมึกของธีมก่อนหน้า — ธีมอยู่ในกุญแจนี้ นาฬิกาวินาที
+    /// จึงวาดใหม่ให้เองภายในหนึ่งวินาที โดยไม่ต้องมีใครไปดักฟัง appearance
     private struct Drawn: Equatable {
         var badge: MenuBadge?
         var highlighted: Bool
+        var dark: Bool
     }
     private var lastDrawn: Drawn?
     private var panelIsOpen = false
@@ -244,7 +249,10 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// วาดแบดจ์ใหม่เฉพาะตอนภาพจะเปลี่ยนจริง — `show` ถูกเรียกทุกครั้งที่ snapshot ขยับ
     /// ซึ่งรวมถึงนาฬิกาที่เดินทุกนาที ส่วนโควตาขยับนานๆ ครั้ง
     private func showBadge(_ badge: MenuBadge?) {
-        let drawn = Drawn(badge: badge, highlighted: panelIsOpen)
+        // ถาม*ปุ่ม* ไม่ใช่แอป — แถบเมนูมืดได้ทั้งที่ทั้งระบบยังเป็นธีมสว่าง
+        let dark = statusItem.button?.effectiveAppearance
+            .bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let drawn = Drawn(badge: badge, highlighted: panelIsOpen, dark: dark)
         guard drawn != lastDrawn || statusItem.button?.image == nil else { return }
         lastDrawn = drawn
         guard let badge else {
@@ -253,7 +261,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             statusItem.button?.toolTip = "tamaclaude — no usage figures yet"
             return
         }
-        statusItem.button?.image = MenuBadgeImage.make(badge, highlighted: panelIsOpen)
+        statusItem.button?.image = MenuBadgeImage.make(
+            badge, highlighted: panelIsOpen, dark: dark)
         statusItem.button?.toolTip = MenuBadgeImage.description(badge)
     }
 
