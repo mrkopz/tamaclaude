@@ -11,6 +11,8 @@ import TamaCore
 final class PanelViewController: NSViewController {
     /// ปุ่มเฟืองไม่รู้ว่าเมนูมีอะไร — `MenuBarApp` เป็นเจ้าของ NSMenu ตัวนั้น
     var onGear: ((NSButton) -> Void)?
+    /// บรรทัด "key หมดอายุ" กดได้ — ที่ที่บอกว่าพังคือที่ที่ควรแก้ได้
+    var onKeyProblem: (() -> Void)?
 
     private static let width: CGFloat = 260
     private static let inset: CGFloat = 14
@@ -21,6 +23,9 @@ final class PanelViewController: NSViewController {
     /// ที่ว่างของการ์ดโควตา ยังไม่มีอะไร จึงยังไม่กินความสูง
     private let cards = NSStackView()
     private let boardLabel = NSTextField(labelWithString: "")
+    /// สองบรรทัดที่พูดคนละเรื่อง: ท่อพัง (กดได้) กับ ค่าที่เห็นอยู่เก่าแค่ไหน
+    private let keyButton = NSButton()
+    private let figuresLabel = NSTextField(labelWithString: "")
     private let sessions = NSStackView()
     private var shownRows: [String] = []
 
@@ -58,7 +63,18 @@ final class PanelViewController: NSViewController {
         sessions.spacing = 2
         sessions.alignment = .leading
 
-        let footer = NSStackView(views: [boardLabel, sessions])
+        keyButton.isBordered = false
+        keyButton.target = self
+        keyButton.action = #selector(keyProblemClicked)
+        keyButton.contentTintColor = .systemOrange
+        keyButton.font = .systemFont(ofSize: 12)
+        keyButton.alignment = .left
+        keyButton.isHidden = true
+
+        figuresLabel.font = .systemFont(ofSize: 12)
+        figuresLabel.textColor = .secondaryLabelColor
+
+        let footer = NSStackView(views: [keyButton, figuresLabel, boardLabel, sessions])
         footer.orientation = .vertical
         footer.spacing = 4
         footer.alignment = .leading
@@ -96,6 +112,21 @@ final class PanelViewController: NSViewController {
 
     @objc private func gearClicked() {
         onGear?(gear)
+    }
+
+    @objc private func keyProblemClicked() {
+        onKeyProblem?()
+    }
+
+    /// บรรทัดท่อพังโผล่เฉพาะตอนพัง ส่วนบรรทัดอายุของค่ามีตลอด — ค่าที่ไม่มีก็เป็นอายุแบบหนึ่ง
+    ///
+    /// `detail` คือสิ่งที่ตัวยิงพูดล่าสุด (`HTTP 503`, บรรทัดสรุป) อยู่ใน tooltip เพราะ
+    /// เป็นคำตอบของคำถามที่นานๆ ถามที ("ทำไมค่าถึงเก่า") ไม่ใช่ของที่ต้องเห็นตลอดเวลา
+    func showQuota(problem: String?, figures: String, detail: String? = nil) {
+        keyButton.isHidden = problem == nil
+        keyButton.title = problem ?? ""
+        figuresLabel.stringValue = figures
+        figuresLabel.toolTip = detail
     }
 
     // MARK: - อัปเดตข้อความ

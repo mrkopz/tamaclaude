@@ -21,6 +21,10 @@ public enum UsagePoll {
     public struct Failure: Error {
         public let message: String
         public let code: Int32
+        /// org ที่รู้แล้วก่อนจะล้ม — ผู้เรียกต้องได้รายการแม้รอบนี้จะไม่สำเร็จ ไม่งั้น
+        /// การพินไว้ที่ org ที่หายไปจากบัญชีจะล็อกตัวเองไว้ตลอด: ยิงพลาดทุกรอบ
+        /// และไม่เคยได้รายการมาให้เปลี่ยนใจ
+        public var orgs: [Org] = []
 
         /// key ถูกปฏิเสธจากปลายทาง — หมดอายุแล้ว ต้องไปเอาอันใหม่จากเบราว์เซอร์
         public static let rejectedKey: Int32 = 2
@@ -40,7 +44,8 @@ public enum UsagePoll {
         guard FileManager.default.fileExists(atPath: target.path) else {
             throw Failure(
                 message: "no session key at \(url.path) — "
-                    + "paste the claude.ai sessionKey cookie into it, then `chmod 600` it",
+                    + "set one from the tamaclaude gear menu, or paste the claude.ai sessionKey "
+                    + "cookie into that file and `chmod 600` it",
                 code: Failure.unusableKeyFile)
         }
         guard let attrs = try? FileManager.default.attributesOfItem(atPath: target.path),
@@ -72,22 +77,50 @@ public enum UsagePoll {
         return key
     }
 
-    /// แกะ org id จาก response ของ `/organizations`
+    /// org หนึ่งอันจาก `/organizations` — id ที่ validate แล้ว กับชื่อไว้โชว์ในเมนู
+    public struct Org: Equatable {
+        public let id: String
+        public let name: String
+
+        public init(id: String, name: String) {
+            self.id = id
+            self.name = name
+        }
+    }
+
+    /// แกะ org ทั้งรายการจาก response ของ `/organizations`
     ///
-    /// บัญชีปกติมี org เดียว ถ้ามีหลายอันก็เดาไม่ได้ว่าหมายถึงอันไหน จึงเปิดทางให้
-    /// กำหนดจากภายนอกแทนการเดา
+    /// อันที่ id ใช้ไม่ได้ถูกทิ้งเงียบๆ ไม่ใช่ทำให้ทั้งรายการล้ม — org ที่แปลกอยู่อันเดียว
+    /// ต้องไม่พาอันที่ใช้ได้ตกไปด้วย
+    public static func organizations(from data: Data) -> [Org] {
+        guard let list = try? JSONSerialization.jsonObject(with: data) as? [Any] else { return [] }
+        return list.compactMap { entry in
+            guard let entry = entry as? [String: Any],
+                let id = try? validated((entry["uuid"] as? String) ?? (entry["id"] as? String) ?? "")
+            else { return nil }
+            let name = (entry["name"] as? String) ?? ""
+            return Org(id: id, name: name.isEmpty ? id : name)
+        }
+    }
+
+    /// org ที่จะยิงจริง: ตัวที่ผู้ใช้เลือกไว้ถ้ายังอยู่ในรายการ ไม่งั้นตัวแรก
+    ///
+    /// ตัวที่เลือกไว้แล้วหายไปจากบัญชีต้องไม่ทำให้ทั้งเรื่องหยุด — ตัวแรกใช้ได้เสมอ
+    /// และเมนูจะแสดงติ๊กที่ตัวแรกเอง เพราะติ๊กอ่านจากค่าที่ยิงจริง
+    public static func pick(_ orgs: [Org], preferred: String?) -> Org? {
+        if let preferred, let match = orgs.first(where: { $0.id == preferred }) { return match }
+        return orgs.first
+    }
+
+    /// org แรกจาก response ของ `/organizations`
+    ///
+    /// บัญชีปกติมี org เดียว ถ้ามีหลายอันก็เดาไม่ได้ว่าหมายถึงอันไหน ตัวแรกจึงเป็นแค่
+    /// ค่าตั้งต้นที่ใช้ได้ทันที ส่วนการเลือกจริงอยู่ที่ผู้เรียกซึ่งมีรายการทั้งอันอยู่ในมือ
     public static func organizationID(from data: Data) throws -> String {
-        guard let list = try? JSONSerialization.jsonObject(with: data) as? [Any],
-            let first = list.first as? [String: Any]
-        else {
+        guard let first = organizations(from: data).first else {
             throw Failure(message: "no organizations on this account", code: 1)
         }
-        let id = (first["uuid"] as? String) ?? (first["id"] as? String)
-        guard let id, !id.isEmpty else {
-            throw Failure(
-                message: "could not find an organization id in the response", code: 1)
-        }
-        return try validated(id)
+        return first.id
     }
 
     /// ตรวจ org id ก่อนต่อเข้า URL เสมอ แม้จะมาจาก response ของเราเอง
@@ -150,13 +183,27 @@ public enum UsagePoll {
         if status == 401 || status == 403 {
             throw Failure(
                 message: "claude.ai rejected the session key (HTTP \(status)); "
-                    + "it has most likely expired — paste a fresh one into the key file",
+                    + "it has most likely expired — set a fresh one from the gear menu",
                 code: Failure.rejectedKey)
         }
         guard (200..<300).contains(status), let body else {
             throw Failure(message: "claude.ai returned HTTP \(status)", code: 1)
         }
         return body
+    }
+
+    /// ผลของการยิงหนึ่งรอบ — บรรทัดสรุป กับรายการ org ที่เจอระหว่างทาง
+    ///
+    /// รายการ org เดินทางกลับไปหาผู้เรียกทาง stdout เหมือนบรรทัดสรุป ไม่ใช่ไฟล์สถานะ
+    /// ตัวที่สอง: โปรเซสนี้ตายทุกรอบ อะไรที่มันรู้จึงต้องพูดออกมาตอนยังมีชีวิตอยู่
+    public struct Report {
+        public let orgs: [Org]
+        public let summary: String
+
+        public init(orgs: [Org], summary: String) {
+            self.orgs = orgs
+            self.summary = summary
+        }
     }
 
     /// ยิงหนึ่งรอบ: อ่าน key -> หา org -> ยิง -> เขียน cache -> คืนบรรทัดสรุป
@@ -168,20 +215,38 @@ public enum UsagePoll {
         cache: URL = Paths.usageCache,
         orgOverride: String? = ProcessInfo.processInfo.environment["TAMACLAUDE_ORG_ID"],
         now: Date = Date()
-    ) throws -> String {
-        let orgID: String
-        if let orgOverride, !orgOverride.isEmpty {
-            orgID = try validated(orgOverride)
-        } else {
-            orgID = try organizationID(from: get(organizationsURL, key: readKey(at: keyFile)))
+    ) throws -> Report {
+        // ถามรายการ org ทุกรอบแม้จะถูกพินไว้แล้ว: เมนูของผู้เรียกต้องมีรายการให้เลือก
+        // และเรามีคำตอบก็ต่อเมื่อถาม — ราคาคือหนึ่งคำขอต่อรอบ ซึ่งถูกกว่าเมนูที่ว่างเปล่า
+        // จนกว่าจะบังเอิญยิงสำเร็จสักครั้ง
+        var orgs: [Org] = []
+        do {
+            let orgID: String
+            if let orgOverride, !orgOverride.isEmpty {
+                // พินคือพิน — ค่าที่กำหนดมาจากภายนอกต้องไม่ถูกแทนเงียบๆ ด้วยตัวแรก
+                // ไม่งั้นผู้ใช้ที่ตั้ง env ไว้จะได้ตัวเลขของ org อื่นโดยไม่มีอะไรบอก
+                // การถอยไปตัวแรกเป็นการตัดสินใจของผู้เรียก ซึ่งเห็นรายการทั้งอัน
+                orgID = try validated(orgOverride)
+                orgs = (try? organizations(from: get(organizationsURL, key: readKey(at: keyFile))))
+                    ?? []
+            } else {
+                orgs = organizations(from: try get(organizationsURL, key: readKey(at: keyFile)))
+                guard let first = orgs.first else {
+                    throw Failure(message: "no organizations on this account", code: 1)
+                }
+                orgID = first.id
+            }
+            let payload = try get(usageURL(orgID), key: readKey(at: keyFile))
+            guard let line = UsageWriter.ingestAPI(payload, now: now, to: cache) else {
+                throw Failure(
+                    message: "no window we recognise in the usage payload; "
+                        + "a field was probably renamed — see docs/claude-usage-api.md",
+                    code: 1)
+            }
+            return Report(orgs: orgs, summary: line)
+        } catch var failure as Failure {
+            failure.orgs = orgs
+            throw failure
         }
-        let payload = try get(usageURL(orgID), key: readKey(at: keyFile))
-        guard let line = UsageWriter.ingestAPI(payload, now: now, to: cache) else {
-            throw Failure(
-                message: "no window we recognise in the usage payload; "
-                    + "a field was probably renamed — see docs/claude-usage-api.md",
-                code: 1)
-        }
-        return line
     }
 }

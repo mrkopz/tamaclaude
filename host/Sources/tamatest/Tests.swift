@@ -724,6 +724,298 @@ func runAllTests() {
             PanelText.sessions(many).last, "+2 more", "the count is the last row, never the first")
     }
 
+    suite("the app writes the key file so the user never has to chmod it") {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("keywrite-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let url = dir.appendingPathComponent("nested").appendingPathComponent("session-key")
+
+        func mode(_ url: URL) throws -> Int {
+            let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+            return ((attrs[.posixPermissions] as? NSNumber)?.intValue ?? 0) & 0o777
+        }
+
+        // ไดเรกทอรียังไม่มีตอนเขียนครั้งแรกได้ — แอปที่เพิ่งติดตั้งยังไม่เคยสร้างอะไรเลย
+        try SessionKeyFile.write("  sk-fresh\n", to: url)
+        equal(try mode(url), 0o600, "the file is readable only by its owner from the start")
+        equal(try UsagePoll.readKey(at: url), "sk-fresh",
+              "and reads back through the same rules that guard it, trimmed")
+
+        // ไฟล์ที่ผู้ใช้เคยสร้างเองแบบ 644 ต้องกลายเป็น 600 หลังเขียนทับ ไม่ใช่คงสิทธิ์เดิมไว้
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+        try SessionKeyFile.write("sk-second", to: url)
+        equal(try mode(url), 0o600, "overwriting a loose file tightens it")
+        equal(try UsagePoll.readKey(at: url), "sk-second", "and the new key is the one on disk")
+
+        do {
+            try SessionKeyFile.write("   \n", to: url)
+            expect(false, "an empty key must be refused, not written")
+        } catch let failure as UsagePoll.Failure {
+            equal(failure.code, UsagePoll.Failure.unusableKeyFile, "refused as an unusable key")
+            expect(!failure.message.contains("sk-second"), "and no message ever carries a key")
+        }
+        equal(try UsagePoll.readKey(at: url), "sk-second", "a refused write leaves the old key")
+
+        expect(SessionKeyFile.isUsable(at: url), "a written key is usable")
+        expect(!SessionKeyFile.isUsable(at: dir.appendingPathComponent("nothing")),
+               "a missing file is not")
+    }
+
+    suite("the org list and the status travel on stdout, not in a second state file") {
+        let report = UsagePoll.Report(
+            orgs: [UsagePoll.Org(id: "abc-123", name: "Personal"),
+                   UsagePoll.Org(id: "def-456", name: "Acme Corp")],
+            summary: "session 42% \u{00B7} weekly 7%")
+        let parsed = PollOutput.parse(PollOutput.render(report))
+        equal(parsed.orgs, report.orgs, "a rendered report parses back to the same orgs")
+        equal(parsed.summary, report.summary, "and to the same status line")
+
+        // ชื่อ org มีช่องว่างได้ ส่วน id ไม่มี — ตัดที่ช่องว่างแรกเท่านั้น
+        equal(PollOutput.parse("org abc-123 Acme Corp Ltd").orgs,
+              [UsagePoll.Org(id: "abc-123", name: "Acme Corp Ltd")], "only the first space splits")
+        equal(PollOutput.parse("org abc-123").orgs,
+              [UsagePoll.Org(id: "abc-123", name: "abc-123")], "a nameless org shows its id")
+
+        // id ที่เปลี่ยน path ได้ ตายตรงนี้เหมือนตอนมาจากเน็ต — ทางเดินของมันจบที่ URL เหมือนกัน
+        equal(PollOutput.parse("org ../../admin Evil\norg ok-1 Fine").orgs,
+              [UsagePoll.Org(id: "ok-1", name: "Fine")], "an id that could change the path is dropped")
+
+        equal(PollOutput.parse("").summary, nil, "silence is not a status")
+        equal(PollOutput.parse("org a-1 One\nkey expired").summary, "key expired",
+              "the status is the line that is not an org")
+    }
+
+    suite("one org is silent, several are a choice") {
+        let orgs = [UsagePoll.Org(id: "one", name: "One"), UsagePoll.Org(id: "two", name: "Two")]
+        equal(UsagePoll.pick(orgs, preferred: nil)?.id, "one", "no choice yet means the first")
+        equal(UsagePoll.pick(orgs, preferred: "two")?.id, "two", "the chosen one wins")
+        // ตัวที่เลือกไว้แล้วหายไปจากบัญชี ต้องไม่ทำให้ทั้งเรื่องหยุด — ยิงตัวแรกไปก่อน
+        equal(UsagePoll.pick(orgs, preferred: "gone")?.id, "one",
+              "a stale choice falls back instead of polling an org that is not there")
+        expect(UsagePoll.pick([], preferred: "one") == nil, "no orgs, nothing to pick")
+
+        equal(UsagePoll.organizations(from: Data(#"[{"uuid":"u1","name":"Personal"},{"id":"u2"}]"#.utf8)),
+              [UsagePoll.Org(id: "u1", name: "Personal"), UsagePoll.Org(id: "u2", name: "u2")],
+              "uuid wins, id is the fallback, and a nameless org is named by its id")
+        equal(UsagePoll.organizations(from: Data(#"[{"uuid":"../x"},{"uuid":"ok"}]"#.utf8)),
+              [UsagePoll.Org(id: "ok", name: "ok")],
+              "one unusable org does not take the usable ones with it")
+        equal(UsagePoll.organizations(from: Data("not json".utf8)), [], "junk is an empty list")
+    }
+
+    suite("the refresh interval is a choice the app remembers, and 30s is not one of them") {
+        equal(PollInterval.stored(nil), .minute, "never chosen means 60s, not Off")
+        equal(PollInterval.stored(30), .minute, "30s is not on the menu; fall back")
+        equal(PollInterval.stored(0), .off, "Off is a real choice and must survive a restart")
+        equal(PollInterval.stored(300), .fiveMinutes, "5 min round trips")
+        equal(PollInterval.allCases.map(\.title), ["Off", "60s", "5 min"], "three choices, in order")
+    }
+
+    suite("the timer spawns one child per round and stops when the key is rejected") {
+        final class Fake {
+            var launches: [String?] = []
+            var kills = 0
+            var done: ((UsagePoller.Outcome) -> Void)?
+            var hasKey = true
+
+            func launcher() -> UsagePoller.Launcher {
+                { [self] orgID, done in
+                    launches.append(orgID)
+                    self.done = done
+                    return { [self] in kills += 1 }
+                }
+            }
+
+            func finish(_ code: Int32, _ output: String = "") {
+                let done = self.done
+                self.done = nil
+                done?(UsagePoller.Outcome(code: code, output: output))
+            }
+        }
+
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        func at(_ seconds: TimeInterval) -> Date { t0.addingTimeInterval(seconds) }
+
+        let fake = Fake()
+        let poller = UsagePoller(
+            interval: .minute, hasKey: { fake.hasKey }, launch: fake.launcher())
+
+        poller.tick(now: t0)
+        equal(fake.launches.count, 1, "the first tick polls — figures at launch, not in a minute")
+        poller.tick(now: at(1))
+        equal(fake.launches.count, 1, "a child that is still running is not joined by another")
+        fake.finish(0, "org o-1 One\nsession 5%")
+        equal(poller.status, "session 5%", "the summary is what the child said last")
+        equal(poller.orgs, [UsagePoll.Org(id: "o-1", name: "One")], "and the org list came with it")
+
+        poller.tick(now: at(30))
+        equal(fake.launches.count, 1, "half a minute is not a minute")
+        poller.tick(now: at(60))
+        equal(fake.launches.count, 2, "a full round spawns exactly one child")
+
+        // 5xx เน็ตหลุด — รอบหน้าก็หายเอง ไม่มีอะไรให้ผู้ใช้ทำ จึงต้องไม่หยุดยิง
+        fake.finish(1, "claude.ai returned HTTP 503")
+        expect(poller.blocked == nil, "a server-side error is not the user's problem")
+        poller.tick(now: at(120))
+        equal(fake.launches.count, 3, "so the next round still goes out")
+
+        // 401/403 — ยิงต่อไปก็ได้ 401 เหมือนเดิมทุกนาที จนกว่าจะมีคนแปะ key ใหม่
+        fake.finish(UsagePoll.Failure.rejectedKey, "claude.ai rejected the session key")
+        equal(poller.blocked, .expiredKey, "a rejected key is a blocked pipe")
+        poller.tick(now: at(180))
+        poller.pollNow(now: at(181))
+        equal(fake.launches.count, 3, "and nothing goes out while it is blocked")
+
+        poller.keyWasSet(now: at(200))
+        expect(poller.blocked == nil, "a fresh key unblocks")
+        equal(fake.launches.count, 4, "and polls at once rather than waiting out the round")
+
+        // ลูกที่ไม่จบใน 30 วินาทีถูกฆ่า ไม่งั้นลูกที่ค้างจะกองกันทุกนาที
+        poller.tick(now: at(229))
+        equal(fake.kills, 0, "under the timeout the child is left alone")
+        poller.tick(now: at(231))
+        equal(fake.kills, 1, "past it the child is killed")
+        expect(!poller.isRunning, "and the slot is free again")
+        // ลูกที่ถูกฆ่าแล้วยังพูดทีหลังได้ — เสียงจากอดีตต้องไม่ทับสถานะปัจจุบัน
+        fake.finish(UsagePoll.Failure.rejectedKey, "too late")
+        expect(poller.blocked == nil, "a killed child cannot block the poller from its grave")
+
+        poller.tick(now: at(300))
+        equal(fake.launches.count, 5, "and the next round runs as usual")
+
+        // ไฟล์ key ที่ใช้ไม่ได้เป็นป้ายบอกอาการ ไม่ใช่ล็อก — ตัวที่กันไม่ให้ยิงคือไฟล์เอง
+        // ผู้ใช้ที่ `chmod 600` เองข้างนอกจึงกลับมายิงได้โดยไม่ต้องเปิดปิดแอปหรือแปะ key ซ้ำ
+        fake.hasKey = false
+        fake.finish(UsagePoll.Failure.unusableKeyFile, "session-key is readable by other users")
+        equal(poller.blocked, .unusableKeyFile, "the panel says what is wrong with the file")
+        poller.tick(now: at(360))
+        equal(fake.launches.count, 5, "and nothing is spawned while the file is unusable")
+        fake.hasKey = true
+        poller.tick(now: at(420))
+        equal(fake.launches.count, 6, "a file fixed from outside resumes the rounds by itself")
+        fake.finish(1, "claude.ai returned HTTP 503")
+        expect(poller.blocked == nil, "and getting past the file clears the label")
+
+        // Off แปลว่าไม่ยิงเลย ไม่ใช่ยิงช้าลง
+        poller.interval = .off
+        poller.tick(now: at(600))
+        poller.pollNow(now: at(601))
+        equal(fake.launches.count, 6, "Off does not poll, not even when asked directly")
+
+        // ไม่มี key ก็ไม่ต้องเผาโปรเซสทุกนาทีเพื่อให้ได้ error เดิม
+        poller.interval = .minute
+        fake.hasKey = false
+        poller.tick(now: at(700))
+        equal(fake.launches.count, 6, "no key, no child")
+        fake.hasKey = true
+        poller.tick(now: at(800))
+        equal(fake.launches.count, 7, "a key that appears is picked up on the next round")
+
+        // ปิดแอป → ไม่มีลูกเหลือค้าง
+        poller.stop()
+        equal(fake.kills, 2, "quitting kills the child rather than orphaning it")
+
+        // org ที่ยิงจริงเดินทางไปกับลูก ส่วน key ไม่เคยเดินทางแบบนั้น · ตัวที่เลือกไว้แล้ว
+        // หายไปจากบัญชีถอยเป็นตัวแรกตรงนี้ ไม่ใช่ในลูก — ลูกได้ id มาก็ต้องเชื่อ
+        poller.preferredOrg = "o-2"
+        poller.pollNow(now: at(900))
+        equal(fake.launches.last, "o-1",
+              "a choice that is not in the list we know falls back to the first")
+        fake.finish(0, "org o-1 One\norg o-2 Two\nsession 8%")
+        poller.pollNow(now: at(960))
+        equal(fake.launches.last, "o-2", "once the list has it, the choice rides along")
+        fake.finish(0, "org o-1 One\nsession 9%")
+        poller.pollNow(now: at(1020))
+        equal(fake.launches.last, "o-1",
+              "and an org that vanishes from the account falls back rather than 404 forever")
+    }
+
+    suite("the child is a real process: stdout comes back, and killing it kills it") {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("spawn-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        func script(_ body: String) throws -> URL {
+            let url = dir.appendingPathComponent("fake-\(UUID().uuidString).sh")
+            try Data("#!/bin/sh\n\(body)\n".utf8).write(to: url)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o755], ofItemAtPath: url.path)
+            return url
+        }
+
+        /// callback ของ launcher มาถึงทาง main queue — เทสต์ต้องหมุน run loop ให้มันวิ่ง
+        func wait(_ done: () -> Bool, _ seconds: TimeInterval = 5) -> Bool {
+            let deadline = Date() + seconds
+            while Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+                if done() { return true }
+            }
+            return done()
+        }
+
+        final class Result: @unchecked Sendable {
+            var outcome: UsagePoller.Outcome?
+        }
+
+        // key ไม่เคยผ่าน env — org id ผ่านได้ ไม่ใช่ความลับ · exit code เดินทางกลับมาครบ
+        let talker = try script(
+            #"echo "org $TAMACLAUDE_ORG_ID Acme Corp"; echo "key expired"; exit 2"#)
+        let spoke = Result()
+        _ = PollProcess.launcher(talker)("o-9") { spoke.outcome = $0 }
+        expect(wait { spoke.outcome != nil }, "the child's exit is reported back")
+        equal(spoke.outcome?.code, UsagePoll.Failure.rejectedKey, "with its exit code intact")
+        let parsed = PollOutput.parse(spoke.outcome?.output ?? "")
+        equal(parsed.orgs, [UsagePoll.Org(id: "o-9", name: "Acme Corp")],
+              "the org id rode along in the environment and came back on stdout")
+        equal(parsed.summary, "key expired", "and so did the status line")
+
+        // ลูกที่ค้างต้องตายจริงตอนถูกฆ่า ไม่ใช่แค่ถูกลืม
+        let sleeper = try script("sleep 60")
+        let killed = Result()
+        let kill = PollProcess.launcher(sleeper)(nil) { killed.outcome = $0 }
+        expect(!wait({ killed.outcome != nil }, 0.3), "it is still running before we ask")
+        kill()
+        expect(wait { killed.outcome != nil }, "a killed child stops, and says it stopped")
+        expect((killed.outcome?.code ?? 0) != 0, "a killed child never looks like a success")
+    }
+
+    suite("a broken pipe and a stale figure are two different sentences") {
+        expect(PanelText.keyProblem(nil) == nil, "nothing to say when the pipe is fine")
+        expect(PanelText.keyProblem(.expiredKey)?.contains("expired") == true,
+               "an expired key says so")
+        expect(PanelText.keyProblem(.unusableKeyFile)?.contains("unusable") == true,
+               "an unusable key file is its own sentence")
+
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        equal(PanelText.figures(stamp: nil, now: now), "No quota figures yet",
+              "never having figures is an age too")
+        equal(PanelText.figures(stamp: now.addingTimeInterval(-10), now: now),
+              "Quota figures from just now", "seconds are not worth a number")
+        equal(PanelText.figures(stamp: now.addingTimeInterval(-600), now: now),
+              "Quota figures 10 min old", "minutes are")
+        equal(PanelText.figures(stamp: now.addingTimeInterval(-7200), now: now),
+              "Quota figures 2 h old", "hours past the hour")
+        equal(PanelText.figures(stamp: now.addingTimeInterval(-3 * 86400), now: now),
+              "Quota figures 3 d old", "days past two days")
+        // นาฬิกาเครื่องเดินถอยหลังได้ (sleep, NTP) — อายุติดลบต้องไม่กลายเป็นข้อความประหลาด
+        equal(PanelText.figures(stamp: now.addingTimeInterval(120), now: now),
+              "Quota figures from just now", "a stamp from the future is not a negative age")
+    }
+
+    suite("the cache says how old its figures are") {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("stamp-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+        expect(UsageReader.stamp(from: url) == nil, "no file, no age")
+
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        UsageWriter.ingestAPI(
+            Data(#"{"five_hour":{"utilization":10,"resets_at":"2023-11-15T03:00:00Z"}}"#.utf8),
+            now: t0, to: url)
+        equal(UsageReader.stamp(from: url), t0, "the stamp the writer left is the age we read")
+    }
+
     suite("hook event decoding") {
         let json = """
             {"session_id":"abc","transcript_path":"/tmp/t.jsonl","cwd":"/Users/x/repo",
