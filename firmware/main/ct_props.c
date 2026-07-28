@@ -287,25 +287,65 @@ static void hammer(ct_rects_t *o, float phase, bool connected)
     }
 }
 
-// ลูกโลก — WebSearch/WebFetch
+// ลูกโลกบนหัว — วัดจากระดับหัว (y = 0)
+#define CT_GLB_D 7.0f      // ใหญ่กว่าหัวครึ่งหนึ่ง จึงอ่านเป็นลูกโลกไม่ใช่ลูกปัด
+#define CT_GLB_CY (-1.9f)  // ขอบบน -5.4 (ไม่ล้น BOX_Y0) ขอบล่าง 1.6 (เหนือตาที่ 2.10)
+#define CT_GLB_PX 0.25f    // หนึ่งพิกเซลเป็นหน่วย unit ที่ unit_px = 4
+#define CT_GLB_BANDS 14    // แถบแนวนอนที่ประกอบเป็นวงกลม — แถบละ 0.5 unit = 2 px
+// แถบละสองพิกเซลคือจุดที่บันไดยังละเอียดพอให้อ่านเป็นวงกลม แถบละ 4 px (8 แถบ)
+// ให้หัวท้ายเป็นแผ่นแบนกว้างจนอ่านเป็นโดม ไม่ใช่ลูกกลม
+
+// ทวีป (dx จากขอบซ้ายของลูก, dy จากขอบบน, กว้าง, สูง) — สามก้อนกระจายคนละระดับ
+// ก้อนเดียวอ่านเป็นรอยเปื้อน สามก้อนที่ไม่เรียงกันอ่านเป็นแผ่นดินบนลูกกลม
+static const float GLB_LAND[3][4] = {
+    {0.5f, 1.5f, 2.0f, 1.5f},
+    {3.5f, 3.0f, 2.5f, 1.5f},
+    {1.5f, 4.5f, 1.5f, 1.0f},
+};
+
+// ลูกโลกบนหัว — WebSearch/WebFetch
 // ทรงกลมตัน ไม่ใช่สี่เหลี่ยมกลวง เพราะจะไปซ้ำกับแว่นขยายจนแยกไม่ออกที่ 12px
+// ประกอบจากแถบแนวนอนที่กว้างตามสมการวงกลม จึงกลมจริงแม้ที่ 4 px/unit
+// น้ำเป็นฟ้า ทวีปเป็นเขียวและเลื่อนไปทางเดียวกันตลอด อ่านเป็น "โลกที่กำลังหมุน"
 static void globe(ct_rects_t *o, float phase, bool connected)
 {
-    uint16_t col = c(connected, CT_COL_ACCENT);
-    uint16_t dark = c(connected, CT_COL_INK);
-    float x = CT_HAND_X, y = CT_HAND_Y, s = 5.0f;
-    float cut = s / 6.0f;  // ความลึกของมุมที่ตัดออก ทำให้อ่านเป็นทรงกลม
-    ct_rects_add(o, x + cut, y, s - 2 * cut, cut, col);
-    ct_rects_add(o, x, y + cut, s, s - 2 * cut, col);
-    ct_rects_add(o, x + cut, y + s - cut, s - 2 * cut, cut, col);
+    // ตอนหลุดการเชื่อมต่อยังต้องเหลือสองค่าความสว่าง ไม่งั้นทวีปจมหายกลายเป็นก้อนเทาตัน
+    uint16_t ocean = connected ? CT_COL_GLASS : CT_COL_GRAY;
+    uint16_t land = connected ? CT_COL_GOOD : CT_COL_GRAY_DARK;
 
-    float spin = fmodf(phase, 1.0f) * s;
-    const float cont[2][4] = {{0.0f, 1.4f, 1.2f, 1.0f}, {2.3f, 2.9f, 1.5f, 0.9f}};
-    for (int i = 0; i < 2; i++) {
-        float px = x + fmodf(cont[i][0] + spin, s);
-        // ตัดชิ้นที่จะล้นขอบลูกโลกทิ้ง แทนที่จะให้ยื่นออกมา
-        if (px + cont[i][2] <= x + s) {
-            ct_rects_add(o, px, y + cont[i][1], cont[i][2], cont[i][3], dark);
+    // ครึ่งความกว้างวัดที่กึ่งกลางแถบ (ไม่ใช่ขอบ) หัวท้ายจึงแคบลงตามวงกลมจริง
+    // แล้วปัดเป็นจำนวนพิกเซลเต็ม ขอบซ้าย/ขวาจึงตกบนเส้นพิกเซลพอดี ไม่มีขั้นบันไดครึ่งพิกเซล
+    float r = CT_GLB_D / 2.0f, bh = CT_GLB_D / CT_GLB_BANDS;
+    float by0[CT_GLB_BANDS], by1[CT_GLB_BANDS], bhw[CT_GLB_BANDS];
+    for (int i = 0; i < CT_GLB_BANDS; i++) {
+        by0[i] = CT_GLB_CY - r + i * bh;
+        by1[i] = by0[i] + bh;
+        float yy = fabsf(by0[i] + bh / 2.0f - CT_GLB_CY);
+        float q = r * r - yy * yy;
+        bhw[i] = roundf(sqrtf(q > 0.0f ? q : 0.0f) / CT_GLB_PX) * CT_GLB_PX;
+        ct_rects_add(o, CT_HEAD_CX - bhw[i], by0[i], 2 * bhw[i], by1[i] - by0[i], ocean);
+    }
+
+    float left = CT_HEAD_CX - CT_GLB_D / 2.0f, top = CT_GLB_CY - CT_GLB_D / 2.0f;
+    float spin = fmodf(phase, 1.0f) * CT_GLB_D;
+    for (int i = 0; i < 3; i++) {
+        float px = left + fmodf(GLB_LAND[i][0] + spin, CT_GLB_D);
+        float py = top + GLB_LAND[i][1], w = GLB_LAND[i][2], h = GLB_LAND[i][3];
+        // ครึ่งความกว้างที่แคบที่สุดในช่วงที่ทวีปกินอยู่ — ทวีปจึงไม่ยื่นล้นขอบลูกโลก
+        float hw = 0.0f;
+        bool first = true;
+        for (int k = 0; k < CT_GLB_BANDS; k++) {
+            if (by1[k] > py && by0[k] < py + h && (first || bhw[k] < hw)) {
+                hw = bhw[k];
+                first = false;
+            }
+        }
+        // เล็มด้านที่ล้นขอบทิ้ง แทนที่จะซ่อนทั้งก้อน — ทวีปที่หายวับทั้งชิ้นอ่านเป็นกะพริบ
+        // ส่วนทวีปที่ค่อยๆ โผล่จากขอบอ่านเป็นแผ่นดินที่หมุนอ้อมมาจากอีกด้าน
+        float lo = CT_HEAD_CX - hw, hi = CT_HEAD_CX + hw;
+        float x0 = px > lo ? px : lo, x1 = (px + w) < hi ? (px + w) : hi;
+        if (x1 - x0 >= 0.6f) {  // เศษที่แคบกว่านี้อ่านเป็นจุด ไม่ใช่แผ่นดิน
+            ct_rects_add(o, x0, py, x1 - x0, h, land);
         }
     }
 }

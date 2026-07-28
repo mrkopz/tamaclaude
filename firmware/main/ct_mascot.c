@@ -328,7 +328,11 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
         ct_prop_build(out, STATES[state].prop, phase, connected);
         // หมวกกับค้อนอยู่ติดตัว จึงต้องต่ำลงพร้อมหัวที่ยุบ ไม่ใช่ค้างอยู่ที่เดิม
         // เลื่อนอย่างเดียวไม่ยุบตาม: หมวกแข็งและค้อนเป็นเหล็ก จะแบนไปกับตัวไม่ได้
-        ct_rects_move_from(out, prop_from, dx, dy + (m->strike ? FOOT_Y * squash : 0.0f));
+        float prop_dy = dy + (m->strike ? FOOT_Y * squash : 0.0f);
+        // ลูกโลกลอยนิ่งอยู่กับที่ ตัวเด้งผ่านมันไป — ใหญ่และคร่อมหัวอยู่แล้ว
+        // ถ้าเด้งตามตัวด้วยจะอ่านเป็นก้อนที่ติดหัว ไม่ใช่ลูกโลกที่ลอยอยู่
+        if (STATES[state].prop == CT_PROP_GLOBE) prop_dy = 0.0f;
+        ct_rects_move_from(out, prop_from, dx, prop_dy);
     }
 
     // ท่าที่มีของประกอบเยอะจนแน่นช่อง — ย่อทั้งฉากโดยยึดฝ่าเท้าและกึ่งกลางลำตัว
