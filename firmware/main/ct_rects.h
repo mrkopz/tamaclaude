@@ -12,6 +12,9 @@
 typedef struct {
     float x, y, w, h;
     uint16_t color;  // RGB565 ตามที่แผงจอกินจริง
+    // รัศมีมุมเป็น unit — 0 = มุมคม ซึ่งเป็นค่าตั้งต้นของทุกชิ้นยกเว้นซิลลูเอ็ตมาสคอต
+    // ไม่ย่อตาม ct_rects_scale_from(): ที่ 2px การย่อทุกกรณีในโค้ดนี้ปัดกลับมาเป็น 2px อยู่ดี
+    float r;
 } ct_rect_t;
 
 typedef struct {
@@ -22,11 +25,17 @@ typedef struct {
 static inline void ct_rects_reset(ct_rects_t *rs) { rs->count = 0; }
 
 // เกิน CT_RECTS_MAX แล้วทิ้งเงียบๆ ดีกว่าเขียนล้น — ตรวจได้ด้วย ct_rects_full()
+static inline void ct_rects_add_round(ct_rects_t *rs, float x, float y, float w, float h,
+                                      uint16_t color, float r)
+{
+    if (rs->count >= CT_RECTS_MAX) return;
+    rs->items[rs->count++] = (ct_rect_t){x, y, w, h, color, r};
+}
+
 static inline void ct_rects_add(ct_rects_t *rs, float x, float y, float w, float h,
                                 uint16_t color)
 {
-    if (rs->count >= CT_RECTS_MAX) return;
-    rs->items[rs->count++] = (ct_rect_t){x, y, w, h, color};
+    ct_rects_add_round(rs, x, y, w, h, color, 0.0f);
 }
 
 static inline bool ct_rects_full(const ct_rects_t *rs) { return rs->count >= CT_RECTS_MAX; }

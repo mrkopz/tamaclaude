@@ -46,7 +46,13 @@ def draw_rects(
         y1 = round(oy + (r.y + r.h) * px)
         if x1 <= x0 or y1 <= y0:
             continue
-        draw.rectangle([x0, y0, x1 - 1, y1 - 1], fill=conv(r.color))
+        # clamp เองทั้งสองฝั่ง ไม่ปล่อยให้ backend ตัดสิน — LVGL clamp ให้ แต่ PIL ไม่
+        # ถ้าปล่อย ขาที่ยุบจนเตี้ยจะออกมาคนละรูปบน preview กับบนบอร์ด
+        radius = min(round(r.r * px), (x1 - x0) // 2, (y1 - y0) // 2)
+        if radius > 0:
+            draw.rounded_rectangle([x0, y0, x1 - 1, y1 - 1], radius=radius, fill=conv(r.color))
+        else:
+            draw.rectangle([x0, y0, x1 - 1, y1 - 1], fill=conv(r.color))
 
 
 def render_rects(

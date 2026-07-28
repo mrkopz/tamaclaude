@@ -22,6 +22,16 @@
 #define EYE_Y CT_EYE_Y
 #define EYE_S CT_EYE_S
 
+// มุมมนของชิ้นซิลลูเอ็ต — มนทุกมุมของทุกชิ้น เพราะ lv_draw_rect กำหนดรายมุมไม่ได้
+#define CORNER CT_MASCOT_CORNER
+// ขายืดขึ้นไปซ้อนใต้ลำตัวเท่านี้ ก่อนถึงจะเริ่มวาด — สองเท่าของรัศมี ไม่ใช่หนึ่งเท่า:
+// มุมล่างของลำตัวก็มนด้วย ถ้าซ้อนแค่รัศมีเดียว มุมมนของขากับของลำตัวจะเว้าตรงกัน
+// แล้วเกิดรอยแหว่งกลางเส้นตรงที่ควรต่อเนื่อง (ขอบนอกของขาต่อกับขอบนอกของลำตัวพอดี)
+#define LEG_OVERLAP (CORNER * 2.0f)
+// แขนซ้อนเข้าไปในลำตัวเท่ารัศมี — พอให้มุมมนด้านในตกอยู่ใต้เนื้อลำตัวซึ่งทาสีเดียวกัน
+// ตรงนั้นเป็นกลางลำตัว ไม่ใช่มุม จึงไม่ต้องเผื่อสองเท่าแบบขา
+#define ARM_OVERLAP CORNER
+
 // ขาและช่องว่างวัดจากภาพอ้างอิง: ขานอกกว้างกว่าขาใน ช่องกลางกว้างกว่าช่องข้าง
 static const float LEG_SPANS[4][2] = {
     {1.00f, 2.46f}, {4.50f, 2.20f}, {9.29f, 2.20f}, {12.53f, 2.46f}};
@@ -180,7 +190,9 @@ static void legs(ct_rects_t *o, gait_t gait, float phase, uint16_t color, float 
         }
         float h = LEG_H - lift;
         if (h < 0.6f) h = 0.6f;
-        ct_rects_add(o, LEG_SPANS[i][0], LEG_TOP, LEG_SPANS[i][1], h, color);
+        // ยืดขึ้นไปซ้อนใต้ลำตัว — ความสูงที่ *เห็น* ยังเป็น LEG_H - lift เท่าเดิม
+        ct_rects_add_round(o, LEG_SPANS[i][0], LEG_TOP - LEG_OVERLAP, LEG_SPANS[i][1],
+                           h + LEG_OVERLAP, color, CORNER);
     }
 }
 
@@ -190,12 +202,21 @@ static void legs(ct_rects_t *o, gait_t gait, float phase, uint16_t color, float 
 // arm_out > 0 = แขนเป็นสองท่อนลดหลั่นออกนอกตัว (ท่ายกมือค้าง) แทนที่จะเป็นก้อนเดียว
 // ก้อนเดียวที่เลื่อนขึ้นเฉยๆ อ่านเป็น "ไหล่สูงขึ้น" ไม่ใช่ "ยกมือ" — ต้องมีท่อนที่เยื้อง
 // ออกไปนอกซิลลูเอ็ต สายตาถึงจะเห็นเป็นแขนที่กางขึ้น
+// ท่อนแขนหนึ่งท่อน กว้าง NUB_W โดยขอบด้านที่หันเข้าตัวยืดเข้าไปซ้อนอีก ARM_OVERLAP
+// side -1 = แขนซ้าย (ตัวอยู่ทางขวาของท่อน) / +1 = แขนขวา
+// ท่อนนอกของท่ายกมือก็ใช้ตัวเดียวกัน มันจึงซ้อนกับท่อนในแทนที่จะแค่ชนกัน
+static void arm(ct_rects_t *o, float x0, float y, float h, float side, uint16_t color)
+{
+    float x = side < 0.0f ? x0 : x0 - ARM_OVERLAP;
+    ct_rects_add_round(o, x, y, NUB_W + ARM_OVERLAP, h, color, CORNER);
+}
+
 static void body(ct_rects_t *o, uint16_t color, float arm_l, float arm_r, float arm_out)
 {
-    ct_rects_add(o, BODY_X, BODY_Y, BODY_W, BODY_H, color);
+    ct_rects_add_round(o, BODY_X, BODY_Y, BODY_W, BODY_H, color, CORNER);
     if (arm_out == 0.0f) {
-        ct_rects_add(o, BODY_X - NUB_W, NUB_Y + arm_l, NUB_W, NUB_H, color);
-        ct_rects_add(o, BODY_X + BODY_W, NUB_Y + arm_r, NUB_W, NUB_H, color);
+        arm(o, BODY_X - NUB_W, NUB_Y + arm_l, NUB_H, -1.0f, color);
+        arm(o, BODY_X + BODY_W, NUB_Y + arm_r, NUB_H, 1.0f, color);
         return;
     }
     // แต่ละท่อนเตี้ยกว่าแขนปกติ สองท่อนรวมกันจึงไม่ยาวเกินสัดส่วนเดิม
@@ -205,8 +226,8 @@ static void body(ct_rects_t *o, uint16_t color, float arm_l, float arm_r, float 
     const float DY[2] = {arm_l, arm_r};
     for (int i = 0; i < 2; i++) {
         // ท่อนใน — ติดลำตัว ยกขึ้นครึ่งทางของท่อนนอก จึงอ่านเป็นแขนที่เอียงขึ้น
-        ct_rects_add(o, X0[i], NUB_Y + DY[i] + h * 0.5f, NUB_W, h, color);
-        ct_rects_add(o, X0[i] + SIDE[i] * arm_out, NUB_Y + DY[i], NUB_W, h, color);
+        arm(o, X0[i], NUB_Y + DY[i] + h * 0.5f, h, SIDE[i], color);
+        arm(o, X0[i] + SIDE[i] * arm_out, NUB_Y + DY[i], h, SIDE[i], color);
     }
 }
 
@@ -288,7 +309,7 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
     ct_rects_reset(out);
     for (int i = 0; i < silhouette.count; i++) {
         ct_rect_t r = silhouette.items[i];
-        ct_rects_add(out, r.x, r.y, r.w, r.h, r.color);
+        ct_rects_add_round(out, r.x, r.y, r.w, r.h, r.color, r.r);
     }
 
     // แท่นวางอยู่กับพื้น จึงไม่เลื่อนตาม dy ที่ลำตัวขยับ

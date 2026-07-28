@@ -16,12 +16,15 @@ class Rect:
     w: float
     h: float
     color: str
+    # รัศมีมุมเป็น unit — 0 = มุมคม ซึ่งเป็นค่าตั้งต้นของทุกชิ้นยกเว้นซิลลูเอ็ตมาสคอต
+    # ไม่ย่อตาม scaled(): ที่ 2px การย่อทุกกรณีในโค้ดนี้ปัดกลับมาเป็น 2px อยู่ดี
+    r: float = 0.0
 
     def moved(self, dx: float, dy: float) -> "Rect":
-        return Rect(self.x + dx, self.y + dy, self.w, self.h, self.color)
+        return Rect(self.x + dx, self.y + dy, self.w, self.h, self.color, self.r)
 
     def recolored(self, color: str) -> "Rect":
-        return Rect(self.x, self.y, self.w, self.h, color)
+        return Rect(self.x, self.y, self.w, self.h, color, self.r)
 
 
 RectList = list[Rect]
@@ -37,13 +40,13 @@ def recolor(rects: RectList, color: str) -> RectList:
 
 def mirror_x(rects: RectList, axis: float) -> RectList:
     """สะท้อนซ้าย-ขวารอบแกน x = axis"""
-    return [Rect(2 * axis - r.x - r.w, r.y, r.w, r.h, r.color) for r in rects]
+    return [Rect(2 * axis - r.x - r.w, r.y, r.w, r.h, r.color, r.r) for r in rects]
 
 
 def scaled(rects: RectList, sx: float, sy: float, ox: float = 0.0, oy: float = 0.0) -> RectList:
     """ย่อ/ขยายรอบจุด (ox, oy)"""
     return [
-        Rect(ox + (r.x - ox) * sx, oy + (r.y - oy) * sy, r.w * sx, r.h * sy, r.color)
+        Rect(ox + (r.x - ox) * sx, oy + (r.y - oy) * sy, r.w * sx, r.h * sy, r.color, r.r)
         for r in rects
     ]
 

@@ -45,6 +45,16 @@ EYE_L = 3.36  # ตาข้างขวา (EYE_R/EYE_Y/EYE_S) อยู่ใ�
 
 FOOT_Y = LEG_TOP + LEG_H  # 11.2 — ระดับที่มาสคอตยืน
 
+# มุมมนของชิ้นซิลลูเอ็ต — มนทุกมุมของทุกชิ้น เพราะ lv_draw_rect กำหนดรายมุมไม่ได้
+CORNER = L.mascot.corner
+# ขายืดขึ้นไปซ้อนใต้ลำตัวเท่านี้ ก่อนถึงจะเริ่มวาด — สองเท่าของรัศมี ไม่ใช่หนึ่งเท่า:
+# มุมล่างของลำตัวก็มนด้วย ถ้าซ้อนแค่รัศมีเดียว มุมมนของขากับของลำตัวจะเว้าตรงกัน
+# แล้วเกิดรอยแหว่งกลางเส้นตรงที่ควรต่อเนื่อง (ขอบนอกของขาต่อกับขอบนอกของลำตัวพอดี)
+LEG_OVERLAP = CORNER * 2.0
+# แขนซ้อนเข้าไปในลำตัวเท่ารัศมี — พอให้มุมมนด้านในตกอยู่ใต้เนื้อลำตัวซึ่งทาสีเดียวกัน
+# ตรงนั้นเป็นกลางลำตัว ไม่ใช่มุม จึงไม่ต้องเผื่อสองเท่าแบบขา
+ARM_OVERLAP = CORNER
+
 
 # --- ตา --------------------------------------------------------------------
 def _eye(x: float, kind: str, look: float, ink: str, scale: float = 1.0) -> RectList:
@@ -90,11 +100,24 @@ def _legs(gait: str, phase: float, color: str, extra_lift: float = 0.0) -> RectL
             lift += LEG_H * 0.34 if up else 0.0
         elif gait == "sit":
             lift += LEG_H * 0.66
-        out.append(Rect(lx, LEG_TOP, lw, max(LEG_H - lift, 0.6), color))
+        # ยืดขึ้นไปซ้อนใต้ลำตัว — ความสูงที่ *เห็น* ยังเป็น LEG_H - lift เท่าเดิม
+        h = max(LEG_H - lift, 0.6)
+        out.append(Rect(lx, LEG_TOP - LEG_OVERLAP, lw, h + LEG_OVERLAP, color, CORNER))
     return out
 
 
 # --- ลำตัว -----------------------------------------------------------------
+def _arm(x0: float, y: float, h: float, side: float, color: str) -> Rect:
+    """ท่อนแขนหนึ่งท่อน กว้าง NUB_W โดยขอบด้านที่หันเข้าตัวยืดเข้าไปซ้อนอีก ARM_OVERLAP
+
+    side -1 = แขนซ้าย (ตัวอยู่ทางขวาของท่อน) / +1 = แขนขวา
+    ท่อนนอกของท่ายกมือก็ใช้ตัวเดียวกัน มันจึงซ้อนกับท่อนในแทนที่จะแค่ชนกัน
+    """
+    w = NUB_W + ARM_OVERLAP
+    x = x0 if side < 0 else x0 - ARM_OVERLAP
+    return Rect(x, y, w, h, color, CORNER)
+
+
 def _body(
     color: str, arm_dy: tuple[float, float] = (0.0, 0.0), arm_out: float = 0.0
 ) -> RectList:
@@ -106,16 +129,16 @@ def _body(
     ออกไปนอกซิลลูเอ็ต สายตาถึงจะเห็นเป็นแขนที่กางขึ้น
     """
     bx, by, bw, bh = BODY
-    out = [Rect(bx, by, bw, bh, color)]
+    out = [Rect(bx, by, bw, bh, color, CORNER)]
     if arm_out == 0.0:
-        out.append(Rect(bx - NUB_W, NUB_Y + arm_dy[0], NUB_W, NUB_H, color))
-        out.append(Rect(bx + bw, NUB_Y + arm_dy[1], NUB_W, NUB_H, color))
+        out.append(_arm(bx - NUB_W, NUB_Y + arm_dy[0], NUB_H, -1.0, color))
+        out.append(_arm(bx + bw, NUB_Y + arm_dy[1], NUB_H, 1.0, color))
         return out
     h = NUB_H * 0.8  # แต่ละท่อนเตี้ยกว่าแขนปกติ สองท่อนรวมกันจึงไม่ยาวเกินสัดส่วนเดิม
     for side, x0, dy in ((-1.0, bx - NUB_W, arm_dy[0]), (1.0, bx + bw, arm_dy[1])):
         # ท่อนใน — ติดลำตัว ยกขึ้นครึ่งทางของท่อนนอก จึงอ่านเป็นแขนที่เอียงขึ้น
-        out.append(Rect(x0, NUB_Y + dy + h * 0.5, NUB_W, h, color))
-        out.append(Rect(x0 + side * arm_out, NUB_Y + dy, NUB_W, h, color))  # ท่อนนอก
+        out.append(_arm(x0, NUB_Y + dy + h * 0.5, h, side, color))
+        out.append(_arm(x0 + side * arm_out, NUB_Y + dy, h, side, color))  # ท่อนนอก
     return out
 
 
