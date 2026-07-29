@@ -7,9 +7,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 A desk device that shows live Claude Code session status via a blocky orange Claude mascot.
 Hardware: ESP32-2432S028R ("Cheap Yellow Display"), ILI9341 320x240 landscape, BLE only.
 
-`DESIGN.md` (Thai) is the authoritative design record — every non-obvious decision and the
-reason behind it lives there. **Read the relevant section of `DESIGN.md` before changing
-visuals, protocol, or layout**, and add an entry there when a decision changes.
+`DESIGN.md` (Thai) records the **current** design and the reasons that are not visible from
+the code — not a changelog. **Read the relevant section before changing visuals, protocol,
+or layout.** Write to it only when a previous decision is *reversed*, or when you hit a
+constraint the code cannot state on its own (a measured hardware value, a framework quirk, a
+rule that must hold in two places at once). Ordinary fixes need no entry — git history is
+the log. When an entry stops being true, rewrite it in place; do not append the correction
+below it.
 
 ## Data flow
 
