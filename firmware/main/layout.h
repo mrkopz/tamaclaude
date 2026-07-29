@@ -42,27 +42,29 @@
 #define CT_SKY_ARC_PEAK              82
 #define CT_SKY_ARC_PAD               0
 #define CT_SKY_TWINKLE_N             4
+#define CT_SKY_STAR_PX               1
+#define CT_SKY_STAR_PEAK_PX          3
 #define CT_SKY_LOW_STAR_N            6
 #define CT_SKY_CLOUD_SPEED_PX_S      4
 #define CT_SKY_CLOUD_PAD             60
 
 #define CT_SKY_STARS_COUNT           16
 static const int16_t ct_sky_stars[CT_SKY_STARS_COUNT][2] = {
+    { 33,  63},
+    {128,  67},
+    {205,  88},
+    {289,  48},
+    { 76,  27},
+    {247,  71},
     { 14,  33},
     { 58,  82},
     {103,  44},
     {171,  90},
-    { 33,  63},
-    { 76,  27},
     { 92,  99},
-    {128,  67},
     {149,  37},
     {186,  52},
-    {205,  88},
     {229,  30},
-    {247,  71},
     {268, 101},
-    {289,  48},
     {307,  80},
 };
 
@@ -119,6 +121,7 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_COL_SUN_LOW               0xEC09
 #define CT_COL_MOON                  0xCE7B
 #define CT_COL_STAR                  0xEF1B
+#define CT_COL_STAR_MID              0xA577
 #define CT_COL_STAR_DIM              0x6BD1
 #define CT_COL_CLOUD_DAY             0xF7DF
 #define CT_COL_CLOUD_DAWN            0x5B73

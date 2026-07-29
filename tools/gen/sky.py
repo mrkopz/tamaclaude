@@ -132,20 +132,32 @@ def _draw_stars(draw: ImageDraw.ImageDraw, phase: str, cycle: int) -> None:
     if phase == "day":
         return
     stars = L.sky.stars
+    base = L.sky.star_px
+
+    def dot(x: int, y: int, color: str, size: int = 0) -> None:
+        s = size or base
+        # โตออกจากกึ่งกลาง ไม่ใช่ยืดลงขวา — ไม่งั้นดวงที่โตขึ้นอ่านเป็นดาวเลื่อนที่
+        off = (s - base) // 2
+        draw.rectangle([x - off, y - off, x - off + s - 1, y - off + s - 1],
+                       fill=quantize565(color))
+
     if phase != "night":
         # ฟ้ายังสว่างเกินกว่าจะเห็นทั้งหมด — ดวงแรกๆ สีหรี่ ไม่กะพริบ
         for x, y in stars[: L.sky.low_star_n]:
-            draw.point((x, y), fill=quantize565(PAL.star_dim))
+            dot(x, y, PAL.star_dim)
         return
+    # ดวงที่กะพริบไล่สว่างขึ้นแล้วหรี่ลง: dim -> mid -> star(โต) -> mid ขั้นละ 1 วินาที
+    # ตั้งต้นที่หรี่แล้วสว่างขึ้น ไม่ใช่ตั้งต้นสว่างแล้วดับ — ดาวดับอ่านเป็นจอเสีย
+    # ขั้นสว่างสุดโตเป็น star_peak_px ด้วย: บนแผงจริงความต่างของสีอย่างเดียวจางเกินกว่าจะจับได้
+    # i * 3 ทำให้สี่ดวงเริ่มคนละขั้น (0,3,2,1) ไม่กะพริบพร้อมกันเป็นจังหวะเดียว
+    peak = L.sky.star_peak_px
+    ramp = ((PAL.star_dim, base), (PAL.star_mid, base),
+            (PAL.star, peak), (PAL.star_mid, base))
     for i, (x, y) in enumerate(stars):
-        # กะพริบเฉพาะดวงแรกๆ ที่ 1 วินาทีต่อขั้น — เร็วกว่านี้อ่านเป็นสัญญาณเตือน
-        if i < L.sky.twinkle_n and (cycle + i * 2) % 3 == 0:
-            draw.point((x, y), fill=quantize565(PAL.star_dim))
-            continue
         if i < L.sky.twinkle_n:
-            draw.rectangle([x, y, x + 1, y + 1], fill=quantize565(PAL.star))
+            dot(x, y, *ramp[(cycle + i * 3) % 4])
         else:
-            draw.point((x, y), fill=quantize565(PAL.star))
+            dot(x, y, PAL.star)
 
 
 def _draw_clouds(draw: ImageDraw.ImageDraw, phase: str, t: float) -> None:

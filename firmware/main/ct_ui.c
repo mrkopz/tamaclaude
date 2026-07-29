@@ -178,24 +178,34 @@ static void fill_rect(lv_layer_t *layer, int x0, int y0, int x1, int y1, uint16_
 static void draw_stars(lv_layer_t *layer, ct_sky_phase_t phase)
 {
     if (phase == CT_SKY_DAY) return;
+    // ดาวเป็นสี่เหลี่ยมอย่างน้อย star_px x star_px ทุกดวง — จุด 1px หายไปเลยบนแผงจริง
+    const int d = CT_SKY_STAR_PX - 1;
     if (phase != CT_SKY_NIGHT) {
         // ฟ้ายังสว่างเกินกว่าจะเห็นทั้งหมด — ดวงแรกๆ สีหรี่ ไม่กะพริบ
         for (int i = 0; i < CT_SKY_LOW_STAR_N; i++) {
             int x = ct_sky_stars[i][0], y = ct_sky_stars[i][1];
-            fill_rect(layer, x, y, x, y, CT_COL_STAR_DIM, 0);
+            fill_rect(layer, x, y, x + d, y + d, CT_COL_STAR_DIM, 0);
         }
         return;
     }
+    // ดวงที่กะพริบไล่สว่างขึ้นแล้วหรี่ลง: dim -> mid -> star(โต) -> mid ขั้นละ 1 วินาที
+    // ตั้งต้นที่หรี่แล้วสว่างขึ้น ไม่ใช่ตั้งต้นสว่างแล้วดับ — ดาวดับอ่านเป็นจอเสีย
+    // ขั้นสว่างสุดโตเป็น star_peak_px ด้วย: บนแผงจริงต่างแค่สีจางเกินกว่าจะจับได้
+    // i * 3 ทำให้สี่ดวงเริ่มคนละขั้น (0,3,2,1) ไม่กะพริบพร้อมกันเป็นจังหวะเดียว
+    static const uint16_t ramp[4] = {CT_COL_STAR_DIM, CT_COL_STAR_MID, CT_COL_STAR,
+                                     CT_COL_STAR_MID};
+    static const int ramp_px[4] = {CT_SKY_STAR_PX, CT_SKY_STAR_PX, CT_SKY_STAR_PEAK_PX,
+                                   CT_SKY_STAR_PX};
     for (int i = 0; i < CT_SKY_STARS_COUNT; i++) {
         int x = ct_sky_stars[i][0], y = ct_sky_stars[i][1];
         if (i >= CT_SKY_TWINKLE_N) {
-            fill_rect(layer, x, y, x, y, CT_COL_STAR, 0);
-        } else if ((s_cycle + i * 2) % 3 == 0) {
-            // กะพริบเฉพาะดวงแรกๆ ที่ 1 วินาทีต่อขั้น — เร็วกว่านี้อ่านเป็นสัญญาณเตือน
-            fill_rect(layer, x, y, x, y, CT_COL_STAR_DIM, 0);
-        } else {
-            fill_rect(layer, x, y, x + 1, y + 1, CT_COL_STAR, 0);
+            fill_rect(layer, x, y, x + d, y + d, CT_COL_STAR, 0);
+            continue;
         }
+        int step = (s_cycle + i * 3) % 4, s = ramp_px[step];
+        // โตออกจากกึ่งกลาง ไม่ใช่ยืดลงขวา — ไม่งั้นดวงที่โตขึ้นอ่านเป็นดาวเลื่อนที่
+        int off = (s - CT_SKY_STAR_PX) / 2;
+        fill_rect(layer, x - off, y - off, x - off + s - 1, y - off + s - 1, ramp[step], 0);
     }
 }
 
