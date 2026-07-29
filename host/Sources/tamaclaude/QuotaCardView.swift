@@ -83,11 +83,17 @@ final class QuotaCardView: NSView {
         addSubview(stack)
 
         let pad = Self.pad
+        // ขอบล่างหักได้ ด้วยเหตุผลเดียวกับขอบล่างของแผง (`PanelViewController`): ถ้าการ์ด
+        // ถูกกรอบที่เตี้ยกว่าบีบ ตัวที่ยอมหักต้องเป็นความสูงของการ์ด ไม่ใช่ระยะห่างภายใน
+        // — ไม่งั้นหัวการ์ดกับแถบจะไต่ขึ้นไปโผล่เหนือเส้นขอบของการ์ดตัวเอง
+        let bottom = stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -pad)
+        bottom.priority = .init(999)
+
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: pad),
             stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -pad),
             stack.topAnchor.constraint(equalTo: topAnchor, constant: pad),
-            stack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -pad),
+            bottom,
             head.widthAnchor.constraint(equalTo: stack.widthAnchor),
             bar.widthAnchor.constraint(equalTo: stack.widthAnchor),
             // สูงกว่าตัวแถบ เผื่อที่ให้ขีดที่โผล่พ้นบนล่าง — แถบวาดกลางกรอบของตัวเอง

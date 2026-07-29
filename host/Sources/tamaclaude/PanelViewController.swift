@@ -44,6 +44,8 @@ final class PanelViewController: NSViewController {
     override func loadView() {
         let root = NSView()
         root.translatesAutoresizingMaskIntoConstraints = false
+        // ส่วนที่ล้นออกนอกกรอบต้องถูกตัด ไม่ใช่ไปวาดทับขอบมนของ popover
+        root.clipsToBounds = true
 
         heading.font = .systemFont(ofSize: 13, weight: .semibold)
         heading.lineBreakMode = .byTruncatingTail
@@ -123,13 +125,22 @@ final class PanelViewController: NSViewController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(stack)
 
+        // เนื้อในสูงเท่าไรก็ตาม ต้องไม่ถูกกรอบที่เตี้ยกว่าบีบ — `NSPopover` ตั้งขนาด
+        // content view ตามที่ *เคย* บอกไว้ ส่วนความสูงจริงของเนื้อในเปลี่ยนได้ทีหลัง
+        // (การ์ดโผล่, แถวเพิ่ม) ในจังหวะที่คร่อมกันนั้น ถ้าขอบล่างเป็นข้อบังคับเด็ดขาด
+        // ตัวที่ยอมหักคือระยะห่างระหว่าง view — หัวแผงกับการ์ดใบแรกทับกันเป็นสิบเฟรม
+        // ปล่อยให้ขอบล่างหักแทน แล้วส่วนเกินจะล้นออกไปโดนตัด ซึ่งอ่านออกว่า "ยังไม่นิ่ง"
+        // ไม่ใช่ "แผงพัง"
         let inset = Self.inset
+        let bottom = stack.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -inset)
+        bottom.priority = .init(999)
+
         NSLayoutConstraint.activate([
             root.widthAnchor.constraint(equalToConstant: Self.width),
             stack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: inset),
             stack.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -inset),
             stack.topAnchor.constraint(equalTo: root.topAnchor, constant: inset),
-            stack.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -inset),
+            bottom,
             header.widthAnchor.constraint(equalTo: stack.widthAnchor),
             holder.widthAnchor.constraint(equalToConstant: Self.iconSize),
             holder.heightAnchor.constraint(equalToConstant: Self.iconSize),
@@ -180,7 +191,11 @@ final class PanelViewController: NSViewController {
         guard isViewLoaded else { return }
         view.layoutSubtreeIfNeeded()
         let size = view.fittingSize
-        if preferredContentSize != size { preferredContentSize = size }
+        guard preferredContentSize != size else { return }
+        preferredContentSize = size
+        // จัดใหม่ทันทีในเฟรมเดียวกัน ไม่ปล่อยให้ค้างข้ามรอบ run loop — ระหว่างนั้น
+        // กรอบใหม่มาถึงแล้วแต่ของข้างในยังอยู่ที่เดิม ซึ่งคือเฟรมที่ผู้ใช้จับภาพได้
+        view.layoutSubtreeIfNeeded()
     }
 
     private func separator() -> NSView {
@@ -208,7 +223,12 @@ final class PanelViewController: NSViewController {
         // แตะเฉพาะตอนเปลี่ยนจริง: ถูกเรียกทุกวินาทีที่แผงเปิดอยู่ และการเขียนทับด้วยค่าเดิม
         // ทำให้ NSTextField วาดใหม่ทั้งบรรทัด
         if heading.stringValue != title { heading.stringValue = title }
-        orgs.isHidden = !switchable
+        // ลูกศรที่โผล่มาทีหลัง (รายการ org มาจากรอบ poll ไม่ใช่ตอนเปิดแผง) เปลี่ยนความ
+        // ต้องการของหัวแผง — ขนาดที่บอก popover ไว้ต้องเปลี่ยนตามในจังหวะเดียวกัน
+        if orgs.isHidden == switchable {
+            orgs.isHidden = !switchable
+            resize()
+        }
     }
 
     /// ปุ่ม refresh — สามสภาพ: กดได้ · กำลังยิง · เย็นตัวอยู่
