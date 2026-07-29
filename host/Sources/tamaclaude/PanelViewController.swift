@@ -37,6 +37,10 @@ final class PanelViewController: NSViewController {
     private let boardLabel = NSTextField(labelWithString: "")
     /// สองบรรทัดที่พูดคนละเรื่อง: ท่อพัง (กดได้) กับ ค่าที่เห็นอยู่เก่าแค่ไหน
     private let keyButton = NSButton()
+    /// บรรทัดที่สาม: สวิตช์ auto-start ติ๊กอยู่แต่ยิงไม่ได้ — ป้ายเฉยๆ ไม่ใช่ปุ่ม เพราะสิ่งที่
+    /// ต้องทำเพื่อแก้ (ติดตั้ง/login `claude`) อยู่นอกแอปทั้งหมด ปุ่มที่กดแล้วไม่มีอะไร
+    /// เกิดขึ้นคือคำสัญญาที่ผิด ต่างจากบรรทัด key ที่กดแล้วได้ช่องกรอกจริง
+    private let startLabel = NSTextField(labelWithString: "")
     private let ageLabel = NSTextField(labelWithString: "")
     private let sessions = NSStackView()
     private var shownRows: [String] = []
@@ -103,13 +107,18 @@ final class PanelViewController: NSViewController {
         keyButton.alignment = .left
         keyButton.isHidden = true
 
+        startLabel.font = .systemFont(ofSize: 12)
+        startLabel.textColor = .systemOrange
+        startLabel.lineBreakMode = .byTruncatingTail
+        startLabel.isHidden = true
+
         ageLabel.font = .systemFont(ofSize: 12)
         ageLabel.textColor = .secondaryLabelColor
 
         // เหตุผลเดียวกับบรรทัดในการ์ด (`QuotaCardView`): ค่าปริยาย (750) แพ้ขอบล่างของแผง
         // (999) กรอบที่เตี้ยกว่าจึงกดบรรทัดจนสูงศูนย์แทนที่จะปล่อยให้ล้นออกไปโดนตัด
         // — บรรทัดที่หายไปเงียบๆ อ่านเหมือนแอปไม่รู้อะไรเลย ต่างจากบรรทัดที่ถูกตัดครึ่ง
-        for line in [boardLabel, ageLabel] {
+        for line in [boardLabel, ageLabel, startLabel] {
             line.setContentCompressionResistancePriority(.required, for: .vertical)
         }
 
@@ -120,7 +129,9 @@ final class PanelViewController: NSViewController {
         body.spacing = 8
         body.alignment = .leading
 
-        let footer = NSStackView(views: [keyButton, boardLabel, sessions])
+        // ทั้งสองบรรทัดพังอยู่บนสุดของท้ายแผง เรียงตามลำดับที่ผู้ใช้ต้องลงมือ: ไม่มี key
+        // แปลว่าไม่มีตัวเลขเลย ส่วน auto-start ที่ยิงไม่ได้แค่แปลว่าตัวเลขจะไม่ขยับเอง
+        let footer = NSStackView(views: [keyButton, startLabel, boardLabel, sessions])
         footer.orientation = .vertical
         footer.spacing = 4
         footer.alignment = .leading
@@ -286,6 +297,19 @@ final class PanelViewController: NSViewController {
         // การ์ดมาเป็นคู่เสมอจาก `QuotaCard.cards` — ใบที่หายไปแปลว่าสัญญาเปลี่ยน ไม่ใช่ค่าหาย
         if let session = quota.first { sessionCard.show(session) }
         if quota.count > 1 { weeklyCard.show(quota[1]) }
+    }
+
+    /// บรรทัด "เริ่ม session เองไม่ได้" — โผล่เฉพาะตอนล็อก และหายไปเองเมื่อไม่ล็อกแล้ว
+    ///
+    /// `resize()` เฉพาะตอนบรรทัดโผล่หรือหายจริง: ถูกเรียกทุกวินาทีที่แผงเปิดอยู่ และ
+    /// ความสูงของแผงไม่ได้เปลี่ยนเมื่อข้อความเดิมถูกเขียนทับด้วยตัวมันเอง
+    func showStartProblem(_ text: String?, detail: String?) {
+        let hidden = text == nil
+        startLabel.stringValue = text ?? ""
+        startLabel.toolTip = detail
+        guard startLabel.isHidden != hidden else { return }
+        startLabel.isHidden = hidden
+        resize()
     }
 
     // MARK: - อัปเดตข้อความ

@@ -51,6 +51,38 @@ public enum PanelText {
         }
     }
 
+    /// บรรทัด "สวิตช์ติ๊กอยู่แต่ไม่มีอะไรเกิดขึ้น เพราะแบบนี้" — มีก็ต่อเมื่อล็อกอยู่
+    ///
+    /// คนละฟังก์ชันกับ `keyProblem` ทั้งที่ทรงเหมือนกัน เพราะสองอย่างนี้สั่งให้ผู้ใช้ทำ
+    /// คนละเรื่อง (ไปติดตั้ง/login `claude` กับ ไปเอา key ใหม่จากเบราว์เซอร์) ฟังก์ชัน
+    /// เดียวที่รับทั้งสองชนิดจะบังคับให้ผู้เรียกตัดสินใจแทนว่าอันไหนสำคัญกว่า ซึ่งไม่ใช่
+    /// คำถามที่มีคำตอบ — มันพังคนละท่อ และพังพร้อมกันได้
+    public static func startProblem(_ blocked: StartBlock?) -> String? {
+        switch blocked {
+        case .noBinary: return "Cannot start sessions — claude was not found"
+        case .notLoggedIn: return "Cannot start sessions — claude is not logged in"
+        case nil: return nil
+        }
+    }
+
+    /// รายละเอียดของบรรทัดข้างบน — อยู่ใน tooltip ไม่ใช่ในบรรทัด
+    ///
+    /// path สี่บรรทัดในแผงกว้าง 260 คือกำแพงข้อความที่คนที่ไม่ได้มีปัญหานี้ต้องอ่านผ่าน
+    /// ทุกครั้ง ส่วนคนที่มีปัญหาจริงกำลังมองหามันอยู่แล้ว
+    public static func startProblemDetail(_ blocked: StartBlock?) -> String? {
+        switch blocked {
+        case .noBinary(let searched):
+            // ชื่อคีย์มาจากที่เดียวกับที่โค้ดอ่านมันจริง — คำสั่งที่ผู้ใช้ก็อปไปวางแล้วไม่มีผล
+            // เพราะมีคนเปลี่ยนชื่อคีย์ คือคำแนะนำที่แย่กว่าไม่แนะนำอะไรเลย
+            return (["Looked in:"] + searched).joined(separator: "\n")
+                + "\n\ndefaults write com.tamaclaude.daemon \(ClaudeBinary.overrideKey) <path>"
+        case .notLoggedIn:
+            return "Run claude in a terminal and log in, then switch auto-start off and on again."
+        case nil:
+            return nil
+        }
+    }
+
     /// บรรทัด "ค่านี้อายุเท่าไร" — ความเก่าของตัวเลขที่เห็นอยู่ ไม่ใช่สถานะของท่อ
     ///
     /// มีวินาทีจริงๆ ต่างจากที่อื่นในแอปนี้: ทั้งฟีเจอร์เกิดจากคำถาม "เลขนี้ค้างหรือเปล่า"
