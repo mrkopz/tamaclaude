@@ -266,24 +266,6 @@ public enum PollProcess {
         URL(fileURLWithPath: Bundle.main.executablePath ?? CommandLine.arguments[0])
     }
 
-    /// เก็บ stdout จากคิวของ pipe — คนอ่านกับคนเขียนอยู่คนละเธรด
-    private final class Output: @unchecked Sendable {
-        private let lock = NSLock()
-        private var data = Data()
-
-        func append(_ more: Data) {
-            lock.lock()
-            defer { lock.unlock() }
-            data.append(more)
-        }
-
-        var text: String {
-            lock.lock()
-            defer { lock.unlock() }
-            return String(data: data, encoding: .utf8) ?? ""
-        }
-    }
-
     public static func launcher(_ executable: URL = PollProcess.executable) -> UsagePoller.Launcher {
         { orgID, done in
             let process = Process()
@@ -306,16 +288,9 @@ public enum PollProcess {
             // จะบล็อกลูกจนโดนฆ่าตอนครบ 30 วินาทีโดยไม่มีเหตุผล
             process.standardError = FileHandle.nullDevice
 
-            let output = Output()
-            pipe.fileHandleForReading.readabilityHandler = { handle in
-                let chunk = handle.availableData
-                if !chunk.isEmpty { output.append(chunk) }
-            }
+            let output = ChildOutput.draining(pipe)
             process.terminationHandler = { finished in
-                pipe.fileHandleForReading.readabilityHandler = nil
-                if let rest = (try? pipe.fileHandleForReading.readToEnd()) ?? nil {
-                    output.append(rest)
-                }
+                output.drain(pipe)
                 let outcome = UsagePoller.Outcome(
                     code: finished.terminationStatus, output: output.text)
                 DispatchQueue.main.async { done(outcome) }

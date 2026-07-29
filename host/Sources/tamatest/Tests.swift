@@ -1053,7 +1053,7 @@ func runAllTests() {
         final class Fake {
             var launches = 0
             var kills = 0
-            var done: ((Int32) -> Void)?
+            var done: ((SessionOutcome) -> Void)?
 
             func launcher() -> SessionStarter.Launcher {
                 { [self] done in
@@ -1063,10 +1063,10 @@ func runAllTests() {
                 }
             }
 
-            func finish(_ code: Int32 = 0) {
+            func finish(_ outcome: SessionOutcome = .ok) {
                 let done = self.done
                 self.done = nil
-                done?(code)
+                done?(outcome)
             }
         }
 
@@ -1093,7 +1093,7 @@ func runAllTests() {
         starter.tick(now: at(3), usage: gone)
         equal(fake.launches, 1, "a child that is still running is not joined by another")
 
-        fake.finish(0)
+        fake.finish(.ok)
         starter.tick(now: at(4), usage: gone)
         equal(fake.launches, 1, "the cooldown starts when the child ends, not when it began")
         starter.tick(now: at(304), usage: gone)
@@ -1106,7 +1106,7 @@ func runAllTests() {
         equal(fake.launches, 2, "but once that window has gone, the next one may be opened")
 
         // การเย็นตัวกันการยิงรัวในช่วงที่หน้าต่างใหม่ยังไม่ปรากฏในตัวเลข
-        fake.finish(1)
+        fake.finish(.failed)
         starter.tick(now: at(402), usage: gone)
         starter.tick(now: at(403), usage: open)
         starter.tick(now: at(404), usage: gone)
@@ -1120,7 +1120,7 @@ func runAllTests() {
         starter.tick(now: at(733), usage: gone)
         equal(fake.kills, 1, "past it the child is killed")
         expect(!starter.isRunning, "and the slot is free again")
-        fake.finish(0)  // เสียงจากอดีตต้องไม่ทำให้รอบถัดไปค้าง
+        fake.finish(.ok)  // เสียงจากอดีตต้องไม่ทำให้รอบถัดไปค้าง
 
         starter.tick(now: at(800), usage: open)
         starter.tick(now: at(1034), usage: gone)
@@ -1143,7 +1143,7 @@ func runAllTests() {
         equal(live.launches, 1, "one session goes out")
         watcher.tick(now: at(10), usage: open)
         watcher.tick(now: at(20), usage: gone)
-        live.finish(0)
+        live.finish(.ok)
         watcher.tick(now: at(30), usage: gone)
         equal(live.launches, 1, "the cooldown still has to run out")
         watcher.tick(now: at(330), usage: gone)
@@ -1155,6 +1155,120 @@ func runAllTests() {
         let fresh = SessionStarter(enabled: true, launch: cold.launcher())
         fresh.tick(now: t0, usage: nil)
         equal(cold.launches, 1, "no figures at all is no window, not an unknown to wait out")
+    }
+
+    suite("a ticked switch that starts nothing has to say why") {
+        final class Fake {
+            var launches = 0
+            var done: ((SessionOutcome) -> Void)?
+
+            func launcher() -> SessionStarter.Launcher {
+                { [self] done in
+                    launches += 1
+                    self.done = done
+                    return {}
+                }
+            }
+
+            func finish(_ outcome: SessionOutcome) {
+                let done = self.done
+                self.done = nil
+                done?(outcome)
+            }
+        }
+
+        let gone = [UsageSnap(percent: UsageSnap.unknown, remaining: 0)]
+        let open = [UsageSnap(percent: 12, remaining: UsageReader.sessionWindow / 2)]
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        func at(_ seconds: TimeInterval) -> Date { t0.addingTimeInterval(seconds) }
+
+        // หา binary ไม่เจอ = ไม่มีอะไรถูกยิงเลย และไม่มีวันถูกยิงอีกจนกว่าคนจะลงมือ
+        let absent = Fake()
+        let lost = SessionStarter(enabled: true, launch: absent.launcher())
+        lost.tick(now: t0, usage: gone)
+        absent.finish(.noBinary(["/opt/homebrew/bin/claude"]))
+        equal(lost.blocked, .noBinary(["/opt/homebrew/bin/claude"]),
+              "a missing binary is a reason the user can act on, and it says where we looked")
+        lost.tick(now: at(1), usage: gone)
+        lost.tick(now: at(400), usage: gone)
+        lost.tick(now: at(500), usage: open)
+        lost.tick(now: at(900), usage: gone)
+        equal(absent.launches, 1,
+              "and nothing else goes out, not after the cooldown and not after a whole window")
+
+        // ปิดแล้วเปิดใหม่คือคำสั่ง "ฉันแก้แล้ว ลองอีกที" — ต้องยิงได้ทันที ไม่ใช่รออีกห้านาที
+        lost.enabled = false
+        lost.enabled = true
+        expect(lost.blocked == nil, "turning the switch on again clears the lock")
+        lost.tick(now: at(901), usage: gone)
+        equal(absent.launches, 2, "and the next tick starts a session, cooldown and all")
+
+        // ยังไม่ได้ login = ยิงอีกกี่รอบก็จบแบบเดิม
+        let anon = Fake()
+        let out = SessionStarter(enabled: true, launch: anon.launcher())
+        out.tick(now: t0, usage: gone)
+        anon.finish(.authFailed)
+        equal(out.blocked, .notLoggedIn, "a child that ended without a login locks too")
+        out.tick(now: at(400), usage: gone)
+        equal(anon.launches, 1, "and stays locked")
+
+        // เน็ตสะดุด/timeout/แยกไม่ออก = ไม่ล็อก รอบหน้าที่ครบเงื่อนไขยิงตามปกติ
+        let flaky = Fake()
+        let patient = SessionStarter(enabled: true, launch: flaky.launcher())
+        patient.tick(now: t0, usage: gone)
+        flaky.finish(.failed)
+        expect(patient.blocked == nil, "a failure we cannot explain is not a reason to stop")
+        // tick ถัดไปเป็นคนประทับเวลาที่ลูกจบ การเย็นตัวจึงนับจากตรงนั้น ไม่ใช่จาก t0
+        patient.tick(now: at(1), usage: gone)
+        patient.tick(now: at(302), usage: gone)
+        equal(flaky.launches, 2, "the next round that meets the conditions goes out as usual")
+
+        // สวิตช์ที่ปิดอยู่แล้วถูกสั่งปิดซ้ำไม่ใช่การปลดล็อก
+        flaky.finish(.authFailed)
+        patient.enabled = true
+        equal(patient.blocked, .notLoggedIn,
+              "setting the switch to what it already was is not the user acting")
+
+        // exit code บอกแค่ว่าไม่สำเร็จ — สิ่งที่แยกชนิดได้คือสิ่งที่ลูกพูดตอนตาย
+        equal(SessionProcess.classify(code: 0, output: ""), .ok, "code zero is a session")
+        equal(SessionProcess.classify(code: 1, output: "Invalid API key · Please run /login"),
+              .authFailed, "the login line is the one thing worth locking on")
+        equal(SessionProcess.classify(code: 1, output: "fetch failed: network is unreachable"),
+              .failed, "anything else is this round's bad luck")
+        equal(SessionProcess.classify(code: 143, output: ""), .failed,
+              "a child we killed ourselves has nothing to confess")
+
+        // ผู้ใช้ที่ติดตั้งไว้ที่แปลกๆ ชี้เองได้ และค่าที่ชี้ *แทนที่* รายการ ไม่ใช่ถูกเติมท้าย
+        let searched = ClaudeBinary.candidates(override: "/somewhere/odd/claude")
+        equal(searched.map(\.path), ["/somewhere/odd/claude"],
+              "a path the user set is the only place we look")
+        expect(ClaudeBinary.candidates(override: nil).count > 1,
+               "without one we walk the known places")
+
+        // คีย์ที่ไม่มี UI ต้องมีเทสต์ ไม่งั้นชื่อคีย์ที่พิมพ์ผิดจะไม่มีอะไรจับได้เลย
+        let defaults = UserDefaults(suiteName: "tamatest.claudePath")!
+        defaults.removePersistentDomain(forName: "tamatest.claudePath")
+        expect(ClaudeBinary.override(defaults) == nil, "an unset key is no override")
+        defaults.set("   ", forKey: ClaudeBinary.overrideKey)
+        expect(ClaudeBinary.override(defaults) == nil,
+               "and neither is a key holding nothing but space")
+        defaults.set("  /odd/claude \n", forKey: ClaudeBinary.overrideKey)
+        equal(ClaudeBinary.override(defaults), "/odd/claude",
+              "a path pasted with whitespace around it is still that path")
+        defaults.removePersistentDomain(forName: "tamatest.claudePath")
+        equal(ClaudeBinary.locate(searched), .missing(["/somewhere/odd/claude"]),
+              "and a place with nothing in it comes back naming itself")
+
+        // บรรทัดในแผงมีเฉพาะตอนล็อก และ path ที่ค้นมาอยู่ใน tooltip ไม่ใช่ในบรรทัด
+        expect(PanelText.startProblem(nil) == nil, "nothing to say when it can start")
+        expect(PanelText.startProblemDetail(nil) == nil, "and nothing to hover over either")
+        expect(PanelText.startProblem(.notLoggedIn)?.contains("logged in") == true,
+               "a login that never happened says so")
+        let missing = StartBlock.noBinary(["/a/claude", "/b/claude"])
+        expect(PanelText.startProblem(missing)?.contains("/a/claude") != true,
+               "the line itself stays one line wide")
+        expect(PanelText.startProblemDetail(missing)?.contains("/b/claude") == true,
+               "while the places we looked are a hover away")
     }
 
     suite("a broken pipe and a stale figure are two different sentences") {

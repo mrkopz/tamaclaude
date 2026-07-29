@@ -355,6 +355,9 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         panel.showRefresh(
             RefreshControl.state(
                 running: poller.isRunning, hasKey: hasKey, finished: refreshFinished))
+        panel.showStartProblem(
+            PanelText.startProblem(starter.blocked),
+            detail: PanelText.startProblemDetail(starter.blocked))
         panel.showQuota(
             problem: PanelText.keyProblem(poller.blocked),
             age: PanelText.updated(stamp: UsageReader.stamp()),
