@@ -106,6 +106,13 @@ final class PanelViewController: NSViewController {
         ageLabel.font = .systemFont(ofSize: 12)
         ageLabel.textColor = .secondaryLabelColor
 
+        // เหตุผลเดียวกับบรรทัดในการ์ด (`QuotaCardView`): ค่าปริยาย (750) แพ้ขอบล่างของแผง
+        // (999) กรอบที่เตี้ยกว่าจึงกดบรรทัดจนสูงศูนย์แทนที่จะปล่อยให้ล้นออกไปโดนตัด
+        // — บรรทัดที่หายไปเงียบๆ อ่านเหมือนแอปไม่รู้อะไรเลย ต่างจากบรรทัดที่ถูกตัดครึ่ง
+        for line in [boardLabel, ageLabel] {
+            line.setContentCompressionResistancePriority(.required, for: .vertical)
+        }
+
         // อายุของค่าอยู่ใต้การ์ด ไม่ใช่ท้ายแผง — มันเป็นคำอธิบายของตัวเลขที่อยู่เหนือมัน
         // ("เลขนี้ค้างหรือเปล่า") ไม่ใช่สถานะของแอปแบบเดียวกับบรรทัดบอร์ดหรือรายการ session
         let body = NSStackView(views: [cards, ageLabel])
@@ -122,6 +129,14 @@ final class PanelViewController: NSViewController {
         stack.orientation = .vertical
         stack.spacing = 10
         stack.alignment = .leading
+        // กรอบของ popover กับความสูงที่เนื้อในต้องการไม่เท่ากันเสมอ (ดู `resize`) และค่าปริยาย
+        // ของ NSStackView คือ "กรอบชนะ": สูงเกินก็ยืดของข้างในให้เต็ม เตี้ยไปก็บีบจนแถวหาย
+        // ทั้งสองทางทำให้แผงโกหก — ช่องว่างก้อนใหญ่กลางการ์ด และหัวการ์ดที่หายไปทั้งแถว
+        // ที่นี่จึงบอกว่าเนื้อในไม่ยืดและไม่ยอมถูกบีบ ส่วนที่เกินไปล้นออกไปโดนตัดแทน
+        for group in [stack, body, cards] {
+            group.setHuggingPriority(.required, for: .vertical)
+            group.setClippingResistancePriority(.required, for: .vertical)
+        }
         stack.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(stack)
 
@@ -294,6 +309,7 @@ final class PanelViewController: NSViewController {
             let label = NSTextField(labelWithString: row)
             label.font = .systemFont(ofSize: 12)
             label.lineBreakMode = .byTruncatingTail
+            label.setContentCompressionResistancePriority(.required, for: .vertical)
             sessions.addArrangedSubview(label)
         }
         resize()
