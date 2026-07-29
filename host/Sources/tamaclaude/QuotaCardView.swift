@@ -44,6 +44,13 @@ final class QuotaCardView: NSView {
         layer?.borderWidth = 1
         applyColors()
 
+        // ทุกบรรทัดในการ์ดต้องสูงเท่าตัวหนังสือของมันเสมอ — ค่าปริยาย (750) แพ้ขอบล่างของ
+        // การ์ด (999 ดูข้างล่าง) ผลคือกรอบที่เตี้ยกว่ากดหัวการ์ดจนสูงเป็นศูนย์ ชื่อกับ
+        // เปอร์เซ็นต์หายไปทั้งแถวโดยที่การ์ดยังดูปกติ ซึ่งอ่านไม่ออกว่ามีอะไรหายไป
+        for line in [title, subtitle, percent, reset] {
+            line.setContentCompressionResistancePriority(.required, for: .vertical)
+        }
+
         // ชื่อใหญ่กว่าทุกอย่างในการ์ด — มันคือสิ่งที่ตาจับก่อนแล้วค่อยไล่ลงมาหาเลข
         title.font = .systemFont(ofSize: 14, weight: .bold)
 
@@ -71,6 +78,10 @@ final class QuotaCardView: NSView {
         head.orientation = .horizontal
         head.spacing = 8
         head.alignment = .centerY
+        // หัวการ์ดต้องไม่ยอมถูกบีบสูงเป็นศูนย์ — ค่าปริยายของ NSStackView ยอมให้กรอบที่เตี้ย
+        // กว่ากดแถวจนหายไปทั้งแถว ผลคือชื่อกับเปอร์เซ็นต์หายพร้อมกัน เหลือแต่คำอธิบาย
+        // แถบ และเวลารีเซ็ต ซึ่งอ่านไม่ออกว่านี่คือหน้าต่างไหน (ดู `stack` ข้างล่างด้วย)
+        head.setClippingResistancePriority(.required, for: .vertical)
 
         // คำอธิบายอยู่ *ใต้* ชื่อ ไม่ใช่ต่อท้ายในบรรทัดเดียว — บรรทัดเดียวทำให้ชื่อ
         // กับคำอธิบายแย่งกันเป็นสิ่งที่อ่านก่อน และบีบเปอร์เซ็นต์จนไม่ชิดขวาเวลาชื่อยาว
@@ -79,6 +90,13 @@ final class QuotaCardView: NSView {
         stack.spacing = 6
         stack.alignment = .leading
         stack.setCustomSpacing(2, after: head)
+        // เนื้อการ์ดยอมล้นออกนอกกรอบ แต่ไม่ยอมหดตัวเอง — ตัวที่ควรหักตอนที่กรอบเตี้ยกว่า
+        // ที่ควรเป็นคือความสูงของการ์ด (ขอบล่างที่ปล่อยให้หักไว้แล้วข้างล่าง)
+        // ไม่ใช่แถวใดแถวหนึ่งในนั้นหายไปเงียบๆ
+        stack.setClippingResistancePriority(.required, for: .vertical)
+        // ไม่ยืดตามกรอบที่สูงเกินด้วย — ที่เกินมาต้องไปอยู่ท้ายแผง ไม่ใช่กลายเป็นช่องว่าง
+        // ก้อนใหญ่กลางการ์ดที่อ่านเหมือนมีอะไรหายไปจากการ์ด
+        stack.setHuggingPriority(.required, for: .vertical)
         stack.translatesAutoresizingMaskIntoConstraints = false
         addSubview(stack)
 
