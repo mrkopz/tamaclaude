@@ -131,10 +131,15 @@ final class QuotaCardView: NSView {
     }
 
     private func applyColors() {
-        layer?.borderColor = NSColor.separatorColor.cgColor
+        // `separatorColor` เป็นเส้นสำหรับพื้นสว่างของหน้าต่างปกติ บนพื้นดำของ popover
+        // มันจางจนขอบการ์ดกลืนไปกับพื้น แล้วการ์ดสองใบอ่านเป็นข้อความสี่ก้อนที่ไม่รู้ว่า
+        // ก้อนไหนคู่กับก้อนไหน · `tertiary` คือระดับที่ยังเป็นเส้นบางๆ ไม่ใช่กรอบที่ดังกว่า
+        // ตัวเลขข้างใน และยังตามธีมสว่าง/มืดกับ increase contrast ให้เอง
+        layer?.borderColor = NSColor.tertiaryLabelColor.cgColor
         // พื้นจางกว่าแผงนิดเดียว — การ์ดที่มีพื้นเป็นของตัวเองเต็มๆ กลายเป็นกล่องซ้อนกล่อง
-        // ซึ่งดังกว่าสิ่งที่มันมีไว้บอก
-        layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.06).cgColor
+        // ซึ่งดังกว่าสิ่งที่มันมีไว้บอก · แต่ 0.06 ของสีที่จางอยู่แล้วคือแทบไม่มีพื้นเลย
+        // เส้นขอบจึงต้องแบกงานทั้งหมดคนเดียว
+        layer?.backgroundColor = NSColor.quaternaryLabelColor.withAlphaComponent(0.5).cgColor
     }
 
     func show(_ card: QuotaCard) {
