@@ -1049,6 +1049,114 @@ func runAllTests() {
         expect((killed.outcome?.code ?? 0) != 0, "a killed child never looks like a success")
     }
 
+    suite("the app opens a window of its own, once, and never in a loop") {
+        final class Fake {
+            var launches = 0
+            var kills = 0
+            var done: ((Int32) -> Void)?
+
+            func launcher() -> SessionStarter.Launcher {
+                { [self] done in
+                    launches += 1
+                    self.done = done
+                    return { [self] in kills += 1 }
+                }
+            }
+
+            func finish(_ code: Int32 = 0) {
+                let done = self.done
+                self.done = nil
+                done?(code)
+            }
+        }
+
+        let w = UsageReader.sessionWindow
+        let open = [UsageSnap(percent: 12, remaining: w / 2)]
+        // หน้าต่างหมดอายุ = countdown ถึงศูนย์ ซึ่งแบดจ์อ่านว่า "ไม่มีอะไรจะบอก"
+        let gone = [UsageSnap(percent: UsageSnap.unknown, remaining: 0)]
+
+        let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+        func at(_ seconds: TimeInterval) -> Date { t0.addingTimeInterval(seconds) }
+
+        let fake = Fake()
+        let starter = SessionStarter(enabled: false, launch: fake.launcher())
+
+        starter.tick(now: t0, usage: gone)
+        equal(fake.launches, 0, "the switch is off by default, and off spends nothing")
+
+        starter.enabled = true
+        starter.tick(now: at(1), usage: open)
+        equal(fake.launches, 0, "a window that is already open needs no help")
+
+        starter.tick(now: at(2), usage: gone)
+        equal(fake.launches, 1, "no window and the switch on starts exactly one session")
+        starter.tick(now: at(3), usage: gone)
+        equal(fake.launches, 1, "a child that is still running is not joined by another")
+
+        fake.finish(0)
+        starter.tick(now: at(4), usage: gone)
+        equal(fake.launches, 1, "the cooldown starts when the child ends, not when it began")
+        starter.tick(now: at(304), usage: gone)
+        equal(fake.launches, 1,
+              "and the cooldown running out is not permission: this window already had its turn")
+
+        starter.tick(now: at(400), usage: open)
+        equal(fake.launches, 1, "a window that appears is not itself a reason to start anything")
+        starter.tick(now: at(401), usage: gone)
+        equal(fake.launches, 2, "but once that window has gone, the next one may be opened")
+
+        // การเย็นตัวกันการยิงรัวในช่วงที่หน้าต่างใหม่ยังไม่ปรากฏในตัวเลข
+        fake.finish(1)
+        starter.tick(now: at(402), usage: gone)
+        starter.tick(now: at(403), usage: open)
+        starter.tick(now: at(404), usage: gone)
+        equal(fake.launches, 2, "five minutes must pass after a child ends, armed or not")
+        starter.tick(now: at(702), usage: gone)
+        equal(fake.launches, 3, "and then it may go again")
+
+        // ลูกที่ค้างต้องไม่กินช่องเดียวที่มีอยู่ไว้ตลอดกาล
+        starter.tick(now: at(731), usage: gone)
+        equal(fake.kills, 0, "under the timeout the child is left alone")
+        starter.tick(now: at(733), usage: gone)
+        equal(fake.kills, 1, "past it the child is killed")
+        expect(!starter.isRunning, "and the slot is free again")
+        fake.finish(0)  // เสียงจากอดีตต้องไม่ทำให้รอบถัดไปค้าง
+
+        starter.tick(now: at(800), usage: open)
+        starter.tick(now: at(1034), usage: gone)
+        equal(fake.launches, 4, "a killed child does not wedge the round after it")
+
+        // ปิดแอป → ไม่มีลูกเหลือค้าง
+        starter.stop()
+        equal(fake.kills, 2, "quitting kills the child rather than orphaning it")
+
+        starter.enabled = false
+        starter.tick(now: at(1100), usage: open)
+        starter.tick(now: at(1500), usage: gone)
+        equal(fake.launches, 4, "a switch turned off stops the feature dead, figures or not")
+
+        // หน้าต่างที่ลูกของเราเองเป็นคนเปิดโผล่ในตัวเลขได้ตั้งแต่ลูกยังไม่ตาย ถ้าสถานะหยุดเดิน
+        // ระหว่างที่มีลูกวิ่งอยู่ หน้าต่างนั้นจะผ่านไปโดยไม่มีใครเห็น แล้วสวิตช์จะตายถาวร
+        let live = Fake()
+        let watcher = SessionStarter(enabled: true, launch: live.launcher())
+        watcher.tick(now: t0, usage: gone)
+        equal(live.launches, 1, "one session goes out")
+        watcher.tick(now: at(10), usage: open)
+        watcher.tick(now: at(20), usage: gone)
+        live.finish(0)
+        watcher.tick(now: at(30), usage: gone)
+        equal(live.launches, 1, "the cooldown still has to run out")
+        watcher.tick(now: at(330), usage: gone)
+        equal(live.launches, 2,
+              "a window that came and went while the child was alive was still seen")
+
+        // ยังไม่เคยมี cache เลยก็คือไม่มีหน้าต่าง — กฎนั้นเป็นของ `MenuBadge` ตัวเดียว
+        let cold = Fake()
+        let fresh = SessionStarter(enabled: true, launch: cold.launcher())
+        fresh.tick(now: t0, usage: nil)
+        equal(cold.launches, 1, "no figures at all is no window, not an unknown to wait out")
+    }
+
     suite("a broken pipe and a stale figure are two different sentences") {
         expect(PanelText.keyProblem(nil) == nil, "nothing to say when the pipe is fine")
         expect(PanelText.keyProblem(.expiredKey)?.contains("expired") == true,

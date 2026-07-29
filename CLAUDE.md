@@ -117,6 +117,7 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/Usage{Reader,Writer}.swift` | the `.statusline-usage-cache` contract |
 | `TamaCore/UsagePoll.swift` | `--usage-poll`: one claude.ai quota fetch, then exit |
 | `TamaCore/UsagePoller.swift` | when to poll and what the last poll said — fed `tick(now:)`, owns no timer |
+| `TamaCore/SessionStarter.swift` | when the app may open a session of its own — same shape, plus the guards |
 | `TamaCore/SessionKeyFile.swift` | writes `~/.tamaclaude/session-key` so it is mode 600 from birth |
 | `TamaCore/{Hook,Statusline}Installer.swift` | writes into `~/.claude/settings.json` |
 | `TamaCore/Paths.swift` | the `~/.tamaclaude` paths + `Log` (`settings.json` belongs to `HookInstaller`) |

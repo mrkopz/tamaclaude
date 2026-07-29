@@ -17,8 +17,13 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// รอบการยิงโควตา และ org ที่เลือก — จำข้ามการเปิดปิดแอปเหมือนบอร์ด
     private static let intervalKey = "quotaRefresh"
     private static let orgKey = "preferredOrg"
+    /// สวิตช์เริ่ม session เอง — ปิดโดยปริยาย เพราะมันใช้โควตาของผู้ใช้จริง
+    private static let autoStartKey = "autoStartSession"
 
     private var poller: UsagePoller!
+    private var starter: SessionStarter!
+    /// แถวโควตาชุดล่าสุดที่ daemon ประกาศออกมา — ตัวเดียวกับที่แบดจ์กิน
+    private var usage: [UsageSnap]?
 
     private let popover = NSPopover()
     private let panel = PanelViewController()
@@ -40,6 +45,9 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let keyItem = NSMenuItem(
         title: "Set session key…", action: #selector(setSessionKey), keyEquivalent: "")
     private let refreshItem = NSMenuItem(title: "Refresh quota", action: nil, keyEquivalent: "")
+    private let autoStartItem = NSMenuItem(
+        title: "Auto-start a session when idle", action: #selector(toggleAutoStart),
+        keyEquivalent: "")
     private let brightness = NSSlider(value: 100, minValue: 5, maxValue: 100, target: nil,
                                       action: nil)
 
@@ -116,6 +124,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         poller.onChange = { [weak self] in self?.redrawQuota() }
         showIntervals()
 
+        starter = SessionStarter(
+            enabled: UserDefaults.standard.bool(forKey: Self.autoStartKey),
+            launch: SessionProcess.launcher())
+        showAutoStart()
+
         // เครื่องหลับไปสองชั่วโมงแล้วตื่นมาเจอตัวเลขเมื่อสองชั่วโมงที่แล้ว คือหน้าจอที่โกหก
         // รอบถัดไปยังอีกไกล ยิงทันทีหนึ่งรอบตรงนี้จึงเป็นการซ่อมที่ถูกเวลาที่สุด
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -124,14 +137,18 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // นาฬิกาตัวเดียวขับทั้งสถานะบอร์ดและตัวจับเวลาโควตา — ตัวจับเวลาสองตัวในโปรเซส
         // เดียวกันไม่ได้ทำให้อะไรเที่ยงขึ้น มีแต่จะต้องมาไล่ดูว่าใครยิงก่อนใคร
         Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.refreshLink()
-            self?.poller.tick()
+            guard let self else { return }
+            self.refreshLink()
+            self.poller.tick()
+            // แถวโควตาที่ daemon อ่านไว้แล้ว ไม่ใช่การอ่านไฟล์รอบที่สองทุกวินาที
+            self.starter.tick(usage: self.usage)
         }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         // ฆ่าลูกก่อนตาย ไม่งั้นลูกกำพร้ายิงต่อโดยไม่มีใครอ่านผล
         poller?.stop()
+        starter?.stop()
         daemon?.stop()
     }
 
@@ -161,6 +178,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // ตัวสลับ org ไม่อยู่ในเมนูนี้แล้ว — มันอยู่หลังลูกศรข้างชื่อ org ที่หัวแผง ซึ่งเป็น
         // ที่เดียวกับที่ชื่อที่ใช้อยู่แสดงอยู่ ที่สลับสองที่แปลว่าผู้ใช้ต้องจำว่าอันไหนคืออันจริง
         menu.addItem(refreshItem)
+
+        // อยู่ในกลุ่มโควตา ไม่ใช่กลุ่มติดตั้ง — มันตัดสินว่าเลขโควตาจะมีมาให้ดูไหม
+        // ซึ่งเป็นคำถามเดียวกับที่รายการเหนือมันตอบ
+        autoStartItem.target = self
+        menu.addItem(autoStartItem)
         menu.addItem(.separator())
 
         hooksItem.target = self
@@ -267,6 +289,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func show(_ snapshot: Snapshot) {
+        usage = snapshot.usage
         showBadge(MenuBadge.from(snapshot.usage))
         panel.showSessions(snapshot)
     }
@@ -285,6 +308,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             menu.addItem(item)
         }
         refreshItem.submenu = menu
+    }
+
+    /// ติ๊กอ่านจาก `starter` ไม่ใช่จาก `UserDefaults` — ตัวที่ตัดสินใจจริงคือตัวที่ควรถูกถาม
+    private func showAutoStart() {
+        autoStartItem.state = starter.enabled ? .on : .off
     }
 
     /// รายการ org หลังลูกศรข้างชื่อที่หัวแผง — สร้างใหม่ทุกครั้งที่กด
@@ -414,6 +442,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
         // ไฟล์ key แก้จากข้างนอกได้เหมือนกัน — อ่านสภาพจริงทุกครั้งที่เมนูเด้ง
         keyItem.title = SessionKeyFile.isUsable() ? "Replace session key…" : "Set session key…"
+        showAutoStart()
         showIntervals()
         gearMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: -2), in: button)
     }
@@ -438,6 +467,12 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // เลือกรอบใหม่แล้วต้องเห็นผลเดี๋ยวนี้ ไม่ใช่รออีกหนึ่งรอบเพื่อพิสูจน์ว่ามันทำงาน
         poller.pollNow()
         showIntervals()
+    }
+
+    @objc private func toggleAutoStart() {
+        starter.enabled.toggle()
+        UserDefaults.standard.set(starter.enabled, forKey: Self.autoStartKey)
+        showAutoStart()
     }
 
     @objc private func chooseOrg(_ sender: NSMenuItem) {
