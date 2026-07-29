@@ -168,7 +168,8 @@ func runAllTests() {
 
         let late = s.snapshot(now: t0 + 46)
         equal(late.cards.count, 1, "silence past the threshold raises a card")
-        equal(late.cards.first?.kind, .alert, "and it is an alert")
+        equal(late.cards.first?.kind, .done, "a finished turn is not an alert")
+        equal(late.cards.first?.body, "your turn", "it says whose move it is")
         equal(late.sessions.first?.state, .waiting, "mascot asks for you")
 
         s.apply(event("UserPromptSubmit"), now: t0 + 50)
@@ -183,6 +184,18 @@ func runAllTests() {
         let snap = s.snapshot(now: t0)
         equal(snap.sessions.first?.state, .waiting, "notification means waiting")
         equal(snap.cards.first?.body, "Claude needs your permission", "message becomes the card body")
+        equal(snap.cards.first?.kind, .alert, "something is genuinely stuck on you")
+    }
+
+    suite("red means a hand is needed") {
+        // สีแดงสงวนไว้ให้เรื่องที่เดินต่อเองไม่ได้ ไม่ใช่ทุกเทิร์นที่จบ
+        let f = store()
+        f.apply(event("StopFailure"), now: t0)
+        equal(f.snapshot(now: t0).cards.first?.kind, .alert, "breaking is an alert")
+
+        let d = store()
+        d.apply(event("Stop"), now: t0)
+        equal(d.snapshot(now: t0 + 46).cards.first?.kind, .done, "a quiet finished turn is not")
     }
 
     suite("time alone changes the picture") {

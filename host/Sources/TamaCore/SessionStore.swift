@@ -259,7 +259,12 @@ public final class SessionStore {
         cards.removeAll { now >= $0.createdAt + timings.cardTTL }
     }
 
-    /// เติมการ์ดเตือนของ session ที่ Stop แล้วเงียบเกินเกณฑ์
+    /// เติมการ์ดของ session ที่ Stop แล้วเงียบเกินเกณฑ์
+    ///
+    /// เป็น `.done` ไม่ใช่ `.alert` — เทิร์นจบเฉยๆ ไม่มีอะไรค้างให้ตอบ ต่างจาก
+    /// `Notification`/`StopFailure` ที่ไม่มีมือคนแล้วเดินต่อไม่ได้จริง ถ้าย้อมแดง
+    /// เหมือนกันหมด ทุกเทิร์นที่ผู้ใช้ลุกจากโต๊ะจะได้การ์ดแดง แล้วสีแดงจะเลิกแปลว่า
+    /// "ต้องมือคน" · ท่ามาสคอตยังเป็น `waiting` ("?" เหลือง = ถึงตาคุณ) เหมือนเดิม
     private func stopAlerts(now: Date) {
         for id in order {
             guard let s = sessions[id], let stopped = s.stoppedAt else { continue }
@@ -269,8 +274,8 @@ public final class SessionStore {
                 StoredCard(
                     sessionId: id,
                     title: s.project,
-                    body: "waiting for you",
-                    kind: .alert,
+                    body: "your turn",
+                    kind: .done,
                     createdAt: now
                 ))
         }
