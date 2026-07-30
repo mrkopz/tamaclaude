@@ -13,7 +13,7 @@ public enum PanelText {
     }
 
     /// ชื่อแอปตอนยังไม่มี org ให้พูดถึง — ไม่ใช่ที่ว่าง ไม่ใช่ `—`
-    public static let appName = "tamaclaude"
+    public static let appName = "TamaClaude"
 
     /// หัว popover — ชื่อ org ที่ตัวเลขบนแผงนี้มาจาก
     ///

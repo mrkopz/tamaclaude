@@ -744,7 +744,7 @@ func runAllTests() {
 
     suite("statusline script never breaks the user's own statusline") {
         let script = StatuslineInstaller.script(
-            binary: "/Applications/tamaclaude.app/Contents/MacOS/tamaclaude",
+            binary: "/Applications/TamaClaude.app/Contents/MacOS/tamaclaude",
             delegateTo: "bash /Users/x/.claude/statusline-command.sh")
         expect(script.contains("exit 0"), "always exits clean")
         expect(script.contains("|| true"), "a failing delegate cannot take the line down")
@@ -1314,13 +1314,13 @@ func runAllTests() {
         equal(PanelText.heading(orgs: orgs, current: "o-2", hasKey: true), "Acme Corp",
               "the org being polled is what the head says")
         // ยังไม่ได้ตั้ง key = ยังไม่เคยถามใครว่ามี org อะไรบ้าง ชื่อแอปจึงจริงกว่าชื่อ org
-        equal(PanelText.heading(orgs: orgs, current: "o-2", hasKey: false), "tamaclaude",
+        equal(PanelText.heading(orgs: orgs, current: "o-2", hasKey: false), "TamaClaude",
               "no key means no org to speak of, whatever is left in the list")
-        equal(PanelText.heading(orgs: [], current: nil, hasKey: true), "tamaclaude",
+        equal(PanelText.heading(orgs: [], current: nil, hasKey: true), "TamaClaude",
               "before the first round comes back there is still nothing to name")
         // ตัวที่เลือกไว้แล้วหายไปจากบัญชีถูกถอยเป็นตัวแรกโดย `currentOrg` ก่อนถึงตรงนี้แล้ว
         // ที่นี่จึงเจอ id ที่ไม่มีในรายการได้เฉพาะตอนรายการยังไม่มา
-        equal(PanelText.heading(orgs: orgs, current: "gone", hasKey: true), "tamaclaude",
+        equal(PanelText.heading(orgs: orgs, current: "gone", hasKey: true), "TamaClaude",
               "an id we cannot name is not a name")
 
         expect(!PanelText.canSwitchOrg(orgs: [orgs[0]], hasKey: true), "one org is not a choice")

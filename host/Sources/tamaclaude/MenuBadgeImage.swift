@@ -22,11 +22,25 @@ enum MenuBadgeImage {
 
     /// ไอคอนตอนไม่มีอะไรจะบอก — `0%` ที่เดาเอาคือคำโกหกที่ดูเหมือนค่าที่วัดมา
     /// ส่วนแถบเปล่าดูเหมือนแอปพัง
+    ///
+    /// ใช้ไอคอนของแอปเอง ไม่ใช่ SF Symbol ที่ยืมความหมายมา — สถานะนี้แปลว่า "แอปอยู่
+    /// แต่ยังไม่รู้ตัวเลข" ตราของแอปพูดประโยคนั้นตรงๆ ส่วน `desktopcomputer` พูดถึงจอ
+    /// ซึ่งเป็นคนละเรื่องกับโควตาที่แถบนี้มีหน้าที่บอก
+    ///
+    /// ไม่ใช่ template: โลโก้เป็นภาพมีสีและแสงเงา เก็บแค่ alpha จะได้ก้อนทึบไร้รูป
+    /// ยอมให้ไม่กลับสีตามธีม เพราะภาพเต็มสีอ่านออกทั้งบนพื้นสว่างและมืดอยู่แล้ว
     static func fallback() -> NSImage? {
-        let icon = NSImage(
-            systemSymbolName: "desktopcomputer", accessibilityDescription: "tamaclaude")
-        icon?.isTemplate = true
-        return icon
+        let icon = NSApplication.shared.applicationIconImage
+        // ย่อจริง ไม่ใช่แค่ตั้ง size — ไอคอน .icns พก representation หลายขนาด
+        // ระบบจะหยิบอันที่ใกล้เคียงมาเอง แต่ต้องบอกขนาดที่ต้องการก่อน
+        let side = height
+        let scaled = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            icon?.draw(in: rect)
+            return true
+        }
+        scaled.isTemplate = false
+        scaled.accessibilityDescription = PanelText.appName
+        return scaled
     }
 
     /// ปกติเป็น template ขาวดำ ระบบจึงกลับสีให้เองทั้งพื้นสว่าง/มืด และตอนเมนูถูกไฮไลต์

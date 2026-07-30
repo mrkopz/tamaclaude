@@ -44,7 +44,7 @@ public enum UsagePoll {
         guard FileManager.default.fileExists(atPath: target.path) else {
             throw Failure(
                 message: "no session key at \(url.path) — "
-                    + "set one from the tamaclaude gear menu, or paste the claude.ai sessionKey "
+                    + "set one from the TamaClaude gear menu, or paste the claude.ai sessionKey "
                     + "cookie into that file and `chmod 600` it",
                 code: Failure.unusableKeyFile)
         }
