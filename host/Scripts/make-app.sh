@@ -1,7 +1,7 @@
 #!/bin/bash
-# ประกอบ tamaclaude.app
+# ประกอบ TamaClaude.app
 #
-#   ./Scripts/make-app.sh              บิลด์ release ไว้ที่ host/dist/tamaclaude.app
+#   ./Scripts/make-app.sh              บิลด์ release ไว้ที่ host/dist/TamaClaude.app
 #   ./Scripts/make-app.sh --install    บิลด์แล้วติดตั้งลง /Applications และเปิดให้เลย
 #   ./Scripts/make-app.sh --debug      บิลด์ debug (ไว้ตอนพัฒนา)
 #
@@ -31,7 +31,7 @@ fi
 
 swift build -c "$CONFIG"
 BIN="$(swift build -c "$CONFIG" --show-bin-path)/tamaclaude"
-APP="dist/tamaclaude.app"
+APP="dist/TamaClaude.app"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
@@ -46,17 +46,24 @@ codesign --force --deep --sign - --identifier com.tamaclaude.daemon "$APP" >/dev
 echo "built $PWD/$APP"
 
 if [ "$INSTALL" = "1" ]; then
-    DEST="/Applications/tamaclaude.app"
+    DEST="/Applications/TamaClaude.app"
+    # เคยชื่อ tamaclaude.app — ตัวเก่าต้องถูกลบ ไม่ใช่แค่ถูกทับ สองบันเดิลที่รันได้พร้อมกัน
+    # จะแย่ง socket กัน แล้วตัวที่แพ้เด้ง alert ทิ้ง · pkill ครอบทั้งสองชื่อด้วยเหตุผลเดียวกัน
+    LEGACY="/Applications/tamaclaude.app"
     # ตัวเก่าอาจรันอยู่ ปิดก่อนไม่งั้นได้ไบนารีเก่าค้างในหน่วยความจำ และตัวใหม่จะจอง
     # socket ไม่ได้แล้วเด้ง alert ทิ้ง — ต้องปิดให้ตายจริงก่อน ไม่ใช่ส่งสัญญาณแล้วเดินต่อ
-    pkill -f "tamaclaude.app/Contents/MacOS/tamaclaude" 2>/dev/null || true
+    RUNNING="[Tt]ama[Cc]laude\.app/Contents/MacOS/tamaclaude"
+    pkill -f "$RUNNING" 2>/dev/null || true
     for _ in 1 2 3 4 5; do
-        pgrep -f "tamaclaude.app/Contents/MacOS/tamaclaude" >/dev/null || break
+        pgrep -f "$RUNNING" >/dev/null || break
         sleep 1
     done
-    rm -rf "$DEST"
+    rm -rf "$DEST" "$LEGACY"
     cp -R "$APP" "$DEST"
     open "$DEST"
     echo "installed $DEST and launched it"
     echo "อนุญาต Bluetooth เมื่อระบบถาม แล้วเปิดเมนูจากไอคอนบนแถบเมนู"
+    # hook กับ statusline เก็บ *พาธเต็ม* ของ binary ไว้ตอนกดติดตั้ง การเปลี่ยนชื่อบันเดิล
+    # จึงทำให้พาธนั้นชี้ไปที่ไฟล์ที่ไม่มีแล้ว — เงียบ ไม่มี error ให้เห็น
+    echo "ชื่อบันเดิลเปลี่ยนแล้ว: กด Install hooks กับ Usage display ในเมนูเฟืองซ้ำหนึ่งครั้ง"
 fi

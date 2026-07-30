@@ -48,7 +48,7 @@ swift run tamaclaude --usage-poll                   # one quota fetch -> cache, 
 swift run tamaclaude --usage-cache < statusline.json  # the statusline pipe, by hand
 swift run tamaclaude --install-statusline           # take over statusLine.command
 swift run tamaclaude --remove-statusline            # give the slot back
-./Scripts/make-app.sh              # release .app -> host/dist/tamaclaude.app
+./Scripts/make-app.sh              # release .app -> host/dist/TamaClaude.app
 ./Scripts/make-app.sh --install    # install to /Applications and launch
 ```
 

@@ -39,7 +39,7 @@ enum MenuBadgeImage {
             return true
         }
         scaled.isTemplate = false
-        scaled.accessibilityDescription = "tamaclaude"
+        scaled.accessibilityDescription = PanelText.appName
         return scaled
     }
 

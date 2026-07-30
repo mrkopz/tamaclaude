@@ -173,7 +173,7 @@ cd ../host
 ./Scripts/make-app.sh --install
 ```
 
-This builds `tamaclaude.app`, copies it to `/Applications`, and launches it. macOS asks
+This builds `TamaClaude.app`, copies it to `/Applications`, and launches it. macOS asks
 for Bluetooth permission the first time — say yes, or the app can never see the board.
 
 A small mascot icon appears in your menu bar. Click it for the quota panel; click the

@@ -5,7 +5,9 @@
   <key>CFBundleIdentifier</key>
   <string>com.tamaclaude.daemon</string>
   <key>CFBundleName</key>
-  <string>tamaclaude</string>
+  <string>TamaClaude</string>
+  <key>CFBundleDisplayName</key>
+  <string>TamaClaude</string>
   <key>CFBundleExecutable</key>
   <string>tamaclaude</string>
   <key>CFBundlePackageType</key>
@@ -25,6 +27,6 @@
   <string>14.0</string>
   <!-- ขาดคีย์นี้แล้ว TCC ไม่ได้ปฏิเสธเฉยๆ แต่ยิง SIGABRT ใส่ทั้งโปรเซส -->
   <key>NSBluetoothAlwaysUsageDescription</key>
-  <string>tamaclaude talks to the desk display over Bluetooth LE.</string>
+  <string>TamaClaude talks to the desk display over Bluetooth LE.</string>
 </dict>
 </plist>
