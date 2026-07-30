@@ -2,7 +2,7 @@
   <img src="docs/images/tamaclaude-logo.png" alt="" width="128">
 </p>
 
-<h1 align="center">tamaclaude</h1>
+<h1 align="center">TamaClaude</h1>
 
 <p align="center">
   <strong>Tamagotchi + Claude</strong> — a virtual pet whose moods are your coding sessions.
