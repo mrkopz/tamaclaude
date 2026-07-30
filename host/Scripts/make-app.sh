@@ -58,6 +58,13 @@ if [ "$INSTALL" = "1" ]; then
         pgrep -f "$RUNNING" >/dev/null || break
         sleep 1
     done
+    # จำไว้ *ก่อน* ลบ — คำเตือนข้างล่างต้องขึ้นเฉพาะรอบที่ย้ายชื่อจริง คำเตือนที่ขึ้นทุกรอบ
+    # ทั้งที่ไม่มีอะไรเปลี่ยนคือคำเตือนที่ผู้ใช้เลิกอ่านตั้งแต่ครั้งที่สอง
+    #
+    # ถามจากรายชื่อในโฟลเดอร์ ไม่ใช่ `[ -d "$LEGACY" ]` — APFS ปริยายไม่แยกตัวพิมพ์
+    # `TamaClaude.app` ที่เพิ่งติดตั้งไปจึงตอบว่า "มี" ให้กับพาธชื่อเก่าทุกครั้ง
+    RENAMED=0
+    if ls /Applications | grep -qxF 'tamaclaude.app'; then RENAMED=1; fi
     rm -rf "$DEST" "$LEGACY"
     cp -R "$APP" "$DEST"
     open "$DEST"
@@ -65,5 +72,7 @@ if [ "$INSTALL" = "1" ]; then
     echo "อนุญาต Bluetooth เมื่อระบบถาม แล้วเปิดเมนูจากไอคอนบนแถบเมนู"
     # hook กับ statusline เก็บ *พาธเต็ม* ของ binary ไว้ตอนกดติดตั้ง การเปลี่ยนชื่อบันเดิล
     # จึงทำให้พาธนั้นชี้ไปที่ไฟล์ที่ไม่มีแล้ว — เงียบ ไม่มี error ให้เห็น
-    echo "ชื่อบันเดิลเปลี่ยนแล้ว: กด Install hooks กับ Usage display ในเมนูเฟืองซ้ำหนึ่งครั้ง"
+    if [ "$RENAMED" = "1" ]; then
+        echo "ลบ $LEGACY ตัวเก่าแล้ว — กด Install hooks กับ Usage display ในเมนูเฟืองซ้ำหนึ่งครั้ง"
+    fi
 fi

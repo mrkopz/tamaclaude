@@ -1330,6 +1330,16 @@ func runAllTests() {
                "a list left over from the last key is not a choice either")
     }
 
+    suite("the project link says where it goes") {
+        // ข้อความบนลิงก์ *คือ* ปลายทาง — ที่นี่กันไม่ให้ทั้งสองแยกกันเดิน
+        equal(PanelText.projectURL?.absoluteString,
+              "https://" + PanelText.projectLink,
+              "what the user reads is what opens")
+        equal(PanelText.projectURL?.scheme, "https", "never plain http")
+        expect(!PanelText.projectLink.contains("://"),
+               "the scheme is not in the label — 260 pt of panel is not wide enough to spend")
+    }
+
     suite("the refresh button is the way out, not the way of life") {
         let now = Date(timeIntervalSince1970: 1_700_000_000)
         func at(_ seconds: TimeInterval) -> Date { now.addingTimeInterval(seconds) }

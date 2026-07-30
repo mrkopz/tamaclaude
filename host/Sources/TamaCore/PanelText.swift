@@ -15,6 +15,15 @@ public enum PanelText {
     /// ชื่อแอปตอนยังไม่มี org ให้พูดถึง — ไม่ใช่ที่ว่าง ไม่ใช่ `—`
     public static let appName = "TamaClaude"
 
+    /// ลิงก์โปรเจกต์ท้ายแผง — ข้อความ *คือ* ปลายทาง ไม่ใช่คำว่า "GitHub" ที่ซ่อนพาธไว้
+    /// ผู้ใช้ที่กำลังจะให้ credential กับแอปนี้ควรอ่านออกว่ามันจะพาไปไหนก่อนกด
+    ///
+    /// เก็บเป็น host+path ไม่มี scheme เพราะ `https://` ที่แสดงด้วยกินความกว้างของแผง
+    /// 260 pt ไปโดยไม่ได้บอกอะไร — ปลายทางที่ต่างกันคือส่วนที่เหลือ
+    public static let projectLink = "github.com/thaitop/tamaclaude"
+
+    public static var projectURL: URL? { URL(string: "https://" + projectLink) }
+
     /// หัว popover — ชื่อ org ที่ตัวเลขบนแผงนี้มาจาก
     ///
     /// ยังไม่ได้ตั้ง key แปลว่ายังไม่เคยถามใครว่าบัญชีมี org อะไรบ้าง รายการที่ค้างอยู่จาก
