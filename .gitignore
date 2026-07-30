@@ -2,6 +2,8 @@
 
 # แคชของเครื่องมือ ไม่ใช่ซอร์ส
 .cache/
+# ผลของ tools/preview.py — รูปที่ README ใช้ถูกก๊อปไว้ที่ docs/images/ แทน
+out/
 __pycache__/
 *.pyc
 .claude
