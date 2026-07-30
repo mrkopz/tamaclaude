@@ -65,14 +65,20 @@ cd tamaclaude
 
 ## 2. Put the firmware on the board
 
-Plug the board in and find its serial port:
+Plug the board in and put its serial port into a variable, so the commands below work
+as written:
 
 ```bash
-ls /dev/cu.usbserial-*
+PORT=$(ls /dev/cu.usbserial-* | head -1)
+echo "$PORT"
 ```
 
-You should see one entry, e.g. `/dev/cu.usbserial-1420`. If the list is empty, see
-[Troubleshooting](#troubleshooting).
+That should print one path, something like `/dev/cu.usbserial-1420` — the number differs
+from board to board and from port to port, which is why nothing below spells it out. If
+it prints nothing, see [Troubleshooting](#troubleshooting).
+
+`PORT` only exists in the terminal window you typed it in; if you open a new one, set it
+again.
 
 ### Option A — flash a ready-made image (no ESP-IDF)
 
@@ -82,8 +88,8 @@ about 1 MB, containing the bootloader, the partition table and the app.
 
 ```bash
 python3 -m pip install esptool
-python3 -m esptool --chip esp32 --port /dev/cu.usbserial-1420 \
-    write_flash 0x0 tamaclaude-esp32-1.0.0.bin
+python3 -m esptool --chip esp32 --port "$PORT" \
+    write_flash 0x0 ~/Downloads/tamaclaude-esp32-1.0.0.bin
 ```
 
 That is the whole toolchain: about 10 MB of Python, no compiler. Skip to step 3.
@@ -113,7 +119,7 @@ Then, from the repository, load the toolchain into your shell and flash:
 ```bash
 cd firmware
 . $HOME/esp/esp-idf/export.sh
-idf.py -p /dev/cu.usbserial-1420 flash monitor
+idf.py -p "$PORT" flash monitor
 ```
 
 The `export.sh` line is per-shell and is not permanent; open a new terminal and you run
