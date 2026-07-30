@@ -51,51 +51,19 @@ pushes a small snapshot to the board over Bluetooth LE.
 
 - macOS 14 or newer, with Bluetooth.
 - [Claude Code](https://claude.com/claude-code) installed and logged in.
-- About 3 GB of disk for the ESP32 toolchain.
 
-Everything here is built from source on your own machine. There is no download.
+The Mac app is always built from source. The firmware you can either download or build —
+step 2 has both routes.
 
-## 1. Install the toolchain
-
-Xcode Command Line Tools (for the Swift compiler):
+## 1. Get the repository and the Swift compiler
 
 ```bash
 xcode-select --install
-```
-
-Build tools for the firmware:
-
-```bash
-brew install cmake ninja dfu-util python3
-```
-
-ESP-IDF v5.5 — this is the big one, roughly 2 GB:
-
-```bash
-mkdir -p ~/esp && cd ~/esp
-git clone -b v5.5 --recursive https://github.com/espressif/esp-idf.git
-cd esp-idf && ./install.sh esp32
-```
-
-Whenever you want to build the firmware, load the toolchain into that shell first:
-
-```bash
-. $HOME/esp/esp-idf/export.sh
-```
-
-That line is per-shell and is not permanent; open a new terminal and you run it again.
-If anything above goes wrong, Espressif's own
-[getting-started guide](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/get-started/)
-is the authority.
-
-Then get this repository:
-
-```bash
 git clone https://github.com/thaitop/tamaclaude.git
 cd tamaclaude
 ```
 
-## 2. Flash the board
+## 2. Put the firmware on the board
 
 Plug the board in and find its serial port:
 
@@ -106,7 +74,41 @@ ls /dev/cu.usbserial-*
 You should see one entry, e.g. `/dev/cu.usbserial-1420`. If the list is empty, see
 [Troubleshooting](#troubleshooting).
 
-Build and flash (substitute your port):
+### Option A — flash a ready-made image (no ESP-IDF)
+
+Download `tamaclaude-esp32-*.bin` from the
+[latest release](https://github.com/thaitop/tamaclaude/releases/latest). It is one file,
+about 1 MB, containing the bootloader, the partition table and the app.
+
+```bash
+python3 -m pip install esptool
+python3 -m esptool --chip esp32 --port /dev/cu.usbserial-1420 \
+    write_flash 0x0 tamaclaude-esp32-1.0.0.bin
+```
+
+That is the whole toolchain: about 10 MB of Python, no compiler. Skip to step 3.
+
+### Option B — build it yourself
+
+Take this route if you want to change the firmware, or if your board turns out to need
+different panel settings.
+
+Build tools:
+
+```bash
+brew install cmake ninja dfu-util python3
+```
+
+ESP-IDF — this is the big one, roughly 2 GB. v5.5 is what this firmware is built and
+tested against; the component manifest accepts 5.4 and newer:
+
+```bash
+mkdir -p ~/esp && cd ~/esp
+git clone -b v5.5 --recursive https://github.com/espressif/esp-idf.git
+cd esp-idf && ./install.sh esp32
+```
+
+Then, from the repository, load the toolchain into your shell and flash:
 
 ```bash
 cd firmware
@@ -114,15 +116,16 @@ cd firmware
 idf.py -p /dev/cu.usbserial-1420 flash monitor
 ```
 
-The first build takes several minutes. When it finishes, the screen lights up and the
-log ends with a line like:
+The `export.sh` line is per-shell and is not permanent; open a new terminal and you run
+it again. The first build takes several minutes. If anything here goes wrong, Espressif's
+own [getting-started guide](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/get-started/)
+is the authority.
 
-```
-advertising as tamaclaude-3f7a
-```
+### Either way
 
-That name is the board's Bluetooth identity — the last part comes from its MAC address,
-so you can tell two boards apart. Press `Ctrl+]` to leave the monitor.
+The screen lights up and the board starts announcing itself over Bluetooth as
+`tamaclaude-3f7a` — the last part comes from its MAC address, so you can tell two boards
+apart. With `idf.py monitor` running you can watch it happen; press `Ctrl+]` to leave.
 
 ## 3. Install the Mac app
 
