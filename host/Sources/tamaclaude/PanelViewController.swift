@@ -43,7 +43,6 @@ final class PanelViewController: NSViewController {
     private let startLabel = NSTextField(labelWithString: "")
     private let ageLabel = NSTextField(labelWithString: "")
     private let sessions = NSStackView()
-    private let projectLink = NSButton()
     private var shownRows: [String] = []
 
     override func loadView() {
@@ -116,18 +115,6 @@ final class PanelViewController: NSViewController {
         ageLabel.font = .systemFont(ofSize: 12)
         ageLabel.textColor = .secondaryLabelColor
 
-        // ปุ่มไร้ขอบที่ทาสีลิงก์ ไม่ใช่ `NSTextField` ที่ฝัง link attribute — ช่องข้อความ
-        // ที่กดได้ต้องเป็น selectable ซึ่งทำให้ลากคลุมข้อความในแผงได้ทั้งแผง และเคอร์เซอร์
-        // กลายเป็น I-beam ทั่วบริเวณ ปุ่มบอกว่ามันเป็นของที่กด ด้วยของที่ระบบรู้จักอยู่แล้ว
-        projectLink.title = PanelText.projectLink
-        projectLink.isBordered = false
-        projectLink.font = .systemFont(ofSize: 12)
-        projectLink.contentTintColor = .linkColor
-        projectLink.alignment = .left
-        projectLink.target = self
-        projectLink.action = #selector(projectClicked)
-        projectLink.toolTip = "https://" + PanelText.projectLink
-
         // เหตุผลเดียวกับบรรทัดในการ์ด (`QuotaCardView`): ค่าปริยาย (750) แพ้ขอบล่างของแผง
         // (999) กรอบที่เตี้ยกว่าจึงกดบรรทัดจนสูงศูนย์แทนที่จะปล่อยให้ล้นออกไปโดนตัด
         // — บรรทัดที่หายไปเงียบๆ อ่านเหมือนแอปไม่รู้อะไรเลย ต่างจากบรรทัดที่ถูกตัดครึ่ง
@@ -144,12 +131,7 @@ final class PanelViewController: NSViewController {
 
         // ทั้งสองบรรทัดพังอยู่บนสุดของท้ายแผง เรียงตามลำดับที่ผู้ใช้ต้องลงมือ: ไม่มี key
         // แปลว่าไม่มีตัวเลขเลย ส่วน auto-start ที่ยิงไม่ได้แค่แปลว่าตัวเลขจะไม่ขยับเอง
-        //
-        // ลิงก์โปรเจกต์อยู่ล่างสุด ใต้ทุกอย่างที่เป็นสถานะ — มันไม่ใช่เรื่องของ session นี้
-        // หรือของบอร์ด แผงนี้เปิดมาเพื่ออ่านตัวเลข ลิงก์ที่แทรกอยู่บนจะแย่งลำดับการอ่าน
-        let footer = NSStackView(views: [
-            keyButton, startLabel, boardLabel, sessions, projectLink,
-        ])
+        let footer = NSStackView(views: [keyButton, startLabel, boardLabel, sessions])
         footer.orientation = .vertical
         footer.spacing = 4
         footer.alignment = .leading
@@ -260,11 +242,6 @@ final class PanelViewController: NSViewController {
 
     @objc private func refreshClicked() {
         onRefresh?()
-    }
-
-    @objc private func projectClicked() {
-        guard let url = PanelText.projectURL else { return }
-        NSWorkspace.shared.open(url)
     }
 
     /// หัวแผง — ชื่อ org ที่ตัวเลขมาจาก และลูกศรเมื่อมีอะไรให้สลับ

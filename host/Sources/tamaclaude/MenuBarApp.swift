@@ -28,6 +28,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let popover = NSPopover()
     private let panel = PanelViewController()
     private lazy var gearMenu: NSMenu = buildMenu()
+    /// แถวความสว่างเป็นพร็อพเพอร์ตี้เพราะต้องยืดใหม่ทุกครั้งที่เมนูเด้ง (`fitBrightnessRow`)
+    private let brightnessRow = NSView()
     /// ตัวดักคลิกนอกแอปตอน popover เปิด — มีอยู่ก็ต่อเมื่อ popover เปิดอยู่
     private var outsideClicks: Any?
     /// นาฬิกาของแผง — เดินเฉพาะตอนแผงเปิด ด้วยเหตุผลเดียวกับตัวดักคลิก
@@ -35,8 +37,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     private let boardItem = NSMenuItem(title: "Board", action: nil, keyEquivalent: "")
     private var boards: [Board] = []
+    /// ชื่อสั้นแต่ยังบอกไฟล์ พาธเต็มอยู่ใน tooltip — ความกว้างของ `NSMenu` มาจากรายการ
+    /// ที่ยาวที่สุด รายการเดียวที่เขียนพาธเต็มจึงถ่างทั้งเมนูออกไปราว 75 pt เพื่อบอกสิ่งที่
+    /// กล่องยืนยันหลังกดบอกซ้ำอยู่แล้ว
     private let hooksItem = NSMenuItem(
-        title: "Install hooks in ~/.claude/settings.json", action: #selector(installHooks),
+        title: "Install hooks in settings.json", action: #selector(installHooks),
         keyEquivalent: "")
     private let statuslineItem = NSMenuItem(
         title: "Show usage on the board", action: #selector(toggleStatusline), keyEquivalent: "")
@@ -186,6 +191,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         menu.addItem(.separator())
 
         hooksItem.target = self
+        hooksItem.toolTip = "~/.claude/settings.json"
         menu.addItem(hooksItem)
 
         statuslineItem.target = self
@@ -200,6 +206,13 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         log.target = self
         menu.addItem(log)
 
+        // ปลายทางอยู่ในชื่อรายการ ไม่ใช่คำว่า "GitHub" — แอปนี้ขอ credential เต็มบัญชี
+        // ลิงก์ที่ซ่อนปลายทางไว้หลังคำสวยๆ เป็นท่าเดียวกับที่ผู้ใช้ควรระวัง
+        let project = NSMenuItem(
+            title: PanelText.projectLink, action: #selector(openProject), keyEquivalent: "")
+        project.target = self
+        menu.addItem(project)
+
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)),
@@ -207,22 +220,72 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         return menu
     }
 
-    private func brightnessItem() -> NSMenuItem {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 40))
-        let label = NSTextField(labelWithString: "Brightness")
-        label.frame = NSRect(x: 14, y: 20, width: 120, height: 16)
-        label.font = .menuFont(ofSize: 12)
-        view.addSubview(label)
+    /// ระยะเว้นซ้ายของข้อความในรายการเมนู — ค่าที่วัดจากของจริง ไม่ใช่ค่าที่ถามระบบได้
+    ///
+    /// `NSMenu` ไม่เปิด API ให้ถามว่ารายการปกติเริ่มวาดข้อความที่ตำแหน่งไหน แต่ item ที่มี
+    /// view ของตัวเองกินความกว้างเต็มเมนูรวมช่องเครื่องหมายถูกด้วย ตัวเลขนี้จึงต้องเดินตาม
+    /// รายการข้างเคียง ไม่ใช่ตามขอบ view · เมนูนี้มีรายการที่ติ๊กได้ (`Show usage on the
+    /// board`, `Launch at login`) ช่องนั้นจึงกว้างเสมอ ไม่ใช่ยุบเมื่อไม่มีใครติ๊ก
+    private static let menuTextInset: CGFloat = 21
 
-        brightness.frame = NSRect(x: 14, y: 2, width: 192, height: 18)
+    /// แถวความสว่าง — ป้ายบรรทัดบน สไลเดอร์บรรทัดล่าง
+    ///
+    /// ใช้ Auto Layout ไม่ใช่ frame ดิบ: macOS ยืด view ของ item ให้เต็มความกว้างเมนู
+    /// ซึ่งมาจากรายการที่ยาวที่สุด (`Install hooks in ~/.claude/settings.json`) ของข้างใน
+    /// ที่ตั้ง frame ไว้ตายตัวจะค้างอยู่ที่ความกว้างเดิมแล้วเหลือที่ว่างด้านขวาเป็นแถบ
+    private func brightnessItem() -> NSMenuItem {
+        let view = brightnessRow
+        let label = NSTextField(labelWithString: "Brightness")
+        label.font = .menuFont(ofSize: 12)
+
         brightness.target = self
         brightness.action = #selector(brightnessChanged)
         brightness.isContinuous = false  // ส่งตอนปล่อยเมาส์ ไม่ใช่ทุกพิกเซลที่ลาก
-        view.addSubview(brightness)
+
+        let inset = Self.menuTextInset
+        for child in [label, brightness] {
+            child.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(child)
+            NSLayoutConstraint.activate([
+                child.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
+                child.trailingAnchor.constraint(
+                    lessThanOrEqualTo: view.trailingAnchor, constant: -inset),
+            ])
+        }
+        // สไลเดอร์ยาวได้ถึงค่าหนึ่ง ไม่ใช่ยาวเท่าเมนู — ความกว้างเมนูมาจากความยาวของ
+        // *ข้อความ* ในรายการอื่น ซึ่งไม่เกี่ยวกับว่าเครื่องวัดควรยาวแค่ไหน สไลเดอร์ที่ยืด
+        // ตามจึงยาวขึ้นทุกครั้งที่มีใครตั้งชื่อบอร์ดยาวๆ และหัวจับไปจ่ออยู่ที่ขอบเมนูพอดี
+        let wide = brightness.widthAnchor.constraint(equalToConstant: 200)
+        wide.priority = .defaultLow  // ยอมสั้นลงถ้าเมนูแคบกว่านั้น
+        NSLayoutConstraint.activate([
+            label.topAnchor.constraint(equalTo: view.topAnchor, constant: 4),
+            brightness.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 4),
+            brightness.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -6),
+            brightness.widthAnchor.constraint(lessThanOrEqualToConstant: 200),
+            wide,
+        ])
 
         let item = NSMenuItem()
+        // ความสูงเป็นของแถวนี้เอง ส่วนความกว้างมาจาก `fitBrightnessRow()` ทุกครั้งที่เมนูเด้ง
+        view.frame = NSRect(x: 0, y: 0, width: 220, height: 44)
         item.view = view
         return item
+    }
+
+    /// ยืดแถวความสว่างให้เท่าความกว้างเมนู
+    ///
+    /// `NSMenu` **ไม่** ยืด view ของ item ให้เอง — มันวัดความกว้างจากรายการที่กว้างที่สุด
+    /// แล้ววาดที่เหลือชิดซ้ายในกรอบนั้น view ที่ตั้งขนาดไว้เองจึงค้างอยู่เท่าเดิมและเหลือ
+    /// ที่ว่างด้านขวาเป็นแถบ · ต้องทำทุกครั้งที่เมนูเด้ง ไม่ใช่ครั้งเดียวตอนสร้าง เพราะ
+    /// ชื่อบอร์ดในรายการบนสุดเปลี่ยนความกว้างเมนูได้
+    ///
+    /// ยุบเป็นศูนย์ก่อนวัด ไม่งั้นแถวนี้กลายเป็นตัวที่กว้างที่สุดเสียเอง แล้วเมนูจะกว้างขึ้น
+    /// เรื่อยๆ ทุกครั้งที่เปิด และไม่มีวันแคบลงเมื่อรายการอื่นสั้นลง
+    private func fitBrightnessRow() {
+        brightnessRow.setFrameSize(NSSize(width: 0, height: brightnessRow.frame.height))
+        let width = gearMenu.size.width
+        guard width > 0 else { return }
+        brightnessRow.setFrameSize(NSSize(width: width, height: brightnessRow.frame.height))
     }
 
     // MARK: - อัปเดตหน้าตา
@@ -447,6 +510,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         keyItem.title = SessionKeyFile.isUsable() ? "Replace session key…" : "Set session key…"
         showAutoStart()
         showIntervals()
+        fitBrightnessRow()
         gearMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: -2), in: button)
     }
 
@@ -598,6 +662,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func openLog() {
         NSWorkspace.shared.open(Paths.log)
+    }
+
+    @objc private func openProject() {
+        guard let url = PanelText.projectURL else { return }
+        NSWorkspace.shared.open(url)
     }
 
     private func alert(_ title: String, _ body: String) {
