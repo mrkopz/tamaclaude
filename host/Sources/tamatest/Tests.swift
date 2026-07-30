@@ -1337,7 +1337,7 @@ func runAllTests() {
               "what the user reads is what opens")
         equal(PanelText.projectURL?.scheme, "https", "never plain http")
         expect(!PanelText.projectLink.contains("://"),
-               "the scheme is not in the label — 260 pt of panel is not wide enough to spend")
+               "the scheme is not in the label — it is the part that never differs")
     }
 
     suite("the refresh button is the way out, not the way of life") {

@@ -200,6 +200,13 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         log.target = self
         menu.addItem(log)
 
+        // ปลายทางอยู่ในชื่อรายการ ไม่ใช่คำว่า "GitHub" — แอปนี้ขอ credential เต็มบัญชี
+        // ลิงก์ที่ซ่อนปลายทางไว้หลังคำสวยๆ เป็นท่าเดียวกับที่ผู้ใช้ควรระวัง
+        let project = NSMenuItem(
+            title: PanelText.projectLink, action: #selector(openProject), keyEquivalent: "")
+        project.target = self
+        menu.addItem(project)
+
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)),
@@ -598,6 +605,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func openLog() {
         NSWorkspace.shared.open(Paths.log)
+    }
+
+    @objc private func openProject() {
+        guard let url = PanelText.projectURL else { return }
+        NSWorkspace.shared.open(url)
     }
 
     private func alert(_ title: String, _ body: String) {
