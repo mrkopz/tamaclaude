@@ -50,51 +50,18 @@
 
 - macOS 14 ขึ้นไป และมี Bluetooth
 - ติดตั้ง [Claude Code](https://claude.com/claude-code) และล็อกอินแล้ว
-- พื้นที่ดิสก์ราว 3 GB สำหรับ toolchain ของ ESP32
 
-ทุกอย่างในนี้บิลด์เองบนเครื่องคุณ ไม่มีไฟล์สำเร็จรูปให้โหลด
+แอปฝั่ง Mac บิลด์เองเสมอ ส่วน firmware เลือกได้ว่าจะโหลดไฟล์สำเร็จรูปหรือบิลด์เอง — ขั้นที่ 2 มีทั้งสองทาง
 
-## 1. ติดตั้ง toolchain
-
-Xcode Command Line Tools (เอาไว้ให้ได้คอมไพเลอร์ Swift):
+## 1. เอา repo กับคอมไพเลอร์ Swift มาก่อน
 
 ```bash
 xcode-select --install
-```
-
-เครื่องมือสำหรับบิลด์ firmware:
-
-```bash
-brew install cmake ninja dfu-util python3
-```
-
-ESP-IDF v5.5 — ตัวใหญ่สุด ราว 2 GB:
-
-```bash
-mkdir -p ~/esp && cd ~/esp
-git clone -b v5.5 --recursive https://github.com/espressif/esp-idf.git
-cd esp-idf && ./install.sh esp32
-```
-
-ทุกครั้งที่จะบิลด์ firmware ต้องโหลด toolchain เข้าเชลล์นั้นก่อน:
-
-```bash
-. $HOME/esp/esp-idf/export.sh
-```
-
-บรรทัดนี้มีผลเฉพาะเชลล์ที่รัน ไม่ถาวร เปิดเทอร์มินัลใหม่ก็ต้องรันใหม่
-ถ้าติดขั้นตอนไหน เอกสาร
-[getting started ของ Espressif](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/get-started/)
-คือตัวจริง
-
-จากนั้นโคลน repo นี้:
-
-```bash
 git clone https://github.com/thaitop/tamaclaude.git
 cd tamaclaude
 ```
 
-## 2. แฟลชบอร์ด
+## 2. เอา firmware ลงบอร์ด
 
 เสียบบอร์ดแล้วหาพอร์ตอนุกรมของมัน:
 
@@ -105,7 +72,40 @@ ls /dev/cu.usbserial-*
 ควรเห็นหนึ่งรายการ เช่น `/dev/cu.usbserial-1420` ถ้าไม่เห็นอะไรเลยดูหัวข้อ
 [แก้ปัญหา](#แก้ปัญหา)
 
-บิลด์แล้วแฟลช (เปลี่ยนชื่อพอร์ตเป็นของคุณ):
+### ทาง A — แฟลชไฟล์สำเร็จรูป (ไม่ต้องลง ESP-IDF)
+
+โหลด `tamaclaude-esp32-*.bin` จาก
+[release ล่าสุด](https://github.com/thaitop/tamaclaude/releases/latest) เป็นไฟล์เดียวราว 1 MB
+รวม bootloader, partition table และตัวแอปไว้ครบแล้ว
+
+```bash
+python3 -m pip install esptool
+python3 -m esptool --chip esp32 --port /dev/cu.usbserial-1420 \
+    write_flash 0x0 tamaclaude-esp32-1.0.0.bin
+```
+
+เท่านี้จบ — Python ราว 10 MB ไม่ต้องมีคอมไพเลอร์ ข้ามไปขั้นที่ 3 ได้เลย
+
+### ทาง B — บิลด์เอง
+
+เลือกทางนี้ถ้าอยากแก้ firmware เอง หรือบอร์ดของคุณต้องใช้ค่าจอคนละชุด
+
+เครื่องมือสำหรับบิลด์:
+
+```bash
+brew install cmake ninja dfu-util python3
+```
+
+ESP-IDF — ตัวใหญ่สุด ราว 2 GB v5.5 คือตัวที่ firmware นี้บิลด์และทดสอบด้วย
+ส่วน manifest ของคอมโพเนนต์รับตั้งแต่ 5.4 ขึ้นไป:
+
+```bash
+mkdir -p ~/esp && cd ~/esp
+git clone -b v5.5 --recursive https://github.com/espressif/esp-idf.git
+cd esp-idf && ./install.sh esp32
+```
+
+จากนั้นกลับมาที่ repo โหลด toolchain เข้าเชลล์แล้วแฟลช:
 
 ```bash
 cd firmware
@@ -113,14 +113,16 @@ cd firmware
 idf.py -p /dev/cu.usbserial-1420 flash monitor
 ```
 
-ครั้งแรกใช้เวลาหลายนาที พอเสร็จจอจะติดและล็อกจะจบด้วยบรรทัดประมาณนี้:
+บรรทัด `export.sh` มีผลเฉพาะเชลล์ที่รัน ไม่ถาวร เปิดเทอร์มินัลใหม่ก็ต้องรันใหม่ บิลด์ครั้งแรกใช้เวลาหลายนาที
+ถ้าติดขั้นตอนไหน เอกสาร
+[getting started ของ Espressif](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32/get-started/)
+คือตัวจริง
 
-```
-advertising as tamaclaude-3f7a
-```
+### ไม่ว่าจะทางไหน
 
-ชื่อนั้นคือตัวตนของบอร์ดบน Bluetooth ส่วนท้ายมาจาก MAC address ของมัน จึงใช้แยกบอร์ดสองตัวออกจากกันได้
-กด `Ctrl+]` เพื่อออกจาก monitor
+จอจะติดและบอร์ดจะเริ่มประกาศตัวบน Bluetooth ในชื่อ `tamaclaude-3f7a` — ส่วนท้ายมาจาก MAC address
+ของมัน จึงใช้แยกบอร์ดสองตัวออกจากกันได้ ถ้าเปิด `idf.py monitor` ค้างไว้จะเห็นตอนมันเกิดขึ้น
+กด `Ctrl+]` เพื่อออก
 
 ## 3. ติดตั้งแอปบน Mac
 
