@@ -82,7 +82,7 @@ uses those constants, not a chip model number.
 python3 tools/preview.py            # render every state + whole screens to out/ (PNG + GIF)
 python3 tools/preview.py --sheet    # contact sheet only
 python3 tools/export_layout.py      # tools/layout.toml -> firmware/main/layout.h
-python3 tools/make_icon.py          # mascot -> host/Resources/AppIcon.icns
+python3 tools/make_icon.py          # logo PNG (≥128px) + mascot (≤64px) -> host/Resources/AppIcon.icns
 ```
 
 There is no SDL2 simulator. `tools/preview.py` is the visual dev loop: change a rect, render,
@@ -101,8 +101,10 @@ look at `out/`. It proves the *design*, not the C renderer.
   `screen.py`↔`ct_ui.c`, `sky.py` folds into `ct_ui.c`. A visual change means editing both
   sides; the Python side is where you iterate, the C side is the port.
 - **Assets are rect lists**, `{x, y, w, h, color}` in mascot-relative *unit* coordinates —
-  no bitmaps, no sprite pipeline. The mascot icon, the preview, and the board all come from
-  `gen/mascot.py`.
+  no bitmaps, no sprite pipeline. The preview and the board both come from `gen/mascot.py`.
+  The **app icon is half an exception** — `.icns` carries per-size art, so ≥128 px is a
+  hand-drawn PNG (`docs/images/tamaclaude-logo.png`) and ≤64 px is drawn from the same rect
+  list. See the reversal note in `DESIGN.md`.
 
 ### Host layout (`host/Sources/`)
 

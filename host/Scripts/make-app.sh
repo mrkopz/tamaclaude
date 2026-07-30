@@ -24,7 +24,7 @@ for arg in "$@"; do
     esac
 done
 
-# ไอคอนมาจากมาสคอตตัวเดียวกับบนจอ ไม่ใช่ภาพแยกอีกชุด
+# ไอคอนมาจาก docs/images/tamaclaude-logo.png ผ่าน make_icon.py (เติมขอบ + ทำ .icns)
 if [ ! -f Resources/AppIcon.icns ]; then
     python3 "$REPO/tools/make_icon.py"
 fi
