@@ -1,8 +1,28 @@
-# tamaclaude
+<h1 align="center">tamaclaude</h1>
 
-### **Tamagotchi + Claude** — สัตว์เลี้ยงเสมือนที่อารมณ์ของมันคือ session เขียนโค้ดของคุณ
+<p align="center">
+  <strong>Tamagotchi + Claude</strong> — สัตว์เลี้ยงเสมือนที่อารมณ์ของมันคือ session เขียนโค้ดของคุณ
+</p>
 
-*[Read in English](README.md)*
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-macOS%2014%2B-000000?logo=apple&logoColor=white" alt="macOS 14+">
+  <img src="https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white" alt="Swift 6.0">
+  <img src="https://img.shields.io/badge/ESP--IDF-v5.5-E7352C?logo=espressif&logoColor=white" alt="ESP-IDF v5.5">
+  <img src="https://img.shields.io/badge/board-ESP32--2432S028R-3C3C3C" alt="ESP32-2432S028R">
+  <img src="https://img.shields.io/badge/link-BLE%20only-0082FC?logo=bluetooth&logoColor=white" alt="BLE only">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3DA639" alt="MIT license"></a>
+</p>
+
+<p align="center">
+  🌐 <a href="README.md">English</a> · <strong>ไทย</strong>
+</p>
+
+<p align="center">
+  <a href="#จอบอกอะไรบ้าง">จอบอกอะไรบ้าง</a> ·
+  <a href="#ของที่ต้องมี">ของที่ต้องมี</a> ·
+  <a href="#1-เอา-repo-กับคอมไพเลอร์-swift-มาก่อน">เริ่มใช้งาน</a> ·
+  <a href="#แก้ปัญหา">แก้ปัญหา</a>
+</p>
 
 > **อ่านก่อนเริ่ม**
 > - **ใช้ได้บน macOS เท่านั้น** ตัวที่คุยกับ Claude Code เป็นแอปแถบเมนูภาษา Swift สำหรับ macOS 14 ขึ้นไป

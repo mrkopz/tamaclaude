@@ -1,8 +1,28 @@
-# tamaclaude
+<h1 align="center">tamaclaude</h1>
 
-### **Tamagotchi + Claude** — a virtual pet whose moods are your coding sessions.
+<p align="center">
+  <strong>Tamagotchi + Claude</strong> — a virtual pet whose moods are your coding sessions.
+</p>
 
-*[อ่านภาษาไทย](README.th.md)*
+<p align="center">
+  <img src="https://img.shields.io/badge/platform-macOS%2014%2B-000000?logo=apple&logoColor=white" alt="macOS 14+">
+  <img src="https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white" alt="Swift 6.0">
+  <img src="https://img.shields.io/badge/ESP--IDF-v5.5-E7352C?logo=espressif&logoColor=white" alt="ESP-IDF v5.5">
+  <img src="https://img.shields.io/badge/board-ESP32--2432S028R-3C3C3C" alt="ESP32-2432S028R">
+  <img src="https://img.shields.io/badge/link-BLE%20only-0082FC?logo=bluetooth&logoColor=white" alt="BLE only">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3DA639" alt="MIT license"></a>
+</p>
+
+<p align="center">
+  🌐 <strong>English</strong> · <a href="README.th.md">ไทย</a>
+</p>
+
+<p align="center">
+  <a href="#what-the-screen-says">What the screen says</a> ·
+  <a href="#what-you-need">What you need</a> ·
+  <a href="#1-get-the-repository-and-the-swift-compiler">Getting started</a> ·
+  <a href="#troubleshooting">Troubleshooting</a>
+</p>
 
 > **Before you start**
 > - **macOS only.** The app that talks to Claude Code is a Swift menu bar app for macOS 14
