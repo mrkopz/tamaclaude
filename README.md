@@ -4,6 +4,16 @@
 
 *[อ่านภาษาไทย](README.th.md)*
 
+> **Before you start**
+> - **macOS only.** The desk-side app is a Swift menu bar app for macOS 14 or newer.
+>   There is no Linux or Windows build, and the firmware alone does nothing without it.
+> - **Unofficial.** A personal hobby project, not affiliated with or endorsed by Anthropic.
+>   "Claude" and "Claude Code" belong to them.
+> - **As-is.** Flashing firmware overwrites whatever is on the board, and you do it at your
+>   own risk. No warranty — see [LICENSE](LICENSE).
+> - Reading your quota from claude.ai is optional and needs an account credential. Read
+>   [step 5](#5-quota-on-the-board) before you turn it on.
+
 A desk device that shows what Claude Code is doing right now. A blocky orange mascot
 lives on a small screen next to your keyboard: it types when Claude types, waves when a
 session needs your answer, and celebrates when a build finishes. The bars at the bottom
