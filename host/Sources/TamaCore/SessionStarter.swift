@@ -303,7 +303,10 @@ public enum SessionProcess {
     /// `haiku` เพราะหน้าต่าง 5 ชั่วโมงนับรวมทุกโมเดล (เฉพาะ `weekly_scoped` เท่านั้น
     /// ที่แยกตามโมเดล) โมเดลถูกที่สุดจึงเปิดหน้าต่างได้เท่ากับโมเดลแพงที่สุด
     ///
-    /// MCP ปิดทั้งหมด: schema ของ server ทุกตัวที่ผู้ใช้ตั้งไว้คือส่วนที่ใหญ่ที่สุดของ
+    /// MCP ปิดทั้งหมด — ต้องเป็น `{"mcpServers":{}}` ไม่ใช่ `{}` เปล่าๆ: `claude` ตรวจ
+    /// schema ของไฟล์ config และตายด้วย code 1 ("expected record, received undefined")
+    /// ซึ่งแยกไม่ออกจากความล้มเหลวอื่น จึงเงียบและยิงซ้ำไปเรื่อยๆ · เหตุผลที่ปิด:
+    /// schema ของ server ทุกตัวที่ผู้ใช้ตั้งไว้คือส่วนที่ใหญ่ที่สุดของ
     /// ค่าเปิด session · **hooks ไม่ปิด** เพราะเป็นทางเดียวที่ daemon จะรู้ว่ามี session
     /// และการที่มาสคอตขยับคือครึ่งหนึ่งของเหตุผลที่ฟีเจอร์นี้มีอยู่
     public static func launcher(_ locate: @escaping () -> ClaudeBinary.Found = {
@@ -325,7 +328,8 @@ public enum SessionProcess {
             let process = Process()
             process.executableURL = executable
             process.arguments = [
-                "-p", prompt, "--model", "haiku", "--strict-mcp-config", "--mcp-config", "{}",
+                "-p", prompt, "--model", "haiku", "--strict-mcp-config",
+                "--mcp-config", #"{"mcpServers":{}}"#,
             ]
             process.currentDirectoryURL = workDir()
 
