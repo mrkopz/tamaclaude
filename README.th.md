@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/tamaclaude-logo.png" alt="" width="128">
+</p>
+
 <h1 align="center">tamaclaude</h1>
 
 <p align="center">
