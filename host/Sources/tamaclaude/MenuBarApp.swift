@@ -248,21 +248,13 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             view.addSubview(child)
             NSLayoutConstraint.activate([
                 child.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-                child.trailingAnchor.constraint(
-                    lessThanOrEqualTo: view.trailingAnchor, constant: -inset),
+                child.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
             ])
         }
-        // สไลเดอร์ยาวได้ถึงค่าหนึ่ง ไม่ใช่ยาวเท่าเมนู — ความกว้างเมนูมาจากความยาวของ
-        // *ข้อความ* ในรายการอื่น ซึ่งไม่เกี่ยวกับว่าเครื่องวัดควรยาวแค่ไหน สไลเดอร์ที่ยืด
-        // ตามจึงยาวขึ้นทุกครั้งที่มีใครตั้งชื่อบอร์ดยาวๆ และหัวจับไปจ่ออยู่ที่ขอบเมนูพอดี
-        let wide = brightness.widthAnchor.constraint(equalToConstant: 200)
-        wide.priority = .defaultLow  // ยอมสั้นลงถ้าเมนูแคบกว่านั้น
         NSLayoutConstraint.activate([
             label.topAnchor.constraint(equalTo: view.topAnchor, constant: 4),
             brightness.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 4),
             brightness.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -6),
-            brightness.widthAnchor.constraint(lessThanOrEqualToConstant: 200),
-            wide,
         ])
 
         let item = NSMenuItem()
