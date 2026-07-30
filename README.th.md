@@ -63,14 +63,17 @@ cd tamaclaude
 
 ## 2. เอา firmware ลงบอร์ด
 
-เสียบบอร์ดแล้วหาพอร์ตอนุกรมของมัน:
+เสียบบอร์ดแล้วเก็บชื่อพอร์ตอนุกรมของมันไว้ในตัวแปร เพื่อให้คำสั่งข้างล่างก๊อปไปใช้ได้ตรงๆ:
 
 ```bash
-ls /dev/cu.usbserial-*
+PORT=$(ls /dev/cu.usbserial-* | head -1)
+echo "$PORT"
 ```
 
-ควรเห็นหนึ่งรายการ เช่น `/dev/cu.usbserial-1420` ถ้าไม่เห็นอะไรเลยดูหัวข้อ
-[แก้ปัญหา](#แก้ปัญหา)
+ควรได้หนึ่งบรรทัด หน้าตาประมาณ `/dev/cu.usbserial-1420` — ตัวเลขท้ายต่างกันไปตามบอร์ดและตามพอร์ตที่เสียบ
+ข้างล่างจึงไม่เขียนชื่อพอร์ตตรงๆ สักที่ ถ้าไม่ขึ้นอะไรเลยดูหัวข้อ [แก้ปัญหา](#แก้ปัญหา)
+
+ตัวแปร `PORT` มีอยู่เฉพาะหน้าต่างเทอร์มินัลที่คุณพิมพ์ ถ้าเปิดหน้าต่างใหม่ต้องตั้งใหม่
 
 ### ทาง A — แฟลชไฟล์สำเร็จรูป (ไม่ต้องลง ESP-IDF)
 
@@ -80,8 +83,8 @@ ls /dev/cu.usbserial-*
 
 ```bash
 python3 -m pip install esptool
-python3 -m esptool --chip esp32 --port /dev/cu.usbserial-1420 \
-    write_flash 0x0 tamaclaude-esp32-1.0.0.bin
+python3 -m esptool --chip esp32 --port "$PORT" \
+    write_flash 0x0 ~/Downloads/tamaclaude-esp32-1.0.0.bin
 ```
 
 เท่านี้จบ — Python ราว 10 MB ไม่ต้องมีคอมไพเลอร์ ข้ามไปขั้นที่ 3 ได้เลย
@@ -110,7 +113,7 @@ cd esp-idf && ./install.sh esp32
 ```bash
 cd firmware
 . $HOME/esp/esp-idf/export.sh
-idf.py -p /dev/cu.usbserial-1420 flash monitor
+idf.py -p "$PORT" flash monitor
 ```
 
 บรรทัด `export.sh` มีผลเฉพาะเชลล์ที่รัน ไม่ถาวร เปิดเทอร์มินัลใหม่ก็ต้องรันใหม่ บิลด์ครั้งแรกใช้เวลาหลายนาที
