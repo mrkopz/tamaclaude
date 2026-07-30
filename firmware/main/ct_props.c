@@ -292,6 +292,7 @@ static void hammer(ct_rects_t *o, float phase, bool connected)
 #define CT_GLB_CY (-1.9f)  // ขอบบน -5.4 (ไม่ล้น BOX_Y0) ขอบล่าง 1.6 (เหนือตาที่ 2.10)
 #define CT_GLB_PX 0.25f    // หนึ่งพิกเซลเป็นหน่วย unit ที่ unit_px = 4
 #define CT_GLB_BANDS 14    // แถบแนวนอนที่ประกอบเป็นวงกลม — แถบละ 0.5 unit = 2 px
+#define CT_GLB_RIM 0.5f    // ขอบลูก 2 px — 1 px อ่านเป็นเส้นบางที่ขาดๆ ตามขั้นบันไดของแถบ
 // แถบละสองพิกเซลคือจุดที่บันไดยังละเอียดพอให้อ่านเป็นวงกลม แถบละ 4 px (8 แถบ)
 // ให้หัวท้ายเป็นแผ่นแบนกว้างจนอ่านเป็นโดม ไม่ใช่ลูกกลม
 
@@ -312,18 +313,31 @@ static void globe(ct_rects_t *o, float phase, bool connected)
     // ตอนหลุดการเชื่อมต่อยังต้องเหลือสองค่าความสว่าง ไม่งั้นทวีปจมหายกลายเป็นก้อนเทาตัน
     uint16_t ocean = connected ? CT_COL_GLASS : CT_COL_GRAY;
     uint16_t land = connected ? CT_COL_GOOD : CT_COL_GRAY_DARK;
+    // ขอบรอบลูก — น้ำสีฟ้าอ่อนกับฟ้ากลางวันห่างกันไม่ถึงหนึ่งสเต็ป ลูกโลกจึงหายไปกับฟ้า
+    // ฟ้ามีสี่ช่วงตั้งแต่เกือบดำถึงฟ้าอ่อน ไม่มีสีน้ำสีเดียวที่ตัดกับทั้งสี่
+    // ขอบเข้ม + ไส้สว่างตัดกันคนละทาง อย่างน้อยหนึ่งอย่างจึงเห็นเสมอ
+    // steel (สีกรอบแว่นขยาย) ไม่ใช่ ink — ขอบสีหมึกอ่านเป็นเส้นขีดดำ ไม่ใช่ขอบของทรงกลม
+    uint16_t rim = connected ? CT_COL_STEEL : CT_COL_GRAY_DARK;
 
     // ครึ่งความกว้างวัดที่กึ่งกลางแถบ (ไม่ใช่ขอบ) หัวท้ายจึงแคบลงตามวงกลมจริง
     // แล้วปัดเป็นจำนวนพิกเซลเต็ม ขอบซ้าย/ขวาจึงตกบนเส้นพิกเซลพอดี ไม่มีขั้นบันไดครึ่งพิกเซล
     float r = CT_GLB_D / 2.0f, bh = CT_GLB_D / CT_GLB_BANDS;
+    // bhw = ครึ่งความกว้างของ "ไส้" (หลังหักขอบ) — ทวีปเกาะไส้ ไม่ใช่ขอบ จึงไม่ทับขอบมืด
     float by0[CT_GLB_BANDS], by1[CT_GLB_BANDS], bhw[CT_GLB_BANDS];
     for (int i = 0; i < CT_GLB_BANDS; i++) {
         by0[i] = CT_GLB_CY - r + i * bh;
         by1[i] = by0[i] + bh;
         float yy = fabsf(by0[i] + bh / 2.0f - CT_GLB_CY);
         float q = r * r - yy * yy;
-        bhw[i] = roundf(sqrtf(q > 0.0f ? q : 0.0f) / CT_GLB_PX) * CT_GLB_PX;
-        ct_rects_add(o, CT_HEAD_CX - bhw[i], by0[i], 2 * bhw[i], by1[i] - by0[i], ocean);
+        float hw = roundf(sqrtf(q > 0.0f ? q : 0.0f) / CT_GLB_PX) * CT_GLB_PX;
+        ct_rects_add(o, CT_HEAD_CX - hw, by0[i], 2 * hw, by1[i] - by0[i], rim);
+        // แถบบนสุด/ล่างสุดเป็นขอบล้วน — ถ้าเจาะไส้ด้วย ขอบด้านบน/ล่างจะหายไปทั้งเส้น
+        float ihw = (i == 0 || i == CT_GLB_BANDS - 1) ? 0.0f : hw - CT_GLB_RIM;
+        if (ihw < 0.0f) ihw = 0.0f;
+        if (ihw > 0.0f) {
+            ct_rects_add(o, CT_HEAD_CX - ihw, by0[i], 2 * ihw, by1[i] - by0[i], ocean);
+        }
+        bhw[i] = ihw;
     }
 
     float left = CT_HEAD_CX - CT_GLB_D / 2.0f, top = CT_GLB_CY - CT_GLB_D / 2.0f;

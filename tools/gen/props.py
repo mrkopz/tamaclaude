@@ -357,6 +357,8 @@ GLB_D = 7.0  # เส้นผ่านศูนย์กลาง — ใหญ
 GLB_CY = -1.9  # กึ่งกลางลูก: ขอบบน -5.4 (ไม่ล้น BOX_Y0) ขอบล่าง 1.6 (เหนือตาที่ 2.10)
 GLB_PX = 0.25  # หนึ่งพิกเซลเป็นหน่วย unit ที่ unit_px = 4
 GLB_BANDS = 14  # แถบแนวนอนที่ประกอบเป็นวงกลม — แถบละ 0.5 unit = 2 px
+GLB_RIM = 0.5  # ขอบลูก 2 px — 1 px อ่านเป็นเส้นบางๆ ที่ขาดๆ หายๆ ตามขั้นบันไดของแถบ
+# 2 px เท่ากับความสูงของแถบพอดี ขอบจึงหนาเท่ากันทั้งด้านข้างและด้านบน/ล่าง
 # แถบละสองพิกเซลคือจุดที่บันไดยังละเอียดพอให้อ่านเป็นวงกลม แถบละ 4 px (แบบเดิม 8 แถบ)
 # ให้หัวท้ายเป็นแผ่นแบนกว้างจนอ่านเป็นโดม ไม่ใช่ลูกกลม
 
@@ -394,8 +396,26 @@ def globe(phase: float, connected: bool = True) -> RectList:
     ocean = PAL.glass if connected else PAL.gray
     land = PAL.good if connected else PAL.gray_dark
 
+    # ขอบรอบลูก — น้ำสีฟ้าอ่อน (#A8D8EA) กับฟ้ากลางวัน (#B8DCF5) ห่างกันไม่ถึงหนึ่งสเต็ป
+    # ลูกโลกจึงหายไปกับท้องฟ้าตอนกลางวัน/เช้า เปลี่ยนสีน้ำแก้ไม่ได้: ฟ้ามีสี่ช่วงตั้งแต่
+    # เกือบดำถึงฟ้าอ่อน ไม่มีสีเดียวที่ตัดกับทั้งสี่ ขอบเข้ม + ไส้สว่างตัดกันคนละทาง
+    # อย่างน้อยหนึ่งอย่างจึงเห็นเสมอ (กลางคืนไส้ได้ 12.5:1 กลางวันขอบได้ 3.4:1)
+    # ใช้ steel (สีกรอบแว่นขยาย) ไม่ใช่ ink — ขอบสีหมึกบนลูกฟ้าอ่อนอ่านเป็นเส้นขีดดำ
+    # ไม่ใช่ขอบของทรงกลม steel เป็นฟ้าเทาวงศ์เดียวกับน้ำ จึงอ่านเป็นด้านที่โค้งหนีแสง
+    rim = PAL.steel if connected else PAL.gray_dark
+
     bands = _globe_bands()
-    out: RectList = [Rect(HEAD_CX - hw, y0, 2 * hw, y1 - y0, ocean) for y0, y1, hw in bands]
+    out: RectList = []
+    # ครึ่งความกว้างของ "ไส้" (หลังหักขอบ) — ทวีปเกาะไส้ ไม่ใช่ขอบ จึงไม่ทับขอบมืด
+    inner: list[tuple[float, float, float]] = []
+    last = len(bands) - 1
+    for i, (y0, y1, hw) in enumerate(bands):
+        out.append(Rect(HEAD_CX - hw, y0, 2 * hw, y1 - y0, rim))
+        # แถบบนสุด/ล่างสุดเป็นขอบล้วน — ถ้าเจาะไส้ด้วย ขอบด้านบน/ล่างจะหายไปทั้งเส้น
+        ihw = 0.0 if i in (0, last) else max(hw - GLB_RIM, 0.0)
+        if ihw > 0:
+            out.append(Rect(HEAD_CX - ihw, y0, 2 * ihw, y1 - y0, ocean))
+        inner.append((y0, y1, ihw))
 
     left = HEAD_CX - GLB_D / 2.0
     top = GLB_CY - GLB_D / 2.0
@@ -404,7 +424,7 @@ def globe(phase: float, connected: bool = True) -> RectList:
         px = left + (dx + spin) % GLB_D
         py = top + dy
         # ครึ่งความกว้างที่แคบที่สุดในช่วงที่ทวีปกินอยู่ — ทวีปจึงไม่ยื่นล้นขอบลูกโลก
-        hw = min((b[2] for b in bands if b[1] > py and b[0] < py + h), default=0.0)
+        hw = min((b[2] for b in inner if b[1] > py and b[0] < py + h), default=0.0)
         # เล็มด้านที่ล้นขอบทิ้ง แทนที่จะซ่อนทั้งก้อน — ทวีปที่หายวับทั้งชิ้นอ่านเป็นกะพริบ
         # ส่วนทวีปที่ค่อยๆ โผล่จากขอบอ่านเป็นแผ่นดินที่หมุนอ้อมมาจากอีกด้าน
         x0, x1 = max(px, HEAD_CX - hw), min(px + w, HEAD_CX + hw)
