@@ -20,7 +20,9 @@ lives on a small screen next to your keyboard: it types when Claude types, waves
 session needs your answer, and celebrates when a build finishes. The bars at the bottom
 are your Claude usage quota.
 
-![Three sessions working, cards stacked on the right, quota bars at the bottom](docs/images/screen_busy.gif)
+<img src="docs/images/screen_busy.gif" width="420" alt="Three sessions working, cards stacked on the right, quota bars at the bottom"> <img src="docs/images/app-menu.jpg" width="236" alt="The menu bar panel: session usage, weekly usage, and the board's state">
+
+*The board, and the menu bar app that feeds it.*
 
 Nothing is on the network. A menu bar app on your Mac reads Claude Code's hooks and
 pushes a small snapshot to the board over Bluetooth LE.
@@ -157,8 +159,6 @@ for Bluetooth permission the first time — say yes, or the app can never see th
 A small mascot icon appears in your menu bar. Click it for the quota panel; click the
 gear for settings. The foot of the panel tells you whether the board is connected and
 what each session is doing.
-
-<img src="docs/images/app-menu.jpg" width="300" alt="The menu bar panel: session usage, weekly usage, and the board's state">
 
 The badge next to the icon is your session usage, and it turns red when you are burning
 through the window faster than the clock is.
