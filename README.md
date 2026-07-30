@@ -155,7 +155,13 @@ This builds `tamaclaude.app`, copies it to `/Applications`, and launches it. mac
 for Bluetooth permission the first time — say yes, or the app can never see the board.
 
 A small mascot icon appears in your menu bar. Click it for the quota panel; click the
-gear for settings.
+gear for settings. The foot of the panel tells you whether the board is connected and
+what each session is doing.
+
+<img src="docs/images/app-menu.jpg" width="300" alt="The menu bar panel: session usage, weekly usage, and the board's state">
+
+The badge next to the icon is your session usage, and it turns red when you are burning
+through the window faster than the clock is.
 
 ## 4. Connect it to Claude Code
 
