@@ -5,8 +5,9 @@
 *[อ่านภาษาไทย](README.th.md)*
 
 > **Before you start**
-> - **macOS only.** The desk-side app is a Swift menu bar app for macOS 14 or newer.
->   There is no Linux or Windows build, and the firmware alone does nothing without it.
+> - **macOS only.** The app that talks to Claude Code is a Swift menu bar app for macOS 14
+>   or newer. There is no Linux or Windows build, and the firmware alone does nothing
+>   without it.
 > - **Unofficial.** A personal hobby project, not affiliated with or endorsed by Anthropic.
 >   "Claude" and "Claude Code" belong to them.
 > - **As-is.** Flashing firmware overwrites whatever is on the board, and you do it at your
@@ -225,8 +226,8 @@ settings; start a new one. *Open log* in the gear menu shows what the app is rec
 
 ## Known limits
 
-- **macOS only.** The desk-side app is a Swift menu bar app; there is no Linux or Windows
-  build.
+- **macOS only.** The app that talks to Claude Code is a Swift menu bar app; there is no
+  Linux or Windows build.
 - **No over-the-air updates.** New firmware means plugging the USB cable back in.
 - **The touchscreen and speaker are unused.** The panel is touch-capable and the board has
   a speaker pin; neither is wired up yet.
