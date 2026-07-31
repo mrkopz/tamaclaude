@@ -195,7 +195,7 @@ cd ../host
 
 แถบด้านล่างของจอมีสองท่อที่เป็นอิสระต่อกัน และเป็นทางเลือกทั้งคู่:
 
-- **Show usage on the board** (เมนูเฟือง) ติดตั้ง statusline ของ Claude Code ที่ส่งค่าการใช้งาน
+- **Read quota from the statusline** (เมนูเฟือง) ติดตั้ง statusline ของ Claude Code ที่ส่งค่าการใช้งาน
   ปัจจุบันให้แอป ไม่ต้องใช้รหัสผ่านใดๆ แต่ค่าจะขยับเฉพาะตอนที่ Claude Code เปิดอยู่
 - **Set session key…** (เมนูเฟือง) ให้แอปถาม claude.ai ตรงๆ ตัวเลขจึงเดินต่อแม้ปิด Claude Code
   ไปแล้ว จากนั้น **Refresh quota** เลือกความถี่ (Off / 60s / 5 min)
@@ -208,6 +208,12 @@ cd ../host
 >
 > วิธีเอามา: เปิด claude.ai ในเบราว์เซอร์ตอนล็อกอินอยู่ → DevTools → Application → Cookies →
 > `claude.ai` → ก๊อปค่าของ `sessionKey`
+
+การยึดช่อง statusline ไม่เปลี่ยนสิ่งที่คุณเห็น — คำสั่ง statusline เดิมของคุณได้ข้อมูลก้อนเดิมไปวาด
+แล้วผลของมันถูกพิมพ์ออกไปตรงๆ ส่วนคนที่ไม่เคยมี statusline มาก่อน แอปจะวาดแบบนี้ให้ ชิ้นส่วน สี
+และไฟล์ตั้งค่า `~/.claude/statusline-config.txt` ชุดเดียวกับ statusline ที่มากับ Claude Usage
+
+![statusline ที่แอปวาด: โฟลเดอร์ branch โมเดล จำนวนบรรทัดที่แก้ จำนวน token แล้วต่อด้วยแถบโควตา 5 ชั่วโมงและรายสัปดาห์ พร้อมขีดบอกจังหวะและเวลานับถอยหลังถึงรีเซ็ต](docs/images/statusline.jpg)
 
 ## แก้ปัญหา
 

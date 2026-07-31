@@ -94,7 +94,11 @@ case "--usage-cache":
     // เรียกจาก statusline.sh เท่านั้น — ต้องไม่ตายและไม่บ่นไม่ว่า stdin จะเป็นอะไร
     // เพราะ exit code ที่ไม่ใช่ 0 จะไปโผล่เป็นบรรทัด statusline ที่พังของผู้ใช้
     let stdin = FileHandle.standardInput.readDataToEndOfFile()
-    if let line = UsageWriter.ingest(stdin, to: cacheTarget(args)) { print(line) }
+    let target = cacheTarget(args)
+    let short = UsageWriter.ingest(stdin, to: target)
+    // เขียน cache ก่อนแล้วค่อยวาด — บรรทัดที่วาดต้องเห็นตัวเลขของ render รอบนี้ ไม่ใช่รอบก่อน
+    // ถ้าวาดไม่ออก (payload อ่านไม่ได้) ยังเหลือบรรทัดสั้นแบบเดิมไว้ ดีกว่าไม่มีอะไรเลย
+    if let line = StatuslineRender.line(json: stdin, cacheURL: target) ?? short { print(line) }
     exit(0)
 
 case "--usage-poll":
