@@ -10,12 +10,13 @@
 #define BODY_X 1.0f
 #define BODY_Y 0.0f
 #define BODY_W 14.0f
-#define BODY_H 8.0f
+#define BODY_H 8.4f
 #define NUB_Y 2.8f
 #define NUB_H 2.5f
 #define NUB_W 1.5f
-#define LEG_TOP 8.0f
-#define LEG_H 3.2f
+// ขาสูงหนึ่งในสี่ของตัวพอดี (2.8 จาก 11.2) — ระดับฝ่าเท้าคงเดิม ที่ยาวขึ้นแทนคือลำตัว
+#define LEG_TOP 8.4f
+#define LEG_H 2.8f
 #define FOOT_Y (LEG_TOP + LEG_H)  // 11.2 — ระดับที่มาสคอตยืน
 #define EYE_L 3.36f
 #define EYE_R CT_EYE_R  // ตาข้างขวานิยามใน ct_props.h — แว่นขยายต้องเล็งไปที่นั่น
