@@ -9,6 +9,9 @@ import Foundation
 /// สคริปต์ที่ติดตั้งจะ **ไม่เปลี่ยนสิ่งที่ผู้ใช้เห็น**: มันเขียน cache แล้วส่ง JSON ก้อนเดิม
 /// ต่อให้คำสั่ง statusline เดิม แล้วพิมพ์ผลของคำสั่งนั้นออกไป การยึดช่องนี้เป็นการ
 /// ควบคุมท่อข้อมูล ไม่ใช่การเปลี่ยนหน้าตา
+///
+/// ผู้ใช้ที่ *ไม่เคยมี* statusline เป็นข้อยกเว้นเดียว — ไม่มีอะไรให้ส่งต่อ เราจึงวาดเอง
+/// ด้วย `StatuslineRender` ซึ่งเป็น port ของ `statusline-command.sh` ทั้งใบ
 public enum StatuslineInstaller {
     public static var settingsPath: URL { HookInstaller.settingsPath }
 

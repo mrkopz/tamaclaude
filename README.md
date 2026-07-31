@@ -205,7 +205,7 @@ start moving.
 
 The bars at the bottom of the screen have two independent sources, both optional:
 
-- **Show usage on the board** (gear menu) installs a Claude Code statusline that hands
+- **Read quota from the statusline** (gear menu) installs a Claude Code statusline that hands
   the app your current usage. It needs no password, but it only updates while Claude Code
   is running.
 - **Set session key…** (gear menu) lets the app ask claude.ai directly, so the number

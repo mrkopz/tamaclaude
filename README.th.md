@@ -195,7 +195,7 @@ cd ../host
 
 แถบด้านล่างของจอมีสองท่อที่เป็นอิสระต่อกัน และเป็นทางเลือกทั้งคู่:
 
-- **Show usage on the board** (เมนูเฟือง) ติดตั้ง statusline ของ Claude Code ที่ส่งค่าการใช้งาน
+- **Read quota from the statusline** (เมนูเฟือง) ติดตั้ง statusline ของ Claude Code ที่ส่งค่าการใช้งาน
   ปัจจุบันให้แอป ไม่ต้องใช้รหัสผ่านใดๆ แต่ค่าจะขยับเฉพาะตอนที่ Claude Code เปิดอยู่
 - **Set session key…** (เมนูเฟือง) ให้แอปถาม claude.ai ตรงๆ ตัวเลขจึงเดินต่อแม้ปิด Claude Code
   ไปแล้ว จากนั้น **Refresh quota** เลือกความถี่ (Off / 60s / 5 min)

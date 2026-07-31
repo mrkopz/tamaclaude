@@ -44,7 +44,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         title: "Install hooks in settings.json", action: #selector(installHooks),
         keyEquivalent: "")
     private let statuslineItem = NSMenuItem(
-        title: "Show usage on the board", action: #selector(toggleStatusline), keyEquivalent: "")
+        title: "Read quota from the statusline", action: #selector(toggleStatusline),
+        keyEquivalent: "")
     private let loginItem = NSMenuItem(
         title: "Launch at login", action: #selector(toggleLogin), keyEquivalent: "")
     private let keyItem = NSMenuItem(

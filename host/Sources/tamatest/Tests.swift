@@ -14,6 +14,14 @@ func event(
         hookEventName: name, sessionId: session, cwd: cwd, toolName: tool, message: message)
 }
 
+/// เวลาในรูปแบบที่ cache เก็บ — ISO8601 โซนศูนย์ ไม่มีเศษวินาที
+func iso(_ date: Date) -> String {
+    let f = ISO8601DateFormatter()
+    f.formatOptions = [.withInternetDateTime]
+    f.timeZone = TimeZone(secondsFromGMT: 0)
+    return f.string(from: date)
+}
+
 /// store ที่ข้ามท่าเดินเข้ามา — เทสต์ส่วนใหญ่ไม่ได้สนใจท่านั้น
 func store() -> SessionStore {
     var timings = Timings()
@@ -805,6 +813,116 @@ func runAllTests() {
             binary: "/bin/tc", delegateTo: "bash '/Users/x/my statusline.sh'")
         expect(quoted.contains(#"PREV='bash '\''/Users/x/my statusline.sh'\'''"#),
                "quotes inside the delegated command survive: \(quoted.split(separator: "\n")[8])")
+    }
+
+    suite("the line we draw ourselves says what the old statusline said") {
+        // ขาวดำเพราะเทสต์นี้สนใจ *สิ่งที่เขียน* ไม่ใช่สีที่ครอบมัน
+        var config = StatuslineConfig()
+        config.colorMode = .monochrome
+        config.use24h = true
+        config.showWeekly = true
+        config.showBranch = false
+        config.showLinesChanged = false
+
+        let now = t0
+        let cache = [
+            "TIMESTAMP": String(Int(now.timeIntervalSince1970)),
+            "UTILIZATION": "37",
+            "RESETS_AT": iso(now.addingTimeInterval(7200)),
+            "WEEKLY_UTILIZATION": "64",
+            "WEEKLY_RESETS_AT": iso(now.addingTimeInterval(3 * 86400 + 5 * 3600)),
+        ]
+        let root: [String: Any] = [
+            "model": ["display_name": "Opus 5"],
+            "workspace": ["current_dir": "/Users/x/Documents/GitHub/tamaclaude"],
+            "context_window_size": 1_000_000,
+            "current_usage": [
+                "input_tokens": 1200, "output_tokens": 3400,
+                "cache_creation_input_tokens": 20000, "cache_read_input_tokens": 150_000,
+            ],
+        ]
+        let lines = (StatuslineRender.render(
+            root: root, cache: cache, config: config, git: nil, now: now) ?? "")
+            .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+
+        equal(lines.count, 2, "quota gets a line of its own")
+        equal(
+            lines.first ?? "",
+            "❯ tamaclaude │ ⌘ Opus 5 │ ◐ Ctx: 17% │ ⧉ ↑171.2K ↓3.4K/1M tok",
+            "the first line is the session, not the quota")
+
+        // 37% ปัดเป็นแถบ 4 ช่อง ส่วนเวลาที่ผ่านไป 3 จาก 5 ชั่วโมงวางขีดไว้ช่องที่ 7
+        // ขีดอยู่ขวาของแถบ = ใช้โควตาช้ากว่าเวลา ซึ่งเป็นทั้งหมดที่ภาพนี้ต้องบอก
+        let clock = DateFormatter()
+        clock.locale = Locale(identifier: "en_US_POSIX")
+        clock.dateFormat = "HH:mm"
+        let weekClock = DateFormatter()
+        weekClock.locale = Locale(identifier: "en_US_POSIX")
+        weekClock.dateFormat = "EEE HH:mm"
+        equal(
+            lines.last ?? "",
+            "⧖ Usage: 37% ▓▓▓▓░░┃░░░ ⏲ Reset: "
+                + clock.string(from: now.addingTimeInterval(7200)) + " (2:00 Hr) │ "
+                + "⧗ Weekly: 64% ▓▓▓▓▓┃░░░░ ⏲ "
+                + weekClock.string(from: now.addingTimeInterval(3 * 86400 + 5 * 3600))
+                + " (3 Days 5:00 Hr)",
+            "bar, pace mark and countdown all read off the same window")
+
+        // ตัวเลขที่เก่ากว่าห้านาทีคือตัวเลขที่ตายแล้ว — ต้องไม่ปลอมเป็นของสด
+        var stale = cache
+        stale["TIMESTAMP"] = String(Int(now.timeIntervalSince1970) - 600)
+        let staleLine = StatuslineRender.render(
+            root: [:], cache: stale, config: config, git: nil, now: now) ?? ""
+        expect(staleLine.contains("⧖ Usage: ~"), "a stale cache says it does not know")
+        expect(!staleLine.contains("Weekly"), "and the weekly window just goes quiet")
+
+        // สวิตช์ปิดต้องปิดจริง ไม่ใช่แค่ซ่อนป้าย
+        var bare = config
+        bare.showUsageLabel = false
+        bare.showBar = false
+        bare.showReset = false
+        bare.showWeekly = false
+        bare.showContext = false
+        bare.showTokenCount = false
+        bare.showModel = false
+        equal(
+            StatuslineRender.render(root: root, cache: cache, config: bare, git: nil, now: now),
+            "❯ tamaclaude\n⧖ 37%",
+            "every element is its own switch")
+
+        // ชื่อ branch กับจำนวนบรรทัดมาจาก git ไม่ใช่จาก payload
+        var withGit = bare
+        withGit.showBranch = true
+        withGit.showLinesChanged = true
+        let git = StatuslineRender.GitInfo(branch: "main", added: 12, removed: 3)
+        equal(
+            StatuslineRender.render(root: root, cache: cache, config: withGit, git: git, now: now),
+            "❯ tamaclaude │ ⎇ main │ +12 -3\n⧖ 37%",
+            "git has its own two elements")
+        equal(GitSummary.count("3 files changed, 12 insertions(+), 4 deletions(-)",
+                               unit: "deletion"), 4, "shortstat is read by unit, not position")
+        equal(GitSummary.count("1 file changed, 5 deletions(-)", unit: "insertion"), 0,
+              "a missing unit is zero, not a wrong number")
+    }
+
+    suite("the drawn line reads the config file the old statusline already had") {
+        let config = StatuslineConfig.parse(
+            """
+            SHOW_CONTEXT=0
+            USE_24_HOUR_TIME=1
+            COLOR_MODE=singleColor
+            SINGLE_COLOR=#FF8B64
+            PROFILE_NAME="ThaiTop"
+            PACE_MARKER_STEP_COLORS=0
+            ELEMENT_COLOR_USAGE=
+            """)
+        expect(!config.showContext, "0 means off")
+        expect(config.use24h, "1 means on")
+        expect(config.showUsage, "a key that is not in the file keeps its default")
+        equal(config.colorMode, .singleColor, "the colour mode is a name, not a number")
+        equal(config.profileName, "ThaiTop", "shell quotes belong to the shell")
+        expect(!config.paceMarkerStepColors, "this one switch is off only when it says 0")
+        equal(config.colorUsage, "", "an empty colour means 'use the gradient'")
     }
 
     suite("state enum is the contract with the firmware") {
