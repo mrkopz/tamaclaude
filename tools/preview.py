@@ -68,7 +68,7 @@ def state_gif(state: str, px: int = 7, connected: bool = True) -> list[Image.Ima
 SCENES: dict[str, screen.Screen] = {
     "busy": screen.Screen(
         sessions=[
-            screen.Session("esp32-claude-bt", "writing", 0.0),
+            screen.Session("tamaclaude", "writing", 0.0),
             screen.Session("tamaclaude", "building", 0.3),
             screen.Session("sprite-gen", "reading", 0.6),
         ],
@@ -84,13 +84,13 @@ SCENES: dict[str, screen.Screen] = {
         ],
     ),
     "idle": screen.Screen(
-        sessions=[screen.Session("esp32-claude-bt", "sleeping", 0.0)],
+        sessions=[screen.Session("tamaclaude", "sleeping", 0.0)],
         clock="02:14",
     ),
     # โควตาปกติ — สภาพที่จอจะเป็นเกือบตลอดเวลาที่ไม่มีอะไรต้องเตือน
     "usage": screen.Screen(
         sessions=[
-            screen.Session("esp32-claude-bt", "writing", 0.0),
+            screen.Session("tamaclaude", "writing", 0.0),
             screen.Session("docs", "reading", 0.4),
         ],
         clock="17:04",
@@ -101,7 +101,7 @@ SCENES: dict[str, screen.Screen] = {
     ),
     # ใกล้เต็มทั้งคู่ + ใช้เร็วกว่าเวลา (ขีด pace อยู่ซ้ายของเนื้อแถบ)
     "usage_hot": screen.Screen(
-        sessions=[screen.Session("esp32-claude-bt", "building", 0.0)],
+        sessions=[screen.Session("tamaclaude", "building", 0.0)],
         clock="09:41",
         usage=[
             screen.Usage("Current", SESSION_WINDOW, 92, 4 * 3600 + 20 * 60),
@@ -110,7 +110,7 @@ SCENES: dict[str, screen.Screen] = {
     ),
     # หน้าต่างหมุนไปแล้ว + weekly หายไปทั้งตัว — ทั้งคู่ต้องเป็น `--` ห้ามเดา
     "usage_unknown": screen.Screen(
-        sessions=[screen.Session("esp32-claude-bt", "idle", 0.0)],
+        sessions=[screen.Session("tamaclaude", "idle", 0.0)],
         clock="06:20",
         usage=[
             screen.Usage("Current", SESSION_WINDOW, None, 0),
@@ -119,20 +119,20 @@ SCENES: dict[str, screen.Screen] = {
     ),
     "done": screen.Screen(
         sessions=[
-            screen.Session("esp32-claude-bt", "celebrate", 0.0),
+            screen.Session("tamaclaude", "celebrate", 0.0),
             screen.Session("docs", "idle", 0.4),
         ],
-        cards=[screen.Card("esp32-claude-bt", "Build finished, 0 warnings", "done")],
+        cards=[screen.Card("tamaclaude", "Build finished, 0 warnings", "done")],
     ),
     # มีทั้งการ์ดและตัวเลขโควตาค้างอยู่ในมือ แต่ต้องไม่ขึ้นจอสักอย่าง — หลุดลิงก์แล้ว
     # ไม่มีใครรับรองว่ายังจริง เหลือนาฬิกาที่หรี่เป็นเทาบอกว่าเป็นเวลาล่าสุดที่รู้
     "offline": screen.Screen(
         sessions=[
-            screen.Session("esp32-claude-bt", "idle", 0.0),
+            screen.Session("tamaclaude", "idle", 0.0),
             screen.Session("docs", "idle", 0.5),
         ],
         connected=False,
-        cards=[screen.Card("esp32-claude-bt", "Needs your answer", "alert")],
+        cards=[screen.Card("tamaclaude", "Needs your answer", "alert")],
         usage=[
             screen.Usage("Current", SESSION_WINDOW, 43, 1 * 3600 + 40 * 60),
             screen.Usage("Weekly", WEEKLY_WINDOW, 8, 5 * 86400 + 8 * 3600),
@@ -150,13 +150,13 @@ SCENES: dict[str, screen.Screen] = {
     ),
     "waiting": screen.Screen(
         sessions=[
-            screen.Session("esp32-claude-bt", "waiting", 0.0),
+            screen.Session("tamaclaude", "waiting", 0.0),
             screen.Session("tamaclaude", "searching", 0.5),
             screen.Session("sprite-gen", "alert", 0.25),
         ],
         cards=[
             screen.Card("sprite-gen", "Stopped: test suite failed (3 failing)", "alert"),
-            screen.Card("esp32-claude-bt", "needs permission to write layout.h", "info"),
+            screen.Card("tamaclaude", "needs permission to write layout.h", "info"),
         ],
     ),
 }
