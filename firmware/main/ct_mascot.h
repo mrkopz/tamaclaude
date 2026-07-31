@@ -12,7 +12,7 @@ void ct_mascot_init(void);
 // สร้าง rect list ของมาสคอตหนึ่งตัว เรียงจากหลังไปหน้า
 //   phase  ความคืบหน้าในลูปอนิเมชัน 0..1 (ลูปหนึ่งราว 1 วินาที)
 //   cycle  ลูปที่เท่าไรแล้ว — ใช้กับจังหวะที่ช้ากว่าหนึ่งลูป เช่นการกะพริบตา
-// พิกัดอยู่ในตาราง 16 x 11.2 unit ฝ่าเท้าอยู่ที่ y = 11.2
+// พิกัดอยู่ในตาราง 16.5 x 12 unit ฝ่าเท้าอยู่ที่ y = 12
 void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connected,
                      int cycle);
 
