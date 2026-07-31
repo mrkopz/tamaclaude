@@ -56,6 +56,14 @@ typedef enum {
 #define CT_LENS_S 6.0f   // ขนาดเลนส์แว่นขยาย
 #define CT_LENS_T 0.75f  // ความหนาของขอบเลนส์
 
+// แว่นตา — ท่านั่งพิมพ์ (writing) ไม่ใช่ ct_prop_t เพราะติดหน้าไปกับตา
+// ต้องยุบและเลื่อนไปพร้อมตาทุกเฟรม (ct_mascot.c จึงวาดมันในชุดเดียวกับตา ไม่ใช่ชุด prop)
+// ทุกค่าลงตาราง 0.25 unit (= 1 px) รวมมุมที่ตัด s/4 = 0.75 และ s/4 - t = 0.25
+#define CT_GLS_S 3.0f
+#define CT_GLS_T 0.5f
+// ขาแว่นยาวเท่าที่พอไปจบพอดีขอบลำตัว (2.0 และ 14.0) — เลยออกไปจะอ่านเป็นเส้นลอยข้างหัว
+#define CT_GLS_TEMPLE 0.75f
+
 // ค้อน + หมวกวิศวกร + แท่นเหล็ก — ทั้งชุดคือ prop เดียวกัน (Bash) จึงใช้ค่าคงที่ร่วมกัน
 // หนึ่งลูปคือการทุบหนึ่งครั้งที่มีจังหวะเงื้อนำ ไม่ใช่ค้อนเด้งขึ้นลงสองรอบ:
 // จังหวะเงื้อคือสิ่งที่ทำให้การกระแทกมีน้ำหนัก ถ้าตัดทิ้งจะเหลือแค่ของขยับไปมา
@@ -81,6 +89,9 @@ void ct_prop_build(ct_rects_t *out, ct_prop_t prop, float phase, bool connected)
 
 // กระจกในเลนส์แว่นขยาย — ต้องวาดก่อนตา จึงแยกออกจาก ct_prop_build() ที่วาดหลังตา
 void ct_prop_magnifier_glass(ct_rects_t *out, float phase, bool connected);
+
+// แว่นตาคร่อมตาสองข้าง — วาดหลังตาในชุดเดียวกับตา จึงแยกออกจาก ct_prop_build()
+void ct_prop_glasses(ct_rects_t *out, float eye_l, bool connected);
 
 // แท่นเหล็กที่ค้อนทุบ — วางอยู่กับพื้น จึงแยกจาก ct_prop_build() ที่ถูกเลื่อนตามตัวมาสคอต
 void ct_prop_hammer_anvil(ct_rects_t *out, float phase, bool connected);

@@ -344,6 +344,9 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
     float mag = STATES[state].prop == CT_PROP_MAGNIFIER ? CT_EYE_MAG : 1.0f;
     eye(out, EYE_L, eye_kind, look, ink, 1.0f);
     eye(out, EYE_R, eye_kind, look, ink, mag);
+    // แว่นวาดหลังตา กรอบจึงทับขอบตา และยุบไปกับตาชุดเดียวกัน
+    // ต้องตรงกับ GLASSES_STATES ใน tools/gen/mascot.py
+    if (state == CT_STATE_WRITING) ct_prop_glasses(out, EYE_L, connected);
     // ตายุบไปกับลำตัว ไม่ใช่ค้างอยู่บนหน้าที่เตี้ยลง
     squashed(out, eyes_from, squash);
     ct_rects_move_from(out, eyes_from, dx, dy);

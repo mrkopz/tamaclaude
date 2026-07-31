@@ -25,6 +25,7 @@ from .props import (
     PROPS,
     HAM_STRIKE,
     HAM_WINDUP,
+    glasses,
     hammer_anvil,
     hammer_stage,
     magnifier_glass,
@@ -244,6 +245,10 @@ FLOATING_PROPS = frozenset({"globe", "clock"})
 # ย่อทั้งฉาก (ตัว + หมวก + ค้อน + แท่น) พร้อมกัน สัดส่วนภายในจึงไม่เพี้ยน
 STATE_SCALE: dict[str, float] = {"building": 0.875}
 
+# สถานะที่มาสคอตสวมแว่น — แว่นไม่ใช่ prop เพราะช่อง prop ถูกแล็ปท็อปจองไปแล้ว
+# และแว่นต้องยุบ/เลื่อนไปกับตา ไม่ใช่กับชุด prop
+GLASSES_STATES = frozenset({"writing"})
+
 
 def _skin(connected: bool, state: str) -> tuple[str, str]:
     """คืน (สีตัว, สีตา)"""
@@ -310,6 +315,8 @@ def build(
     look += m.scan * ((phase * 2.0 % 1.0) - 0.5) * 2.0
     mag = EYE_MAG if prop_name == "magnifier" else 1.0  # ตาข้างที่อยู่หลังเลนส์
     eyes = _eye(EYE_L, eye_kind, look, ink) + _eye(EYE_R, eye_kind, look, ink, mag)
+    if state in GLASSES_STATES:  # แว่นวาดหลังตา กรอบจึงทับขอบตา และยุบไปกับตาชุดเดียวกัน
+        eyes += glasses(EYE_L, connected)
     eyes = move(_squashed(eyes, squash), dx, dy)  # ตายุบไปกับลำตัว ไม่ใช่ค้างอยู่บนหน้าที่เตี้ยลง
 
     out: RectList = list(silhouette)
