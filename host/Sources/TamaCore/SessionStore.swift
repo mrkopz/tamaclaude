@@ -282,7 +282,7 @@ public final class SessionStore {
     /// เป็น `.done` ไม่ใช่ `.alert` — เทิร์นจบเฉยๆ ไม่มีอะไรค้างให้ตอบ ต่างจาก
     /// `Notification`/`StopFailure` ที่ไม่มีมือคนแล้วเดินต่อไม่ได้จริง ถ้าย้อมแดง
     /// เหมือนกันหมด ทุกเทิร์นที่ผู้ใช้ลุกจากโต๊ะจะได้การ์ดแดง แล้วสีแดงจะเลิกแปลว่า
-    /// "ต้องมือคน" · ท่ามาสคอตยังเป็น `waiting` ("?" เหลือง = ถึงตาคุณ) เหมือนเดิม
+    /// "ต้องมือคน" · ท่ามาสคอตยังเป็น `waiting` (นาฬิกาเหลือง = ถึงตาคุณ) เหมือนเดิม
     private func stopAlerts(now: Date) {
         for id in order {
             guard let s = sessions[id], let stopped = s.stoppedAt else { continue }

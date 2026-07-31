@@ -12,7 +12,7 @@ typedef enum {
     CT_PROP_GLOBE,
     CT_PROP_DOTS,
     CT_PROP_BANG,
-    CT_PROP_QUERY,
+    CT_PROP_CLOCK,
     CT_PROP_ZZZ,
     CT_PROP_SPARKLE,
     CT_PROP_CREW,

@@ -288,11 +288,15 @@ static void hammer(ct_rects_t *o, float phase, bool connected)
 }
 
 // ลูกโลกบนหัว — วัดจากระดับหัว (y = 0)
-#define CT_GLB_D 6.5f      // ใหญ่กว่าหัวครึ่งหนึ่ง จึงอ่านเป็นลูกโลกไม่ใช่ลูกปัด
-#define CT_GLB_CY (-2.2f)  // ขอบบน -5.45 (ไม่ล้น BOX_Y0) ขอบล่าง 1.05 (เหนือตาที่ 1.5)
+// ลูกโลกกับนาฬิกาเป็น prop คู่ที่คร่อมหัวเหมือนกัน จึงใช้ทั้งขนาดและตำแหน่งชุดเดียวกัน
+// (CLK_S / CLK_Y) ถ้าสองชิ้นนี้ไม่เท่ากัน การสลับสถานะจะอ่านเป็น "ของโตขึ้น/เล็กลง"
+#define CT_GLB_D 7.0f      // เส้นผ่านศูนย์กลาง — เท่า CLK_S
+#define CT_GLB_CY (-2.0f)  // ขอบบน -5.5 (ไม่ล้น BOX_Y0) ขอบล่าง 1.5 = ขอบบนของตา เท่า CLK_Y
 #define CT_GLB_PX 0.25f    // หนึ่งพิกเซลเป็นหน่วย unit ที่ unit_px = 4
-#define CT_GLB_BANDS 13    // แถบแนวนอนที่ประกอบเป็นวงกลม — แถบละ 0.5 unit = 2 px
-#define CT_GLB_RIM 0.5f    // ขอบลูก 2 px — 1 px อ่านเป็นเส้นบางที่ขาดๆ ตามขั้นบันไดของแถบ
+#define CT_GLB_BANDS 14    // แถบแนวนอนที่ประกอบเป็นวงกลม — แถบละ 0.5 unit = 2 px (7.0 / 14)
+// ขอบลูก 4 px — เท่ากับขอบนาฬิกา (CLK_T) โดยตั้งใจ: ลูกโลกกับนาฬิกาเป็น prop สองชิ้นที่
+// คร่อมหัวเหมือนกัน ถ้าน้ำหนักเส้นต่างกันจะอ่านเป็นของคนละชุด ไม่ใช่ภาษาเดียวกัน
+#define CT_GLB_RIM 1.0f
 // แถบละสองพิกเซลคือจุดที่บันไดยังละเอียดพอให้อ่านเป็นวงกลม แถบละ 4 px (8 แถบ)
 // ให้หัวท้ายเป็นแผ่นแบนกว้างจนอ่านเป็นโดม ไม่ใช่ลูกกลม
 
@@ -321,8 +325,11 @@ static void globe(ct_rects_t *o, float phase, bool connected)
 
     // ครึ่งความกว้างวัดที่กึ่งกลางแถบ (ไม่ใช่ขอบ) หัวท้ายจึงแคบลงตามวงกลมจริง
     // แล้วปัดเป็นจำนวนพิกเซลเต็ม ขอบซ้าย/ขวาจึงตกบนเส้นพิกเซลพอดี ไม่มีขั้นบันไดครึ่งพิกเซล
-    float r = CT_GLB_D / 2.0f, bh = CT_GLB_D / CT_GLB_BANDS;
-    // bhw = ครึ่งความกว้างของ "ไส้" (หลังหักขอบ) — ทวีปเกาะไส้ ไม่ใช่ขอบ จึงไม่ทับขอบมืด
+    // ไส้ต้องมาจาก *วงกลมที่เล็กลง* (r - CT_GLB_RIM) ไม่ใช่จากการหักขอบออกทางแนวนอน:
+    // การหักแนวนอนกินแค่ซ้าย/ขวา แถบบน/ล่างจึงยาวเท่าเดิม ไส้ออกมาเป็นวงรีตั้ง
+    // (ที่ขอบ 4 px ไส้กลายเป็น 18 x 22 px — เห็นชัดว่าลูกโลกไม่กลม)
+    float r = CT_GLB_D / 2.0f, r_in = r - CT_GLB_RIM, bh = CT_GLB_D / CT_GLB_BANDS;
+    // bhw = ครึ่งความกว้างของ "ไส้" — ทวีปเกาะไส้ ไม่ใช่ขอบ จึงไม่ทับขอบมืด
     float by0[CT_GLB_BANDS], by1[CT_GLB_BANDS], bhw[CT_GLB_BANDS];
     for (int i = 0; i < CT_GLB_BANDS; i++) {
         by0[i] = CT_GLB_CY - r + i * bh;
@@ -331,9 +338,10 @@ static void globe(ct_rects_t *o, float phase, bool connected)
         float q = r * r - yy * yy;
         float hw = roundf(sqrtf(q > 0.0f ? q : 0.0f) / CT_GLB_PX) * CT_GLB_PX;
         ct_rects_add(o, CT_HEAD_CX - hw, by0[i], 2 * hw, by1[i] - by0[i], rim);
+        float qi = r_in * r_in - yy * yy;
+        float ihw = roundf(sqrtf(qi > 0.0f ? qi : 0.0f) / CT_GLB_PX) * CT_GLB_PX;
         // แถบบนสุด/ล่างสุดเป็นขอบล้วน — ถ้าเจาะไส้ด้วย ขอบด้านบน/ล่างจะหายไปทั้งเส้น
-        float ihw = (i == 0 || i == CT_GLB_BANDS - 1) ? 0.0f : hw - CT_GLB_RIM;
-        if (ihw < 0.0f) ihw = 0.0f;
+        if (i == 0 || i == CT_GLB_BANDS - 1) ihw = 0.0f;
         if (ihw > 0.0f) {
             ct_rects_add(o, CT_HEAD_CX - ihw, by0[i], 2 * ihw, by1[i] - by0[i], ocean);
         }
@@ -406,18 +414,60 @@ static void bang(ct_rects_t *o, float phase, bool connected)
     ct_rects_add(o, x, y + 3.8f, 1.9f, 1.3f, col);
 }
 
-// เครื่องหมายคำถามเหลือง — waiting (รอคำตอบ)
-// ต้องแยกจาก bang ให้ขาด: "รอคุณ" ไม่ใช่ "พัง" — ต่างทั้งรูปทรงและสี
-static void query(ct_rects_t *o, float phase, bool connected)
+// เรือนใหญ่คร่อมหัวแบบเดียวกับลูกโลก — ที่ 5.0 unit หน้าปัดเหลือไส้แค่ 3.5 unit
+// เข็มสองเล่มในนั้นอ่านเป็นรอยเปื้อน ไม่ใช่เข็ม ต้องโตจนไส้กว้างพอให้เข็มยาวกับเข็มสั้น
+// ต่างกันเห็นชัด แล้วยอมให้ล้นลงมาทับหน้าผากแทน
+// 7.0 ไม่ใช่ 6.5 ของลูกโลก เพราะวงแหวนไล่บันไดที่ s/4: 6.5 ทำให้มุมตกที่ 1.625 unit
+// = ครึ่งพิกเซล แล้วบันไดเหลื่อมกันจนเห็นเป็นร่อง (บทเรียนเดียวกับเลนส์แว่นขยาย)
+#define CLK_S 7.0f  // เส้นผ่านศูนย์กลางหน้าปัด
+#define CLK_T 1.0f  // ความหนาขอบ
+#define CLK_Y (-5.5f)  // ขอบบนไม่ล้น BOX_Y0 (-5.6) ขอบล่างจบพอดีที่ 1.5 = ขอบบนของตา
+#define CLK_HAND_PX 0.75f  // ขนาดก้อนของเข็มหนึ่งช่วง
+#define CLK_TICKS 12  // จำนวนตำแหน่งที่เข็มยาวหยุดได้ = จำนวนขีดบนหน้าปัดจริง
+
+// เข็มหนึ่งเล่ม — ก้อนสี่เหลี่ยมเรียงจากศูนย์กลางออกไป
+// ทุกก้อนสแนปลงตาราง 0.25 unit (= 1 px) ก่อนวาด ถ้าปล่อยให้ตกครึ่งพิกเซล
+// เข็มจะเบลอเป็นเงาสองชั้นแทนที่จะเป็นขีดคม และมุมที่ต่างกันจะหนาไม่เท่ากัน
+static void clock_hand(ct_rects_t *o, float cx, float cy, float ang, float len, uint16_t col)
 {
-    uint16_t col = c(connected, CT_COL_ACCENT);
-    float u = 0.74f;
-    float pulse = 0.35f * (0.5f + 0.5f * sinf(phase * (float)M_PI * 2.0f));
-    float x = CT_HEAD_CX - 2 * u, y = -5.2f - pulse;
-    const int cells[8][2] = {{1, 0}, {2, 0}, {0, 1}, {3, 1}, {3, 2}, {2, 3}, {2, 4}, {2, 6}};
-    for (int i = 0; i < 8; i++) {
-        ct_rects_add(o, x + cells[i][0] * u, y + cells[i][1] * u, u, u, col);
+    int n = (int)(len / 0.4f + 0.5f);
+    if (n < 1) n = 1;
+    for (int k = 1; k <= n; k++) {
+        float r = k * (len / n);
+        float px = roundf((cx + sinf(ang) * r - CLK_HAND_PX / 2) * 4.0f) / 4.0f;
+        float py = roundf((cy - cosf(ang) * r - CLK_HAND_PX / 2) * 4.0f) / 4.0f;
+        ct_rects_add(o, px, py, CLK_HAND_PX, CLK_HAND_PX, col);
     }
+}
+
+// นาฬิกาเหลือง — waiting (รอคำตอบจากคุณ)
+// เคยเป็น "?" แต่คำถามอ่านเป็น "งง/ไม่รู้" ปนกับ bang ที่แปลว่าพัง สารจริงคือ
+// "เวลากำลังเดินอยู่ ถึงตาคุณแล้ว" ซึ่งนาฬิกาบอกได้ตรงกว่าและไม่ชนกับ prop อื่น
+// เข็มยาวเดินเป็นขั้น 12 ขั้น ไม่ไหลต่อเนื่อง: ที่ ~28px ทั้งเรือน การไหลอ่านเป็นภาพสั่น
+// เรือนไม่เด้งขึ้นลงเลย จังหวะทั้งหมดอยู่ที่เข็ม — นาฬิกาที่ลอยเด้งอ่านเป็นลูกโป่ง
+// และที่สำคัญกว่า: ขอบล่างจ่อขอบบนของตาอยู่แล้ว ขยับลงอีกนิดเดียวก็กินตา
+// (ตัวมาสคอตเด้งผ่านเรือนไปเอง — ct_mascot.c ไม่เลื่อน prop นี้ตาม dy)
+static void clockface(ct_rects_t *o, float phase, bool connected)
+{
+    uint16_t rim = c(connected, CT_COL_ACCENT);
+    uint16_t face = connected ? CT_COL_TEXT : CT_COL_GRAY;
+    uint16_t hand = c(connected, CT_COL_INK);
+
+    float x = CT_HEAD_CX - CLK_S / 2.0f, y = CLK_Y;
+    float s = CLK_S, t = CLK_T, k = CLK_S / 4.0f;
+
+    ct_rects_add(o, x + t, y + k, s - 2 * t, s - 2 * k, face);  // แถบกลาง เต็มความกว้างในขอบ
+    ct_rects_add(o, x + k, y + t, s - 2 * k, k - t, face);      // เติมช่องบนใต้ขอบ
+    ct_rects_add(o, x + k, y + s - k, s - 2 * k, k - t, face);  // และช่องล่าง
+    ring_round(o, x, y, s, t, rim);
+
+    float cx = x + s / 2.0f, cy = y + s / 2.0f;
+    int step = (int)(phase * CLK_TICKS) % CLK_TICKS;
+    clock_hand(o, cx, cy, step * 2.0f * (float)M_PI / CLK_TICKS, 2.0f, hand);
+    // เข็มสั้นค้างที่ 10 นาฬิกา — มุมที่หน้าปัดทุกเรือนในโฆษณาใช้ เพราะเป็นตำแหน่งที่
+    // เข็มสองเล่มไม่ทับกันและไม่ตั้งฉากจนอ่านเป็นกากบาท
+    clock_hand(o, cx, cy, -(float)M_PI / 3.0f, 1.2f, hand);
+    ct_rects_add(o, cx - 0.375f, cy - 0.375f, 0.75f, 0.75f, hand);  // ดุมกลาง
 }
 
 // Zzz — sleeping (ลอยขึ้นทแยงจากมุมบนขวาของหัว)
@@ -534,7 +584,7 @@ void ct_prop_build(ct_rects_t *out, ct_prop_t prop, float phase, bool connected)
         case CT_PROP_GLOBE: globe(out, phase, connected); break;
         case CT_PROP_DOTS: dots(out, phase, connected); break;
         case CT_PROP_BANG: bang(out, phase, connected); break;
-        case CT_PROP_QUERY: query(out, phase, connected); break;
+        case CT_PROP_CLOCK: clockface(out, phase, connected); break;
         case CT_PROP_ZZZ: zzz(out, phase, connected); break;
         case CT_PROP_SPARKLE: sparkle(out, phase, connected); break;
         case CT_PROP_CREW: crew(out, phase, connected); break;
