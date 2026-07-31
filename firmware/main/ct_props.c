@@ -64,14 +64,14 @@ static void magnifier(ct_rects_t *o, float phase, bool connected)
     float x, y;
     lens_box(phase, &x, &y);
     ring_round(o, x, y, s, t, col);
-    // ด้ามลากลงขวาไปจบที่มือ — ต้องพ้นขอบแขน (16.5) ถึงจะอ่านออกว่าถืออยู่
+    // ด้ามลากลงขวาไปจบที่มือ — ต้องพ้นขอบแขน (16.25) ถึงจะอ่านออกว่าถืออยู่
     for (int i = 0; i < 3; i++) {
         ct_rects_add(o, x + s - 0.5f + i * 1.15f, y + s * 0.70f + i * 0.55f, 1.5f, 1.05f, col);
     }
     // แสงสะท้อนบนกระจกเป็นขีดสองขีดมุมบนซ้าย — วางในช่องว่างระหว่างตากับขอบ ไม่ทับตา
     uint16_t glint = c(connected, CT_COL_OUTLINE);
-    ct_rects_add(o, x + 1.05f, y + 2.5f, 0.9f, 1.5f, glint);
-    ct_rects_add(o, x + 2.3f, y + 1.05f, 1.5f, 0.9f, glint);
+    ct_rects_add(o, x + 0.75f, y + 2.0f, 0.75f, 1.25f, glint);
+    ct_rects_add(o, x + 1.75f, y + 0.75f, 1.25f, 0.75f, glint);
 }
 
 // โลโก้แอปเปิลบนฝา — เขียนเป็นภาพ ASCII ตรงๆ อ่านง่ายกว่าลิสต์ตัวเลข
@@ -172,8 +172,8 @@ void ct_prop_hammer_anvil(ct_rects_t *o, float phase, bool connected)
     // ชิ้นงานวาบเป็นเหลืองสว่างในเฟรมที่โดนกระแทก แล้วคืนเป็นแดงร้อน
     uint16_t hot = c(connected, strike ? CT_COL_ACCENT : CT_COL_ALERT);
     float h = strike ? CT_HOT_DOWN_H : CT_HOT_UP_H;
-    // ฐานกว้างกว่าบล็อก จึงอ่านเป็นของตั้งอยู่กับพื้น ไม่ใช่ก้อนลอย (จบที่ระดับฝ่าเท้า 11.2)
-    ct_rects_add(o, CT_ANVIL_CX - 2.6f, 10.4f, 5.2f, 0.8f, base);
+    // ฐานกว้างกว่าบล็อก จึงอ่านเป็นของตั้งอยู่กับพื้น ไม่ใช่ก้อนลอย (จบที่ระดับฝ่าเท้า 12.0)
+    ct_rects_add(o, CT_ANVIL_CX - 2.6f, 11.2f, 5.2f, 0.8f, base);
     ct_rects_add(o, CT_ANVIL_CX - 1.9f, CT_ANVIL_TOP, 3.8f, 1.7f, block);  // บล็อกเหล็ก
     // ชิ้นงานร้อน — ยุบตอนโดนทุบ
     ct_rects_add(o, CT_ANVIL_CX - 1.25f, CT_ANVIL_TOP - h, 2.5f, h, hot);
@@ -192,8 +192,8 @@ static const char *const HAT_ART[HAT_ROWS] = {
     "..++#######++..",
     "+++++++++++++++",
 };
-#define HAT_W 16.0f  // ปีกกว้างกว่านี้เริ่มอ่านเป็นหมวกชาวนา
-#define HAT_X0 0.0f
+#define HAT_W 14.0f  // ปีกยื่นพ้นลำตัว (2..14) ข้างละ 1 — กว้างกว่านี้อ่านเป็นหมวกชาวนา
+#define HAT_X0 1.0f
 #define HAT_ROW_H 0.96f  // ห้าแถวรวม 4.8 — สูงกว่านี้ยอดหมวกจะโผล่พ้นกรอบวาดตอนตัวกระเด้ง
 
 // แปลง HAT_ART เป็น rect ทีละช่วงสีติดกัน ไม่ใช่ทีละช่อง
@@ -227,17 +227,17 @@ static void hammer_tool(ct_rects_t *o, ct_ham_stage_t stage, uint16_t grip, uint
     float hx, hy;
     if (stage == CT_HAM_READY || stage == CT_HAM_RECOVER) {
         // ตั้งพักข้างตัว — ด้ามเอียงขวาเป็นสองขั้น ปลายล่างจบในระดับมือ ไม่ลอยห่างจากแขน
-        ct_rects_add(o, 16.9f, 2.2f, CT_HAM_GRIP_W, 3.2f, grip);
-        ct_rects_add(o, 17.8f, -1.2f, CT_HAM_GRIP_W, 3.6f, grip);
-        hx = 16.6f;
-        hy = -3.6f;
+        ct_rects_add(o, 16.7f, 2.8f, CT_HAM_GRIP_W, 3.2f, grip);
+        ct_rects_add(o, 17.6f, -0.6f, CT_HAM_GRIP_W, 3.6f, grip);
+        hx = 16.4f;
+        hy = -3.0f;
     } else {
         // ด้ามทแยง 45 องศาจากมือ — ขึ้นตอนเงื้อ ลงตอนฟาด (สะท้อนรอบระดับมือเดียวกัน)
         bool up = stage == CT_HAM_WINDUP;
-        float y0 = up ? 3.6f : 2.6f;
+        float y0 = up ? 4.2f : 3.2f;
         float step = up ? -CT_HAM_STEP : CT_HAM_STEP;
         for (int i = 0; i < CT_HAM_N; i++) {
-            ct_rects_add(o, 17.0f + i * CT_HAM_STEP, y0 + i * step, CT_HAM_BLK, CT_HAM_BLK,
+            ct_rects_add(o, 16.8f + i * CT_HAM_STEP, y0 + i * step, CT_HAM_BLK, CT_HAM_BLK,
                          grip);
         }
         // หัวค้อนต้องคาบปลายด้ามไว้เสมอ ไม่งั้นเห็นเป็นก้อนเทาลอยแยกจากด้าม
@@ -288,10 +288,10 @@ static void hammer(ct_rects_t *o, float phase, bool connected)
 }
 
 // ลูกโลกบนหัว — วัดจากระดับหัว (y = 0)
-#define CT_GLB_D 7.0f      // ใหญ่กว่าหัวครึ่งหนึ่ง จึงอ่านเป็นลูกโลกไม่ใช่ลูกปัด
-#define CT_GLB_CY (-1.9f)  // ขอบบน -5.4 (ไม่ล้น BOX_Y0) ขอบล่าง 1.6 (เหนือตาที่ 2.10)
+#define CT_GLB_D 6.5f      // ใหญ่กว่าหัวครึ่งหนึ่ง จึงอ่านเป็นลูกโลกไม่ใช่ลูกปัด
+#define CT_GLB_CY (-2.2f)  // ขอบบน -5.45 (ไม่ล้น BOX_Y0) ขอบล่าง 1.05 (เหนือตาที่ 1.5)
 #define CT_GLB_PX 0.25f    // หนึ่งพิกเซลเป็นหน่วย unit ที่ unit_px = 4
-#define CT_GLB_BANDS 14    // แถบแนวนอนที่ประกอบเป็นวงกลม — แถบละ 0.5 unit = 2 px
+#define CT_GLB_BANDS 13    // แถบแนวนอนที่ประกอบเป็นวงกลม — แถบละ 0.5 unit = 2 px
 #define CT_GLB_RIM 0.5f    // ขอบลูก 2 px — 1 px อ่านเป็นเส้นบางที่ขาดๆ ตามขั้นบันไดของแถบ
 // แถบละสองพิกเซลคือจุดที่บันไดยังละเอียดพอให้อ่านเป็นวงกลม แถบละ 4 px (8 แถบ)
 // ให้หัวท้ายเป็นแผ่นแบนกว้างจนอ่านเป็นโดม ไม่ใช่ลูกกลม
@@ -427,7 +427,7 @@ static void zzz(ct_rects_t *o, float phase, bool connected)
     for (int i = 0; i < 3; i++) {
         float t = fmodf(phase + i / 3.0f, 1.0f);
         float s = 1.0f + i * 0.55f;
-        ct_rects_add(o, 12.4f + i * 2.0f + t * 1.0f, -1.1f - i * 1.5f - t * 1.3f, s, s, col);
+        ct_rects_add(o, 11.4f + i * 2.0f + t * 1.0f, -1.1f - i * 1.5f - t * 1.3f, s, s, col);
     }
 }
 
@@ -436,7 +436,7 @@ static void sparkle(ct_rects_t *o, float phase, bool connected)
 {
     uint16_t col = c(connected, CT_COL_ACCENT);
     const float spots[5][2] = {
-        {1.6f, -2.6f}, {14.4f, -2.0f}, {CT_HEAD_CX, -4.0f}, {1.2f, 2.5f}, {18.6f, 5.2f}};
+        {2.6f, -2.6f}, {13.4f, -2.0f}, {CT_HEAD_CX, -4.0f}, {0.5f, 3.2f}, {18.6f, 5.6f}};
     for (int i = 0; i < 5; i++) {
         if (((int)(phase * 4.0f) + i) % 2) continue;
         float x = spots[i][0], y = spots[i][1];

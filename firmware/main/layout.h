@@ -81,15 +81,15 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
     168, 174, 191, 200, 228, 235, 247, 268, 273, 288, 298, 310,
 };
 
-#define CT_MASCOT_GRID_W             17
-#define CT_MASCOT_GRID_H             11.2f
+#define CT_MASCOT_GRID_W             16.5f
+#define CT_MASCOT_GRID_H             12
 #define CT_MASCOT_CORNER             0.25f
 
 // กรอบวาดมาสคอตรวม prop (หน่วย unit) — มาจาก tools/gen/props.py
 #define CT_BOX_X0                    -0.5f
 #define CT_BOX_X1                    23.4f
 #define CT_BOX_Y0                    -5.6f
-#define CT_BOX_Y1                    11.2f
+#define CT_BOX_Y1                    12.0f
 
 // จานสีเป็น RGB565 ตามที่แผงจอกินจริง
 #define CT_COL_BG                    0x1081

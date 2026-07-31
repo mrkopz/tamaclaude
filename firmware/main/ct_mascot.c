@@ -6,19 +6,23 @@
 #include "ct_props.h"
 
 // --- โครงร่าง (พิกัด unit) --------------------------------------------------
-// สัดส่วนวัดจากภาพอ้างอิง ลำตัวกว้าง 14 เป็นฐานของทุกค่า
-#define BODY_X 1.0f
+// ทุกค่าวัดจากภาพอ้างอิงซึ่งลงตารางสี่เหลี่ยม 12 x 8 ช่องพอดี CELL คือหนึ่งช่องนั้น
+// (ลำตัว 8x8 ช่อง · แขนข้างละ 2x2 · ตา 1x1 · ขากว้าง 1 สูง 2)
+#define CELL 1.5f
+#define BODY_X 2.0f
 #define BODY_Y 0.0f
-#define BODY_W 14.0f
-#define BODY_H 8.4f
-#define NUB_Y 2.8f
-#define NUB_H 2.5f
-#define NUB_W 1.5f
-// ขาสูงหนึ่งในสี่ของตัวพอดี (2.8 จาก 11.2) — ระดับฝ่าเท้าคงเดิม ที่ยาวขึ้นแทนคือลำตัว
-#define LEG_TOP 8.4f
-#define LEG_H 2.8f
-#define FOOT_Y (LEG_TOP + LEG_H)  // 11.2 — ระดับที่มาสคอตยืน
-#define EYE_L 3.36f
+#define BODY_W (8 * CELL)
+#define BODY_H (6 * CELL)  // บล็อกบน 6 ช่อง ที่เหลือเป็นขา
+#define NUB_Y (2 * CELL)
+#define NUB_H (2 * CELL)
+// แขนยาว 1.5 ช่อง ไม่ใช่ 2 ช่องตามภาพอ้างอิง — จุดเดียวที่จงใจเบี่ยง: ที่ 4 px/unit
+// แขนเต็มสองช่องยื่นออก 12 px ต่อข้าง อ่านเป็นแขนยาวเก้งก้าง ไม่ใช่ตอแขนแบบต้นฉบับ
+#define NUB_W (1.5f * CELL)
+// ขาสูงสองช่อง = หนึ่งในสี่ของตัว ตรงกับภาพอ้างอิง
+#define LEG_TOP (6 * CELL)
+#define LEG_H (2 * CELL)
+#define FOOT_Y (LEG_TOP + LEG_H)  // 12 — ระดับที่มาสคอตยืน
+#define EYE_L (BODY_X + CELL)
 #define EYE_R CT_EYE_R  // ตาข้างขวานิยามใน ct_props.h — แว่นขยายต้องเล็งไปที่นั่น
 #define EYE_Y CT_EYE_Y
 #define EYE_S CT_EYE_S
@@ -33,9 +37,13 @@
 // ตรงนั้นเป็นกลางลำตัว ไม่ใช่มุม จึงไม่ต้องเผื่อสองเท่าแบบขา
 #define ARM_OVERLAP CORNER
 
-// ขาและช่องว่างวัดจากภาพอ้างอิง: ขานอกกว้างกว่าขาใน ช่องกลางกว้างกว่าช่องข้าง
+// ขาทั้งสี่กว้างเท่ากันช่องละหนึ่ง อยู่ที่ช่อง 0/2/5/7 ของลำตัว — ช่องกลางจึงกว้างสองช่อง
+// ส่วนช่องข้างกว้างช่องเดียว และขาคู่นอกชิดขอบลำตัวพอดี (ทั้งหมดตามภาพอ้างอิง)
 static const float LEG_SPANS[4][2] = {
-    {1.00f, 2.46f}, {4.50f, 2.20f}, {9.29f, 2.20f}, {12.53f, 2.46f}};
+    {BODY_X + 0 * CELL, CELL},
+    {BODY_X + 2 * CELL, CELL},
+    {BODY_X + 5 * CELL, CELL},
+    {BODY_X + 7 * CELL, CELL}};
 
 // ช่วง phase ที่ตากะพริบ — สั้นมากโดยตั้งใจ กะพริบนานกว่านี้จะดูเหมือนง่วง
 #define BLINK_FROM 0.88f
@@ -318,10 +326,12 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
         ct_prop_hammer_anvil(out, phase, connected);
     }
 
-    if (STATES[state].prop == CT_PROP_MAGNIFIER) {  // กระจกอยู่ใต้ตา ขอบเลนส์อยู่บนตา
+    // กระจกอยู่ใต้ตา ขอบเลนส์อยู่บนตา — แต่ทั้งคู่คือของชิ้นเดียวกัน จึงห้ามยุบตามลำตัว
+    // เคยยุบตาม (ตอนนั้นดูเหมือนถูก เพราะกระจกเกาะหน้ามาสคอต) แล้วท่าที่มี squash > 0
+    // ดันกระจกลงราว 1.5px ในขณะที่วงแหวนอยู่ที่เดิม เห็นเป็นเนื้อลำตัวโผล่ใต้ขอบบนของวง
+    if (STATES[state].prop == CT_PROP_MAGNIFIER) {
         int glass_from = out->count;
         ct_prop_magnifier_glass(out, phase, connected);
-        squashed(out, glass_from, squash);
         ct_rects_move_from(out, glass_from, dx, dy);
     }
 
