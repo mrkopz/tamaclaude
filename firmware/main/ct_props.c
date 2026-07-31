@@ -74,6 +74,25 @@ static void magnifier(ct_rects_t *o, float phase, bool connected)
     ct_rects_add(o, x + 1.75f, y + 0.75f, 1.25f, 0.75f, glint);
 }
 
+// แว่นตาคร่อมตาสองข้าง — วาดหลังตา (ct_mascot.c เป็นคนเรียก) กรอบจึงทับขอบตา
+// วงกลวงทั้งสองข้าง จึงยังเห็นสายตาที่กวาดอ่านอยู่ข้างใน ซึ่งเป็นสัญญาณหลักของท่านี้
+// ใช้ steel เหมือนกรอบแว่นขยาย ไม่ใช่สีหมึก: กรอบสีหมึกจะเชื่อมกับตาซึ่งเป็นสีหมึก
+// เหมือนกันที่ 4 px/unit แล้วอ่านเป็นก้อนดำก้อนเดียว ไม่ใช่ตาที่อยู่ในกรอบ
+void ct_prop_glasses(ct_rects_t *o, float eye_l, bool connected)
+{
+    uint16_t col = c(connected, CT_COL_STEEL);
+    float y = CT_EYE_Y + CT_EYE_S / 2.0f - CT_GLS_S / 2.0f;
+    float xs[2] = {eye_l + CT_EYE_S / 2.0f - CT_GLS_S / 2.0f,
+                   CT_EYE_R + CT_EYE_S / 2.0f - CT_GLS_S / 2.0f};
+    for (int i = 0; i < 2; i++) ring_round(o, xs[i], y, CT_GLS_S, CT_GLS_T, col);
+    // สะพานจมูกกับขาแว่นอยู่กลางความสูงของวง = ระดับเดียวกับตา จึงอ่านเป็นเส้นเดียวพาดหน้า
+    // (เคยวางไว้แถวบนของวงตามแว่นจริง แล้วอ่านเป็นสายคาดหัว ไม่ใช่แว่น)
+    float by = y + CT_GLS_S / 2.0f - CT_GLS_T / 2.0f;
+    ct_rects_add(o, xs[0] + CT_GLS_S, by, xs[1] - xs[0] - CT_GLS_S, CT_GLS_T, col);
+    ct_rects_add(o, xs[0] - CT_GLS_TEMPLE, by, CT_GLS_TEMPLE, CT_GLS_T, col);
+    ct_rects_add(o, xs[1] + CT_GLS_S, by, CT_GLS_TEMPLE, CT_GLS_T, col);
+}
+
 // โลโก้แอปเปิลบนฝา — เขียนเป็นภาพ ASCII ตรงๆ อ่านง่ายกว่าลิสต์ตัวเลข
 // ช่องละ 0.25 unit = 1 พิกเซลพอดีที่ unit_px=4 จึงคมและไม่เพี้ยนจากการปัดเศษ
 // ใบเอียงขึ้นขวา ตัวลูกเป็นก้อนกลมทึบ ขอบขวาเว้าสองแถว = รอยกัด ก้นแยกสองพู
