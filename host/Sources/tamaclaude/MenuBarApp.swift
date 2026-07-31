@@ -157,8 +157,6 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         daemon?.stop()
     }
 
-    // MARK: - เมนู
-
     /// เมนูเดิมทั้งอัน ลบแค่สองบรรทัดบนที่ย้ายไปอยู่ท้าย popover แล้ว
     ///
     /// เฟืองเด้ง NSMenu ไม่ใช่หน้า Settings ที่วาดเอง — ติ๊กถูก, submenu, slider ในเมนู
@@ -279,8 +277,6 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         guard width > 0 else { return }
         brightnessRow.setFrameSize(NSSize(width: width, height: brightnessRow.frame.height))
     }
-
-    // MARK: - อัปเดตหน้าตา
 
     /// สถานะบอร์ดอยู่ท้าย popover ไม่ใช่ที่ไอคอน
     ///
@@ -430,8 +426,6 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         refreshFinished = Date()
     }
 
-    // MARK: - popover เปิด/ปิด
-
     @objc private func togglePanel() {
         popover.isShown ? popover.performClose(nil) : openPanel()
     }
@@ -505,8 +499,6 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         fitBrightnessRow()
         gearMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: -2), in: button)
     }
-
-    // MARK: - การกระทำ
 
     @objc private func chooseBoard(_ sender: NSMenuItem) {
         let id = sender.representedObject as? UUID
