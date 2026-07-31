@@ -91,6 +91,18 @@ class Screen:
     # None = ไม่เคยได้ข้อมูลเลย -> ถอยไปเป็นนาฬิกาตั้งโต๊ะ ไม่ใช่โครงเปล่าที่ดูเหมือนพัง
     usage: list[Usage] | None = None
 
+    def shown_cards(self) -> list[Card]:
+        """การ์ดที่มีสิทธิ์ขึ้นจอ — ลิงก์หลุดแล้วเหลือศูนย์ใบ ดูที่ shown_usage()"""
+        return list(self.cards) if self.connected else []
+
+    def shown_usage(self) -> list[Usage]:
+        """โควตาที่มีสิทธิ์ขึ้นจอ — ลิงก์หลุดแล้วเหลือศูนย์แถว
+
+        ตอนหลุดลิงก์ สิ่งเดียวที่บอร์ดยืนยันเองได้คือนาฬิกา ทั้งการ์ดและเปอร์เซ็นต์เป็นค่าที่
+        host เคยบอกไว้และไม่มีใครรับรองแล้วว่ายังจริง ดูที่ DESIGN.md "แผงโควตา"
+        """
+        return list(self.usage) if self.connected and self.usage else []
+
 
 def _fit(draw: ImageDraw.ImageDraw, text: str, f: ImageFont.FreeTypeFont, max_w: int) -> str:
     """ตัดข้อความให้พอดีความกว้าง — daemon ต้องทำแบบเดียวกันก่อนส่งบน BLE"""
@@ -113,7 +125,8 @@ def _topbar(draw: ImageDraw.ImageDraw, s: Screen) -> None:
     # นาฬิกาบนแถบโผล่เมื่อพื้นที่ล่างถูกยึดไป (card หรือ usage) — ไม่ใช่ "เมื่อมี card"
     # อย่างเดิม เพราะตอนนี้มีผู้ยึดสองราย ถ้าเช็คแค่ card จะได้นาฬิกาซ้ำสองที่ในฉาก idle
     right = L.screen.width - 6
-    if s.cards or s.usage:
+    cards, usage = s.shown_cards(), s.shown_usage()
+    if cards or usage:
         draw.text((right, h // 2), s.clock, font=font(12),
                   fill=quantize565(PAL.text), anchor="rm")
         right -= 38
@@ -125,8 +138,8 @@ def _topbar(draw: ImageDraw.ImageDraw, s: Screen) -> None:
     # การ์ดยึดพื้นที่ล่างไปแล้ว แต่โควตาไม่ควรหายไปทั้งหมด — ย่อเหลือหน้าต่าง 5 ชม.
     # อย่างเดียวมาไว้บนแถบ ไม่มีป้ายกำกับเพราะบนแถบมีค่าเดียว ไม่ต้องแยกว่าตัวไหน
     # ไม่แสดงตอนไม่มีการ์ด เพราะแผงเต็มโชว์ตัวเลขเดียวกันอยู่แล้ว
-    if s.cards and s.usage:
-        u = s.usage[0]
+    if cards and usage:
+        u = usage[0]
         col = usage_color(u.pct)
         pct_text = "--%" if u.pct is None else f"{u.pct}%"
         draw.text((right, h // 2), pct_text, font=font(11), fill=quantize565(col), anchor="rm")
@@ -423,10 +436,10 @@ def render(s: Screen, phase: float = 0.0, cycle: int = 0) -> Image.Image:
         _slot(draw, i, s.sessions[i], s, phase, cycle, n)
     # ลำดับความสำคัญของพื้นที่ล่าง: การเตือน > โควตา > นาฬิกา
     # โควตาไม่เคยชนะ card เพราะ card คือสิ่งที่ต้องการการกระทำจากผู้ใช้
-    if s.cards:
-        _cards(draw, s.cards, s.card_overflow or max(0, len(s.cards) - CARD_MAX))
-    elif s.usage:
-        _usage(draw, s.usage)
+    if cards := s.shown_cards():
+        _cards(draw, cards, s.card_overflow or max(0, len(cards) - CARD_MAX))
+    elif usage := s.shown_usage():
+        _usage(draw, usage)
     else:
         _idle_clock(draw, s)
     return img

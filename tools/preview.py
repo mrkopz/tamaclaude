@@ -124,12 +124,19 @@ SCENES: dict[str, screen.Screen] = {
         ],
         cards=[screen.Card("esp32-claude-bt", "Build finished, 0 warnings", "done")],
     ),
+    # มีทั้งการ์ดและตัวเลขโควตาค้างอยู่ในมือ แต่ต้องไม่ขึ้นจอสักอย่าง — หลุดลิงก์แล้ว
+    # ไม่มีใครรับรองว่ายังจริง เหลือนาฬิกาที่หรี่เป็นเทาบอกว่าเป็นเวลาล่าสุดที่รู้
     "offline": screen.Screen(
         sessions=[
             screen.Session("esp32-claude-bt", "idle", 0.0),
             screen.Session("docs", "idle", 0.5),
         ],
         connected=False,
+        cards=[screen.Card("esp32-claude-bt", "Needs your answer", "alert")],
+        usage=[
+            screen.Usage("Current", SESSION_WINDOW, 43, 1 * 3600 + 40 * 60),
+            screen.Usage("Weekly", WEEKLY_WINDOW, 8, 5 * 86400 + 8 * 3600),
+        ],
     ),
     # ไม่มี session เลย — มาสคอตเดินข้ามแถบ slot ที่ว่างอยู่
     "empty": screen.Screen(

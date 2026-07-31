@@ -689,10 +689,23 @@ static uint16_t card_accent(ct_card_kind_t kind)
     }
 }
 
+// ทั้งการ์ดและโควตามาจาก host ทั้งคู่ ลิงก์หลุดแล้วไม่มีใครรับรองว่ายังจริง — พื้นที่ล่าง
+// จึงว่างทั้งแถบและตกเป็นของนาฬิกา ตรงกับ Screen.shown_{cards,usage}() ใน gen/screen.py
+static int shown_card_count(void)
+{
+    return s_connected ? s_snap.card_count : 0;
+}
+
+static bool usage_shown(void)
+{
+    return s_snap.has_usage && s_connected;
+}
+
 static void layout_cards(void)
 {
+    int n = shown_card_count();
     for (int i = 0; i < CT_MAX_CARDS; i++) {
-        if (i >= s_snap.card_count) {
+        if (i >= n) {
             lv_obj_add_flag(s_cards[i].box, LV_OBJ_FLAG_HIDDEN);
             continue;
         }
@@ -705,13 +718,13 @@ static void layout_cards(void)
 
     // การ์ดที่ไม่ได้วาดต้องเหลือร่องรอย ไม่ใช่หายเงียบ — "ไม่มีอะไรค้างแล้ว" กับ
     // "ยังค้างอีกสองเรื่องแต่จอไม่พอ" คือสองสถานะที่ต้องแยกออกได้ในเหลือบเดียว
-    if (s_snap.card_count > 0 && s_snap.card_overflow > 0) {
+    if (n > 0 && s_snap.card_overflow > 0) {
         // ตัดที่ 99 — เกินกว่านั้นตัวเลขที่แน่นอนไม่ได้บอกอะไรเพิ่มแล้ว มีแต่จะล้นบรรทัด
         int more = s_snap.card_overflow > 99 ? 99 : s_snap.card_overflow;
         char buf[16];
         snprintf(buf, sizeof(buf), "+%d more", more);
         lv_label_set_text(s_card_more, buf);
-        int y = CT_CARD_TOP + CT_CARD_PAD + s_snap.card_count * (CARD_H + CARD_GAP) + 1;
+        int y = CT_CARD_TOP + CT_CARD_PAD + n * (CARD_H + CARD_GAP) + 1;
         lv_obj_align(s_card_more, LV_ALIGN_TOP_RIGHT, -(CT_CARD_PAD + 8), y);
         lv_obj_remove_flag(s_card_more, LV_OBJ_FLAG_HIDDEN);
     } else {
@@ -720,7 +733,7 @@ static void layout_cards(void)
 
     // พื้นที่ล่างมีผู้ยึดสองราย (การ์ด, โควตา) — ถ้ามีรายใดรายหนึ่ง นาฬิกาใหญ่ต้องหลบ
     // ขึ้นไปอยู่บนแถบ ไม่งั้นนาฬิกาหายจากจอทั้งใบ หรือโผล่ซ้ำสองที่
-    bool taken = s_snap.card_count > 0 || s_snap.has_usage;
+    bool taken = n > 0 || usage_shown();
     if (taken) {
         lv_obj_add_flag(s_clock_big, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_date, LV_OBJ_FLAG_HIDDEN);
@@ -782,7 +795,7 @@ static void usage_reset_text(const ct_usage_t *u, char *out, size_t cap)
 // เร็วพอจะเปลี่ยนการตัดสินใจภายในวันเดียว ส่วน weekly รอดูตอนการ์ดหายไปได้
 static void layout_usage_topbar(void)
 {
-    bool show = s_snap.has_usage && s_snap.card_count > 0;
+    bool show = usage_shown() && shown_card_count() > 0;
     if (!show) {
         lv_obj_add_flag(s_usage_top, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_usage_track, LV_OBJ_FLAG_HIDDEN);
@@ -825,7 +838,7 @@ static void layout_usage_topbar(void)
 static void layout_usage(void)
 {
     // การ์ดชนะโควตาเสมอ — การ์ดคือสิ่งที่ต้องการการกระทำจากผู้ใช้
-    bool show = s_snap.has_usage && s_snap.card_count == 0;
+    bool show = usage_shown() && shown_card_count() == 0;
     for (int i = 0; i < CT_USAGE_ROWS; i++) {
         usage_row_t *row = &s_usage[i];
         if (!show) {
@@ -926,8 +939,15 @@ void ct_ui_set_connected(bool connected)
     lv_label_set_text(s_link, connected ? "tamaclaude" : "no link");
     lv_obj_set_style_text_color(s_link,
                                 ct_color(connected ? CT_COL_TEXT : CT_COL_TEXT_DIM), 0);
+    // นาฬิกาใหญ่หรี่เป็นเทาตอนหลุด — เวลาที่ค้างอยู่ยังอ่านได้ แต่ต้องไม่อ่านว่าเป็นตอนนี้
+    // (ตรงกับ _idle_clock ใน tools/gen/screen.py)
+    lv_obj_set_style_text_color(s_clock_big, ct_color(connected ? CT_COL_TEXT : CT_COL_GRAY), 0);
     update_sky();  // หลุดลิงก์ = ฉากหายทั้งผืน clock ที่ค้างอยู่ไม่ใช่เวลาจริงอีกต่อไป
     layout_slots();
+    // แผงโควตาเข้า/ออกตามลิงก์ และนาฬิกาใหญ่ต้องกลับลงมายึดพื้นที่ที่มันปล่อยไว้
+    layout_cards();
+    layout_usage();
+    layout_usage_topbar();
     for (int i = 0; i < CT_SLOTS_COUNT; i++) lv_obj_invalidate(s_slots[i].canvas);
     lv_obj_invalidate(s_stroll);
 }
@@ -961,12 +981,15 @@ void ct_ui_tick(void)
     //
     // วาดใหม่เฉพาะตอนวินาทีเดิน และเฉพาะตอนแผงโผล่อยู่ — LVGL วาดเฉพาะสิ่งที่
     // invalidate เท่านั้น การเรียก layout_usage ทุกเฟรมจะกินเวลาไปเปล่าๆ
+    // ตอนหลุดลิงก์ countdown ยังเดินในหน่วยความจำ (ค่าที่ถูกตอนกลับมาต่อ) แต่ไม่มีอะไรให้วาด
     if (second_passed && s_snap.has_usage) {
         ct_model_tick_usage(&s_snap, 1);
-        if (s_snap.card_count == 0) {
-            layout_usage();
-        } else {
-            layout_usage_topbar();
+        if (usage_shown()) {
+            if (shown_card_count() == 0) {
+                layout_usage();
+            } else {
+                layout_usage_topbar();
+            }
         }
     }
 }
