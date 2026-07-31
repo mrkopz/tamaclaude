@@ -115,7 +115,7 @@ static const struct {
     [CT_STATE_BUILDING]  = {MOOD_HAMMERING, CT_PROP_HAMMER},
     [CT_STATE_SEARCHING] = {MOOD_WORKING,   CT_PROP_GLOBE},
     [CT_STATE_THINKING]  = {MOOD_IDLE,      CT_PROP_DOTS},
-    [CT_STATE_WAITING]   = {MOOD_WAITING,   CT_PROP_QUERY},
+    [CT_STATE_WAITING]   = {MOOD_WAITING,   CT_PROP_CLOCK},
     [CT_STATE_SLEEPING]  = {MOOD_SLEEPING,  CT_PROP_ZZZ},
     [CT_STATE_ALERT]     = {MOOD_ALERT,     CT_PROP_BANG},
     [CT_STATE_CELEBRATE] = {MOOD_CELEBRATE, CT_PROP_SPARKLE},
@@ -354,9 +354,12 @@ void ct_mascot_build(ct_rects_t *out, ct_state_t state, float phase, bool connec
         // หมวกกับค้อนอยู่ติดตัว จึงต้องต่ำลงพร้อมหัวที่ยุบ ไม่ใช่ค้างอยู่ที่เดิม
         // เลื่อนอย่างเดียวไม่ยุบตาม: หมวกแข็งและค้อนเป็นเหล็ก จะแบนไปกับตัวไม่ได้
         float prop_dy = dy + (m->strike ? FOOT_Y * squash : 0.0f);
-        // ลูกโลกลอยนิ่งอยู่กับที่ ตัวเด้งผ่านมันไป — ใหญ่และคร่อมหัวอยู่แล้ว
-        // ถ้าเด้งตามตัวด้วยจะอ่านเป็นก้อนที่ติดหัว ไม่ใช่ลูกโลกที่ลอยอยู่
-        if (STATES[state].prop == CT_PROP_GLOBE) prop_dy = 0.0f;
+        // ลูกโลกกับนาฬิกาลอยนิ่งอยู่กับที่ ตัวเด้งผ่านมันไป — ใหญ่และคร่อมหัวอยู่แล้ว
+        // ถ้าเด้งตามตัวด้วยจะอ่านเป็นก้อนที่ติดหัว ไม่ใช่ของที่ลอยอยู่
+        // ทั้งคู่ยังมีขอบล่างจ่อตาอยู่แล้ว การเด้งลงอีกจะกินตาด้วย
+        if (STATES[state].prop == CT_PROP_GLOBE || STATES[state].prop == CT_PROP_CLOCK) {
+            prop_dy = 0.0f;
+        }
         ct_rects_move_from(out, prop_from, dx, prop_dy);
     }
 
