@@ -223,6 +223,13 @@ The bars at the bottom of the screen have two independent sources, both optional
 > To get one: in your browser, open claude.ai while logged in → DevTools → Application →
 > Cookies → `claude.ai` → copy the value of `sessionKey`.
 
+Taking over the statusline slot never changes what you see: your own statusline command is
+handed the same input and its output is printed as is. If you never had one, the app draws
+this instead — the same elements, colours, and `~/.claude/statusline-config.txt` as the
+statusline that ships with Claude Usage.
+
+![The statusline the app draws: directory, branch, model, changed lines, token count, then the 5-hour and weekly quota bars with a pace mark and a reset countdown](docs/images/statusline.jpg)
+
 ## Troubleshooting
 
 **No `/dev/cu.usbserial-*` when the board is plugged in.**
