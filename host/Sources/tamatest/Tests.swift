@@ -159,6 +159,49 @@ func runAllTests() {
         equal(s.snapshot(now: t0 + 8).sessions.count, 0, "and is gone after the animation")
     }
 
+    suite("a session dies with the terminal that owned it") {
+        let claude = ProcessHandle(pid: 4242, startedAt: 1000)
+        var living: Set<Int32> = [claude.pid]
+        let s = store()
+        s.isProcessAlive = { living.contains($0.pid) }
+
+        var start = event("SessionStart")
+        start.owner = claude
+        s.apply(start, now: t0)
+        equal(s.snapshot(now: t0 + 1).sessions.count, 1, "an owned session shows up as usual")
+
+        // ปิดหน้าต่าง terminal: process หาย แต่ SessionEnd ไม่เคยยิง
+        living.remove(claude.pid)
+        equal(
+            s.snapshot(now: t0 + 2).sessions.first?.state, .leaving,
+            "a dead owner burrows away without a SessionEnd")
+        equal(s.snapshot(now: t0 + 5).sessions.count, 0, "and is gone right after, not in an hour")
+    }
+
+    suite("an unknown owner is never treated as a dead one") {
+        var asked = false
+        let s = store()
+        s.isProcessAlive = { _ in
+            asked = true
+            return false
+        }
+        s.apply(event("SessionStart"), now: t0)  // ไม่มี owner — ไต่หา claude ไม่เจอ
+        equal(s.snapshot(now: t0 + 2).sessions.count, 1, "it stays, on the old evict rule alone")
+        equal(asked, false, "and liveness is never asked about a session with no owner")
+    }
+
+    suite("a recycled pid does not resurrect a session") {
+        let old = ProcessHandle(pid: 4242, startedAt: 1000)
+        let new = ProcessHandle(pid: 4242, startedAt: 2000)  // เลขเดิม คนละตัว
+        let s = store()
+        s.isProcessAlive = { $0 == new }
+
+        var start = event("SessionStart")
+        start.owner = old
+        s.apply(start, now: t0)
+        equal(s.snapshot(now: t0 + 2).sessions.first?.state, .leaving, "the pid alone is not identity")
+    }
+
     suite("stop and the 45 second rule") {
         let s = store()
         s.apply(event("Stop"), now: t0)

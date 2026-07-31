@@ -13,6 +13,12 @@ public struct HookEvent: Codable, Equatable, Sendable {
     public var prompt: String?
     public var reason: String?
     public var source: String?
+    /// process ของ Claude Code ที่เป็นเจ้าของ session นี้
+    ///
+    /// Claude Code ไม่ได้ส่งมาใน stdin — `--hook` เป็นคนเติมเองจากสายบรรพบุรุษของตัวเอง
+    /// ก่อนส่งต่อเข้า socket จึงต้อง optional เสมอ (ทั้งเหตุการณ์ที่มาจาก `--send`
+    /// และ hook เก่าที่ยังไม่รู้จักคีย์นี้)
+    public var owner: ProcessHandle?
 
     enum CodingKeys: String, CodingKey {
         case hookEventName = "hook_event_name"
@@ -23,6 +29,7 @@ public struct HookEvent: Codable, Equatable, Sendable {
         case prompt
         case reason
         case source
+        case owner
     }
 
     public init(
@@ -33,7 +40,8 @@ public struct HookEvent: Codable, Equatable, Sendable {
         message: String? = nil,
         prompt: String? = nil,
         reason: String? = nil,
-        source: String? = nil
+        source: String? = nil,
+        owner: ProcessHandle? = nil
     ) {
         self.hookEventName = hookEventName
         self.sessionId = sessionId
@@ -43,6 +51,7 @@ public struct HookEvent: Codable, Equatable, Sendable {
         self.prompt = prompt
         self.reason = reason
         self.source = source
+        self.owner = owner
     }
 
     /// ชื่อโปรเจกต์ที่จะแสดงใต้มาสคอต — ชื่อโฟลเดอร์สุดท้ายของ cwd

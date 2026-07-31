@@ -46,6 +46,8 @@ struct Session {
     var celebrateUntil: Date?
     var endingAt: Date?
     var subagents: Int = 0
+    /// process ของ Claude Code ที่เป็นเจ้าของ session นี้ — nil = ไม่รู้ (ดู `ProcessTree`)
+    var owner: ProcessHandle?
     /// ท่าที่อยู่บนจอตอนนี้ และเวลาที่มันขึ้นจอ — ใช้บังคับเวลาขั้นต่ำต่อท่า
     var posed: VisualState?
     var posedAt: Date = .distantPast
@@ -115,6 +117,8 @@ public final class SessionStore {
     /// ต้องตรงกับ `[slots] count` ใน tools/layout.toml เสมอ — ส่งเกินไปแล้วบอร์ดตัดทิ้งเงียบๆ
     /// (ct_model.c) และ "+N" จะนับต่ำกว่าจริง คือโกหกว่ามองเห็นครบทุก session
     public let slotCount: Int
+    /// ถาม kernel ว่าเจ้าของ session ยังอยู่ไหม — แทนที่ได้เพื่อให้เทสต์ไม่ต้องฆ่า process จริง
+    public var isProcessAlive: (ProcessHandle) -> Bool = { ProcessTree.isAlive($0) }
 
     private var order: [String] = []  // ลำดับซ้าย->ขวา ต้องนิ่ง = ลำดับที่ session เกิด
     private var sessions: [String: Session] = [:]
@@ -144,6 +148,9 @@ public final class SessionStore {
         guard var s = sessions[id] else { return }
         s.lastActivity = now
         s.endingAt = nil
+        // เขียนทับได้เสมอ ไม่ใช่เขียนครั้งเดียว: ผู้ใช้ `--resume` session เดิมได้
+        // ซึ่งได้ process ตัวใหม่แต่ id เดิม ถ้ายึดตัวแรกไว้ session ที่ฟื้นมาจะถูกฆ่าทิ้งทันที
+        if let o = e.owner { s.owner = o }
         if let cwd = e.cwd, !cwd.isEmpty {
             s.project = Text.fit(e.project, to: Text.Limit.project)
         }
@@ -248,6 +255,17 @@ public final class SessionStore {
     /// ทิ้ง session ที่จบท่ามุดหายแล้ว/ค้างนานเกิน และการ์ดที่หมดอายุ
     public func prune(now: Date = Date()) {
         for (id, s) in sessions {
+            var s = s
+            // ปิดหน้าต่าง terminal = process โดน SIGHUP ทันที `SessionEnd` ไม่มีวันยิง
+            // จึงเช็คตัว process เองแทนที่จะรอ hook ที่ไม่มา · ให้มุดหายเหมือนจบปกติ
+            // ไม่ใช่หายวับ เพราะจากตาผู้ใช้มันคือการปิด session เหมือนกัน
+            if s.endingAt == nil, let o = s.owner, !isProcessAlive(o) {
+                s.endingAt = now
+                s.activity = .idle
+                s.subagents = 0
+                dismissCards(for: id)
+                sessions[id] = s
+            }
             let ended = s.endingAt.map { now >= $0 + timings.leaving } ?? false
             let stale = now >= s.lastActivity + timings.evict
             if ended || stale {
