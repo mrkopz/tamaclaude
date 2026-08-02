@@ -247,6 +247,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         prefs.showLink(ble.isConnected)
         prefs.showBoardHost(UserDefaults.standard.string(forKey: Self.boardHostKey) ?? "")
         prefs.showRoute(route, detail: lanStatus)
+        prefs.showKey(keyState)
         prefs.show()
         // ถามสถานะซ้ำเสมอ: บอร์ดรายงานตอนมันเปลี่ยน ซึ่งอาจเป็นก่อนที่หน้าต่างนี้จะมีตัวตน
         ble.sendConfig(WiFiCommand.status.payload)
@@ -354,6 +355,17 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func redrawQuota() {
         redrawPanel()
         showIntervals()
+        prefs.showKey(keyState)
+    }
+
+    /// `status != nil` คือ "มีรอบไหนตอบกลับมาแล้ว" — ไม่มีธงแยกให้ถาม และการถือธงเอง
+    /// จะเป็นสำเนาที่สองของสิ่งเดียวกันที่หลุดจากกันได้
+    private var keyState: SessionKeyState {
+        SessionKeyState.of(
+            hasKey: SessionKeyFile.isUsable(),
+            running: poller.isRunning,
+            blocked: poller.blocked,
+            checked: poller.status != nil)
     }
 
     /// เฉพาะแผง ไม่แตะเมนู — นาฬิกาวินาทีเรียกตัวนี้ เพราะรายการในเมนูเฟืองมาจากสถานะ

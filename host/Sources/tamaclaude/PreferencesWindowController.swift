@@ -39,6 +39,7 @@ final class PreferencesWindowController: NSWindowController {
                                         target: nil, action: nil)
     private let loginBox = NSButton(checkboxWithTitle: "Launch at login", target: nil,
                                     action: nil)
+    private let keyLabel = NSTextField(labelWithString: "")
 
     // --- Wi-Fi --------------------------------------------------------------
     private let statusLabel = NSTextField(labelWithString: "")
@@ -161,11 +162,17 @@ final class PreferencesWindowController: NSWindowController {
         autoStartBox.action = #selector(autoStartToggled)
         loginBox.action = #selector(loginToggled)
 
+        // ช่องกรอก key เป็นแบบปิดบังตัวอักษรและไม่เคยถูกเติมกลับ บรรทัดนี้จึงเป็น
+        // ทางเดียวที่ผู้ใช้รู้ว่ากด Save แล้วเข้าไหม
+        keyLabel.font = .systemFont(ofSize: 11)
+        keyLabel.textColor = .secondaryLabelColor
+
         let stack = NSStackView(views: [
             row("Board", boardPopup),
             row("Brightness", brightness),
             row("Refresh quota", intervalPopup),
             row("Session key", key),
+            row("", keyLabel),
             separator(),
             row("", statuslineBox),
             row("", autoStartBox),
@@ -286,6 +293,11 @@ final class PreferencesWindowController: NSWindowController {
     }
 
     func showBoardHost(_ host: String) { hostField.stringValue = host }
+
+    func showKey(_ state: SessionKeyState) {
+        keyLabel.stringValue = state.line
+        keyLabel.textColor = state.isProblem ? .systemRed : .secondaryLabelColor
+    }
 
     /// ทางที่ snapshot เดินอยู่จริง — คนละเรื่องกับ "บอร์ดต่อ WiFi แล้ว"
     ///

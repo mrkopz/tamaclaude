@@ -1629,6 +1629,37 @@ func runAllTests() {
         equal(UsageReader.stamp(from: url), t0, "the stamp the writer left is the age we read")
     }
 
+    suite("the settings window says whether the key went in") {
+        equal(
+            SessionKeyState.of(hasKey: false, running: false, blocked: nil, checked: false),
+            .none, "no file, nothing to report")
+        equal(
+            SessionKeyState.of(hasKey: false, running: false, blocked: .expiredKey,
+                               checked: true),
+            .none, "a label left over from the last key does not describe a file that is gone")
+        equal(
+            SessionKeyState.of(hasKey: true, running: false, blocked: nil, checked: false),
+            .saved, "written but never asked about — Refresh quota can be Off")
+        equal(
+            SessionKeyState.of(hasKey: true, running: true, blocked: nil, checked: false),
+            .checking, "the round that keyWasSet started is still out")
+        equal(
+            SessionKeyState.of(hasKey: true, running: false, blocked: nil, checked: true),
+            .working, "a round came back clean")
+        equal(
+            SessionKeyState.of(hasKey: true, running: true, blocked: .expiredKey, checked: true),
+            .rejected(.expiredKey), "a verdict beats a round that is merely running")
+        expect(
+            SessionKeyState.rejected(.unusableKeyFile).isProblem,
+            "a rejected key is painted as a problem")
+        expect(
+            !SessionKeyState.none.isProblem,
+            "having no key is a starting point, not a fault")
+        expect(
+            !SessionKeyState.working.line.isEmpty && !SessionKeyState.saved.line.isEmpty,
+            "every state has something to say — silence is what the user complained about")
+    }
+
     suite("hook event decoding") {
         let json = """
             {"session_id":"abc","transcript_path":"/tmp/t.jsonl","cwd":"/Users/x/repo",

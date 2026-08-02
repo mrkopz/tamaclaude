@@ -131,6 +131,7 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/SessionStarter.swift` | when the app may open a session of its own — same shape, plus the guards and what locks it |
 | `TamaCore/ChildOutput.swift` | what a child process said, drained off its pipe without blocking it |
 | `TamaCore/SessionKeyFile.swift` | writes `~/.tamaclaude/session-key` so it is mode 600 from birth |
+| `TamaCore/SessionKeyState.swift` | what the settings window says under the key button — saved is not the same as accepted |
 | `TamaCore/{Hook,Statusline}Installer.swift` | writes into `~/.claude/settings.json` |
 | `TamaCore/Paths.swift` | the `~/.tamaclaude` paths + `Log` (`settings.json` belongs to `HookInstaller`) |
 | `TamaCore/Daemon.swift` | wires it together + 1 s tick |
