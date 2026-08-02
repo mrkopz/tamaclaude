@@ -8,8 +8,16 @@ import Foundation
 public enum PanelText {
     /// ไม่มีคำว่า disconnected: บอร์ดที่ยังหาไม่เจอกับบอร์ดที่หลุดไปเป็นสภาพเดียวกัน
     /// สำหรับผู้ใช้ — แอปกำลังสแกนอยู่และจะกลับมาต่อเอง
-    public static func board(connected: Bool) -> String {
-        connected ? "Board connected" : "Looking for the board…"
+    ///
+    /// ทาง LAN ถูกบอกออกมาตรงๆ ไม่ใช่กลืนเป็น "connected" เฉยๆ: มันเป็นทางที่ทำงานได้
+    /// ก็ต่อเมื่อ Mac กับบอร์ดอยู่บนเน็ตเดียวกัน ผู้ใช้ที่กำลังจะพกโน้ตบุ๊กออกจากบ้าน
+    /// ควรรู้ว่าจอบนโต๊ะจะค้างเมื่อเขาเดินพ้นประตู
+    public static func board(route: LanRoute) -> String {
+        switch route {
+        case .ble: return "Board connected"
+        case .lan: return "Board connected over Wi-Fi"
+        case .none: return "Looking for the board…"
+        }
     }
 
     /// ชื่อแอปตอนยังไม่มี org ให้พูดถึง — ไม่ใช่ที่ว่าง ไม่ใช่ `—`

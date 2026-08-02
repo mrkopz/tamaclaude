@@ -19,6 +19,10 @@ below it.
 
 ```
 Claude Code hooks --> tamaclaude --hook --> Unix socket --> daemon --> BLE GATT --> board
+                                                                  \                  ^
+                                                                   '-> sealed TCP ---'
+                                                                       (only when BLE
+                                                                        is 10 s gone)
 
 Claude Code statusline --> ~/.tamaclaude/statusline.sh --.
                                                           >--> ~/.claude/.statusline-usage-cache
@@ -115,7 +119,12 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/ToolMap.swift` | tool name → `VisualState`, overridable via `~/.tamaclaude/tools.json` |
 | `TamaCore/Text.swift` | strip to the board font's charset, then truncate |
 | `TamaCore/SocketServer.swift` / `HookClient.swift` | Unix socket between `--hook` and the daemon |
-| `TamaCore/BLETransport.swift` | CoreBluetooth central + auto-reconnect |
+| `TamaCore/BLETransport.swift` | CoreBluetooth central + auto-reconnect + board events |
+| `TamaCore/WiFiProvisioning.swift` | the Wi-Fi commands and reports that ride the config/event characteristics |
+| `TamaCore/LanFrame.swift` | the sealed frame on the wire: nonce, counter, greeting — pure, both directions |
+| `TamaCore/LanKey.swift` | the 32-byte LAN key: where it lives, how it is fingerprinted |
+| `TamaCore/LanTransport.swift` | the second path: find the board, connect, seal, resend |
+| `TamaCore/Failover.swift` | when the second path may open (10 s grace) + the composite transport |
 | `TamaCore/Usage{Reader,Writer}.swift` | the `.statusline-usage-cache` contract |
 | `TamaCore/UsagePoll.swift` | `--usage-poll`: one claude.ai quota fetch, then exit |
 | `TamaCore/UsagePoller.swift` | when to poll and what the last poll said — fed `tick(now:)`, owns no timer |
@@ -130,6 +139,7 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/QuotaCard.swift` | what a quota card says: colour level, pace tick, reset line |
 | `TamaCore/RefreshControl.swift` | the refresh button's discipline: cooldown, and when opening the panel polls |
 | `tamaclaude/MenuBarApp.swift` | the menu bar app **is** the daemon (Bluetooth TCC is per-`.app`) |
+| `tamaclaude/PreferencesWindowController.swift` | the settings window: General + Wi-Fi (the gear is down to Settings…/Quit) |
 | `tamaclaude/PanelViewController.swift` | the popover: header + gear, the cards, the foot |
 | `tamaclaude/QuotaCardView.swift` | how a quota card is drawn (bar, pace tick, palette) |
 | `tamaclaude/MenuBadgeImage.swift` | how the menu bar icon is drawn (template vs red) |
@@ -149,6 +159,10 @@ look at `out/`. It proves the *design*, not the C renderer.
   window (same `resets_at`) the percentage only increases, so a lower value is stale — never
   overwrite a newer one. Foreign keys in the shared cache file (`PROFILE_NAME`, `COST_*`)
   must survive.
+- **The LAN counter only ever goes up.** A repeated nonce in GCM destroys the confidentiality
+  of both frames that used it, so `LanSealer` increments before sealing and the board rejects
+  anything not strictly greater than what it has already accepted. The board tells the Mac
+  where to continue from when it accepts the connection — neither side stores a counter file.
 - **The `sessionKey` is a full-account credential.** File only (`~/.tamaclaude/session-key`,
   mode 600), never argv, never env, never logged, re-read every poll. Not the Keychain: the
   adhoc signature changes cdhash on every build, so the item would prompt on every upgrade.
@@ -162,8 +176,21 @@ look at `out/`. It proves the *design*, not the C renderer.
 ```
 service  7A9B0001-4C1E-4B6D-9E2A-1D5C3F0A0001
 state    ...0002   daemon writes the snapshot here (write with response)
-config   ...0003   brightness etc.
-event    ...0004   board -> host, reserved for v2
+config   ...0003   brightness + Wi-Fi commands + the LAN key — write requires an encrypted link
+event    ...0004   board -> host: Wi-Fi scan results and link status (`BoardEvent`)
+```
+
+## The second path (LAN)
+
+When BLE has been quiet for 10 s the daemon opens a TCP connection to the board on
+port 7333 and sends the same snapshot, sealed with AES-256-GCM under a key it pushed
+over the config characteristic. The board finds nothing on its own and **never talks to
+claude.ai** — the `sessionKey` stays on the Mac. Details and the reasons are in
+`DESIGN.md` under "WiFi ▸ ทางเดินที่สอง"; the frame layout must match `ct_lan.c` byte
+for byte.
+
+```
+[4B len BE][12B nonce][ciphertext][16B tag]     nonce = 4 zero bytes + 8B BE counter
 ```
 
 ## Conventions

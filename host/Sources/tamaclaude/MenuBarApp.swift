@@ -10,7 +10,19 @@ import TamaCore
 final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private let ble = BLETransport()
+    private let lan = LanTransport()
+    /// BLE เป็นทางหลัก LAN เป็นทางสำรอง — daemon เห็นทางออกเดียว
+    private var failover: FailoverTransport!
     private var daemon: Daemon!
+    /// ทางที่ snapshot เดินอยู่ตอนนี้ — ท้าย popover กับหน้าตั้งค่าอ่านค่าเดียวกันนี้
+    private var route: LanRoute = .none
+    /// ผลักกุญแจ LAN ไปแล้วในการต่อ BLE ครั้งนี้หรือยัง
+    ///
+    /// กันลูป: บอร์ดตอบสถานะทุกครั้งที่ได้กุญแจ ถ้าเทียบลายนิ้วมือแล้วผลักซ้ำโดยไม่มี
+    /// ตัวกั้น บอร์ดที่ปฏิเสธกุญแจ (เช่น NVS เต็ม) จะกลายเป็นวงวนไม่รู้จบบนสายวิทยุ
+    private var keyPushed = false
+    /// ประโยคล่าสุดที่ทาง LAN พูดถึงตัวเอง ("cannot reach the board", …)
+    private var lanStatus: String?
 
     /// จำบอร์ดที่ผู้ใช้เลือกไว้ข้ามการเปิดปิดแอป
     private static let preferredKey = "preferredBoard"
@@ -19,6 +31,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private static let orgKey = "preferredOrg"
     /// สวิตช์เริ่ม session เอง — ปิดโดยปริยาย เพราะมันใช้โควตาของผู้ใช้จริง
     private static let autoStartKey = "autoStartSession"
+    /// ที่อยู่บอร์ดที่ผู้ใช้กรอกเอง — ทางออกเมื่อเราเตอร์ไม่ส่ง mDNS ข้าม subnet/VLAN
+    private static let boardHostKey = "boardHost"
 
     private var poller: UsagePoller!
     private var starter: SessionStarter!
@@ -28,34 +42,13 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let popover = NSPopover()
     private let panel = PanelViewController()
     private lazy var gearMenu: NSMenu = buildMenu()
-    /// แถวความสว่างเป็นพร็อพเพอร์ตี้เพราะต้องยืดใหม่ทุกครั้งที่เมนูเด้ง (`fitBrightnessRow`)
-    private let brightnessRow = NSView()
+    private lazy var prefs: PreferencesWindowController = buildPreferences()
     /// ตัวดักคลิกนอกแอปตอน popover เปิด — มีอยู่ก็ต่อเมื่อ popover เปิดอยู่
     private var outsideClicks: Any?
     /// นาฬิกาของแผง — เดินเฉพาะตอนแผงเปิด ด้วยเหตุผลเดียวกับตัวดักคลิก
     private var panelTicks: Timer?
 
-    private let boardItem = NSMenuItem(title: "Board", action: nil, keyEquivalent: "")
     private var boards: [Board] = []
-    /// ชื่อสั้นแต่ยังบอกไฟล์ พาธเต็มอยู่ใน tooltip — ความกว้างของ `NSMenu` มาจากรายการ
-    /// ที่ยาวที่สุด รายการเดียวที่เขียนพาธเต็มจึงถ่างทั้งเมนูออกไปราว 75 pt เพื่อบอกสิ่งที่
-    /// กล่องยืนยันหลังกดบอกซ้ำอยู่แล้ว
-    private let hooksItem = NSMenuItem(
-        title: "Install hooks in settings.json", action: #selector(installHooks),
-        keyEquivalent: "")
-    private let statuslineItem = NSMenuItem(
-        title: "Read quota from the statusline", action: #selector(toggleStatusline),
-        keyEquivalent: "")
-    private let loginItem = NSMenuItem(
-        title: "Launch at login", action: #selector(toggleLogin), keyEquivalent: "")
-    private let keyItem = NSMenuItem(
-        title: "Set session key…", action: #selector(setSessionKey), keyEquivalent: "")
-    private let refreshItem = NSMenuItem(title: "Refresh quota", action: nil, keyEquivalent: "")
-    private let autoStartItem = NSMenuItem(
-        title: "Auto-start a session when idle", action: #selector(toggleAutoStart),
-        keyEquivalent: "")
-    private let brightness = NSSlider(value: 100, minValue: 5, maxValue: 100, target: nil,
-                                      action: nil)
 
     /// รอบที่ปุ่ม refresh เป็นคนสั่ง — ต่างจากรอบของนาฬิกา
     ///
@@ -106,9 +99,41 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         ble.onBoardsChanged = { [weak self] list in
             DispatchQueue.main.async { self?.showBoards(list) }
         }
+        // ผลสแกน WiFi กับสถานะการต่อมาจากบอร์ด ไม่ใช่จาก CoreWLAN ของ Mac — วิทยุของ
+        // บอร์ดเป็นตัวเดียวที่รู้ว่ามันเข้าเครือข่ายไหนได้จริง (2.4GHz, สัญญาณถึง)
+        ble.onEvent = { [weak self] event in
+            DispatchQueue.main.async { self?.boardSaid(event) }
+        }
+        ble.onLinkChanged = { [weak self] connected in
+            DispatchQueue.main.async {
+                // สายใหม่ = โอกาสใหม่ที่จะผลักกุญแจ · บอร์ดที่ถูกแฟลชใหม่ระหว่างนั้นลืม
+                // กุญแจไปแล้ว และการต่อกลับคือสัญญาณเดียวที่บอกว่าควรถามใหม่
+                if connected { self?.keyPushed = false }
+                self?.prefs.showLink(connected)
+            }
+        }
+        lan.setManualHost(UserDefaults.standard.string(forKey: Self.boardHostKey))
 
         let store = SessionStore(toolMap: ToolMap.loadOrDefault(Paths.toolConfig))
-        daemon = Daemon(store: store, transports: [ble])
+        failover = FailoverTransport(ble: ble, lan: lan)
+        failover.onRouteChanged = { [weak self] route in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.route = route
+                // ทางกลับมาแล้ว คำอธิบายว่าทำไมมันเคยพังจึงหมดอายุ
+                if route != .none { self.lanStatus = nil }
+                self.refreshLink()
+                self.prefs.showRoute(route, detail: self.lanStatus)
+            }
+        }
+        lan.onStatus = { [weak self] text in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.lanStatus = text
+                self.prefs.showRoute(self.route, detail: text)
+            }
+        }
+        daemon = Daemon(store: store, transports: [failover])
         daemon.onPublish = { [weak self] snapshot in
             DispatchQueue.main.async { self?.show(snapshot) }
         }
@@ -158,60 +183,18 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         daemon?.stop()
     }
 
-    /// เมนูเดิมทั้งอัน ลบแค่สองบรรทัดบนที่ย้ายไปอยู่ท้าย popover แล้ว
+    /// เมนูเฟืองเหลือสองบรรทัด — ทุกสวิตช์ย้ายเข้าหน้าตั้งค่าแล้ว
     ///
-    /// เฟืองเด้ง NSMenu ไม่ใช่หน้า Settings ที่วาดเอง — ติ๊กถูก, submenu, slider ในเมนู
-    /// และ Quit ทำงานถูกอยู่แล้ว การวาดใหม่เป็น NSView คือการรื้อของที่ใช้ได้
+    /// เดิมที่นี่เป็น `NSMenu` เต็มใบด้วยเหตุผลว่าติ๊กถูก/submenu/slider ทำงานถูกอยู่แล้ว
+    /// แต่หน้า Wi-Fi ต้องมีรายชื่อที่ยาวไม่แน่นอน ช่องรหัสผ่าน และสถานะที่ขยับเองระหว่าง
+    /// ที่ผู้ใช้มองอยู่ — เมนูปิดตัวเองทุกครั้งที่คลิก ของสามอย่างนั้นจึงอยู่ในเมนูไม่ได้
+    /// เมื่อต้องมีหน้าต่างอยู่ดี การมีสวิตช์อยู่สองที่แย่กว่าการย้ายมาไว้ที่เดียว
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
-        boardItem.submenu = NSMenu()
-        menu.addItem(boardItem)
-        showBoards(boards)
-        menu.addItem(.separator())
-
-        menu.addItem(brightnessItem())
-        menu.addItem(.separator())
-
-        keyItem.target = self
-        menu.addItem(keyItem)
-
-        // เมนูย่อยของ `refreshItem` เป็นของ `showIntervals` — ที่นี่แค่หาที่ให้มันยืน
-        // การ `= NSMenu()` ตรงนี้จะล้างรายการที่เพิ่งเติมไปเมื่อครู่ เพราะเมนูถูกสร้าง
-        // แบบ lazy คือ *หลัง* การเติมครั้งแรกเสมอ
-        //
-        // ตัวสลับ org ไม่อยู่ในเมนูนี้แล้ว — มันอยู่หลังลูกศรข้างชื่อ org ที่หัวแผง ซึ่งเป็น
-        // ที่เดียวกับที่ชื่อที่ใช้อยู่แสดงอยู่ ที่สลับสองที่แปลว่าผู้ใช้ต้องจำว่าอันไหนคืออันจริง
-        menu.addItem(refreshItem)
-
-        // อยู่ในกลุ่มโควตา ไม่ใช่กลุ่มติดตั้ง — มันตัดสินว่าเลขโควตาจะมีมาให้ดูไหม
-        // ซึ่งเป็นคำถามเดียวกับที่รายการเหนือมันตอบ
-        autoStartItem.target = self
-        menu.addItem(autoStartItem)
-        menu.addItem(.separator())
-
-        hooksItem.target = self
-        hooksItem.toolTip = "~/.claude/settings.json"
-        menu.addItem(hooksItem)
-
-        statuslineItem.target = self
-        statuslineItem.state = StatuslineInstaller.isInstalled ? .on : .off
-        menu.addItem(statuslineItem)
-
-        loginItem.target = self
-        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        menu.addItem(loginItem)
-
-        let log = NSMenuItem(title: "Open log", action: #selector(openLog), keyEquivalent: "")
-        log.target = self
-        menu.addItem(log)
-
-        // ปลายทางอยู่ในชื่อรายการ ไม่ใช่คำว่า "GitHub" — แอปนี้ขอ credential เต็มบัญชี
-        // ลิงก์ที่ซ่อนปลายทางไว้หลังคำสวยๆ เป็นท่าเดียวกับที่ผู้ใช้ควรระวัง
-        let project = NSMenuItem(
-            title: PanelText.projectLink, action: #selector(openProject), keyEquivalent: "")
-        project.target = self
-        menu.addItem(project)
-
+        let settings = NSMenuItem(
+            title: "Settings…", action: #selector(openPreferences), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
         menu.addItem(.separator())
         menu.addItem(
             NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)),
@@ -219,64 +202,55 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         return menu
     }
 
-    /// ระยะเว้นซ้ายของข้อความในรายการเมนู — ค่าที่วัดจากของจริง ไม่ใช่ค่าที่ถามระบบได้
-    ///
-    /// `NSMenu` ไม่เปิด API ให้ถามว่ารายการปกติเริ่มวาดข้อความที่ตำแหน่งไหน แต่ item ที่มี
-    /// view ของตัวเองกินความกว้างเต็มเมนูรวมช่องเครื่องหมายถูกด้วย ตัวเลขนี้จึงต้องเดินตาม
-    /// รายการข้างเคียง ไม่ใช่ตามขอบ view · เมนูนี้มีรายการที่ติ๊กได้ (`Show usage on the
-    /// board`, `Launch at login`) ช่องนั้นจึงกว้างเสมอ ไม่ใช่ยุบเมื่อไม่มีใครติ๊ก
-    private static let menuTextInset: CGFloat = 21
-
-    /// แถวความสว่าง — ป้ายบรรทัดบน สไลเดอร์บรรทัดล่าง
-    ///
-    /// ใช้ Auto Layout ไม่ใช่ frame ดิบ: macOS ยืด view ของ item ให้เต็มความกว้างเมนู
-    /// ซึ่งมาจากรายการที่ยาวที่สุด (`Install hooks in ~/.claude/settings.json`) ของข้างใน
-    /// ที่ตั้ง frame ไว้ตายตัวจะค้างอยู่ที่ความกว้างเดิมแล้วเหลือที่ว่างด้านขวาเป็นแถบ
-    private func brightnessItem() -> NSMenuItem {
-        let view = brightnessRow
-        let label = NSTextField(labelWithString: "Brightness")
-        label.font = .menuFont(ofSize: 12)
-
-        brightness.target = self
-        brightness.action = #selector(brightnessChanged)
-        brightness.isContinuous = false  // ส่งตอนปล่อยเมาส์ ไม่ใช่ทุกพิกเซลที่ลาก
-
-        let inset = Self.menuTextInset
-        for child in [label, brightness] {
-            child.translatesAutoresizingMaskIntoConstraints = false
-            view.addSubview(child)
-            NSLayoutConstraint.activate([
-                child.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: inset),
-                child.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -inset),
-            ])
+    /// ผูกหน้าตั้งค่าเข้ากับสถานะจริง — ตัวหน้าต่างไม่รู้จัก BLE, ไฟล์ หรือ UserDefaults เลย
+    private func buildPreferences() -> PreferencesWindowController {
+        let window = PreferencesWindowController()
+        window.onSelectBoard = { [weak self] id in self?.chooseBoard(id) }
+        window.onBrightness = { [weak self] value in self?.setBrightness(value) }
+        window.onInterval = { [weak self] interval in self?.chooseInterval(interval) }
+        window.onSetSessionKey = { [weak self] in self?.setSessionKey() }
+        window.onInstallHooks = { [weak self] in self?.installHooks() }
+        window.onToggleStatusline = { [weak self] in self?.toggleStatusline() }
+        window.onToggleLogin = { [weak self] in self?.toggleLogin() }
+        window.onToggleAutoStart = { [weak self] in self?.toggleAutoStart() }
+        window.onOpenLog = { [weak self] in self?.openLog() }
+        window.onOpenProject = { [weak self] in self?.openProject() }
+        window.onScan = { [weak self] in self?.ble.sendConfig(WiFiCommand.scan.payload) }
+        window.onJoin = { [weak self] ssid, psk in
+            self?.ble.sendConfig(WiFiCommand.join(ssid: ssid, psk: psk).payload)
         }
-        NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: view.topAnchor, constant: 4),
-            brightness.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 4),
-            brightness.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -6),
-        ])
-
-        let item = NSMenuItem()
-        // ความสูงเป็นของแถวนี้เอง ส่วนความกว้างมาจาก `fitBrightnessRow()` ทุกครั้งที่เมนูเด้ง
-        view.frame = NSRect(x: 0, y: 0, width: 220, height: 44)
-        item.view = view
-        return item
+        window.onForget = { [weak self] ssid in
+            self?.ble.sendConfig(WiFiCommand.forget(ssid: ssid).payload)
+        }
+        window.onBoardHost = { [weak self] host in self?.chooseBoardHost(host) }
+        return window
     }
 
-    /// ยืดแถวความสว่างให้เท่าความกว้างเมนู
-    ///
-    /// `NSMenu` **ไม่** ยืด view ของ item ให้เอง — มันวัดความกว้างจากรายการที่กว้างที่สุด
-    /// แล้ววาดที่เหลือชิดซ้ายในกรอบนั้น view ที่ตั้งขนาดไว้เองจึงค้างอยู่เท่าเดิมและเหลือ
-    /// ที่ว่างด้านขวาเป็นแถบ · ต้องทำทุกครั้งที่เมนูเด้ง ไม่ใช่ครั้งเดียวตอนสร้าง เพราะ
-    /// ชื่อบอร์ดในรายการบนสุดเปลี่ยนความกว้างเมนูได้
-    ///
-    /// ยุบเป็นศูนย์ก่อนวัด ไม่งั้นแถวนี้กลายเป็นตัวที่กว้างที่สุดเสียเอง แล้วเมนูจะกว้างขึ้น
-    /// เรื่อยๆ ทุกครั้งที่เปิด และไม่มีวันแคบลงเมื่อรายการอื่นสั้นลง
-    private func fitBrightnessRow() {
-        brightnessRow.setFrameSize(NSSize(width: 0, height: brightnessRow.frame.height))
-        let width = gearMenu.size.width
-        guard width > 0 else { return }
-        brightnessRow.setFrameSize(NSSize(width: width, height: brightnessRow.frame.height))
+    private func chooseBoardHost(_ host: String) {
+        lan.setManualHost(host)
+        if host.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.boardHostKey)
+        } else {
+            UserDefaults.standard.set(host, forKey: Self.boardHostKey)
+        }
+    }
+
+    /// ค่าที่หน้าตั้งค่าแสดงต้องอ่านจากของจริงทุกครั้งที่เปิด ไม่ใช่จำไว้ตอนสร้างหน้าต่าง —
+    /// ติ๊กสองอัน (statusline, launch at login) แก้จากข้างนอกได้โดยแอปไม่รู้เรื่อง
+    @objc private func openPreferences() {
+        prefs.showBoards(boards, selected: ble.preferredBoard)
+        prefs.showInterval(poller.interval)
+        prefs.showToggles(
+            statusline: StatuslineInstaller.isInstalled,
+            autoStart: starter.enabled,
+            login: SMAppService.mainApp.status == .enabled)
+        prefs.showLink(ble.isConnected)
+        prefs.showBoardHost(UserDefaults.standard.string(forKey: Self.boardHostKey) ?? "")
+        prefs.showRoute(route, detail: lanStatus)
+        prefs.show()
+        // ถามสถานะซ้ำเสมอ: บอร์ดรายงานตอนมันเปลี่ยน ซึ่งอาจเป็นก่อนที่หน้าต่างนี้จะมีตัวตน
+        ble.sendConfig(WiFiCommand.status.payload)
+        prefs.beginScan()
     }
 
     /// สถานะบอร์ดอยู่ท้าย popover ไม่ใช่ที่ไอคอน
@@ -284,40 +258,35 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// เคยหรี่ไอคอนตอนต่อบอร์ดไม่ติด แต่พอไอคอนกลายเป็นตัวเลขโควตา การหรี่กลับกลาย
     /// เป็นการทำให้ข้อมูลที่ยังถูกต้องอยู่ (โควตาไม่ได้มาจากบอร์ด) ดูเหมือนใช้ไม่ได้
     private func refreshLink() {
-        panel.showBoard(connected: ble.isConnected)
+        panel.showBoard(route: route)
     }
 
-    /// รายการบอร์ดที่สแกนเจอ — ติ๊กตัวที่ผู้ใช้เลือกไว้ และวงเล็บบอกตัวที่กำลังคุยอยู่จริง
+    /// บอร์ดพูดอะไรกลับมาทาง BLE — หน้าตั้งค่าได้ยินทุกคำ ส่วนที่นี่ฟังสองเรื่อง
     ///
-    /// การเลือกบอร์ดต้องอยู่ตรงนี้ ไม่ใช่หน้า Bluetooth ของ macOS: peripheral ที่เป็น
+    /// ที่อยู่: ทาง LAN ต้องรู้ว่าจะไปหาบอร์ดที่ไหนเมื่อ mDNS ไม่ผ่านเราเตอร์ และช่วงเวลา
+    /// ที่รู้ได้แน่ที่สุดคือตอน BLE ยังดีอยู่ — ซึ่งเป็นคนละช่วงกับตอนที่ต้องใช้
+    ///
+    /// กุญแจ: บอร์ดบอกลายนิ้วมือของกุญแจที่มันถือ ไม่ตรงกับของเราเมื่อไรก็ผลักของใหม่ไป
+    /// ทันที ไม่ต้องรอให้ผู้ใช้ไปกดอะไร — เขาไม่มีทางรู้ว่าตัวเลขสองชุดนี้ต่างกันอยู่
+    private func boardSaid(_ event: BoardEvent) {
+        prefs.apply(event)
+        guard case .wifi(let status) = event else { return }
+        lan.noteBoardAddress(status.ip)
+        guard let key = LanKey.loadOrCreate() else { return }
+        let mine = LanKey.fingerprint(key)
+        guard status.keyFingerprint != mine, !keyPushed else { return }
+        keyPushed = true
+        Log.info("pushing the lan key to the board (\(mine))")
+        ble.sendConfig(WiFiCommand.key(hex: LanKey.hex(key)).payload)
+    }
+
+    /// รายการบอร์ดที่สแกนเจอ — หน้าตั้งค่าเป็นที่เดียวที่เลือกได้
+    ///
+    /// การเลือกบอร์ดต้องอยู่ในแอปนี้ ไม่ใช่หน้า Bluetooth ของ macOS: peripheral ที่เป็น
     /// GATT ล้วนไม่โผล่ให้จับคู่ที่นั่น มีแต่แอปที่สแกนเองเท่านั้นที่เห็น
     private func showBoards(_ list: [Board]) {
         boards = list
-        let menu = boardItem.submenu ?? NSMenu()
-        menu.removeAllItems()
-
-        let preferred = ble.preferredBoard
-        boardItem.title = list.isEmpty
-            ? "Board: none found"
-            : "Board: \(list.first(where: { $0.isCurrent })?.name ?? "not connected")"
-
-        let any = NSMenuItem(
-            title: "Any board", action: #selector(chooseBoard(_:)), keyEquivalent: "")
-        any.target = self
-        any.state = preferred == nil ? .on : .off
-        menu.addItem(any)
-
-        if !list.isEmpty { menu.addItem(.separator()) }
-        for board in list {
-            let item = NSMenuItem(
-                title: board.isCurrent ? "\(board.name) (connected)" : board.name,
-                action: #selector(chooseBoard(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = board.id
-            item.state = preferred == board.id ? .on : .off
-            menu.addItem(item)
-        }
-        boardItem.submenu = menu
+        prefs.showBoards(list, selected: ble.preferredBoard)
     }
 
     /// วาดแบดจ์ใหม่เฉพาะตอนภาพจะเปลี่ยนจริง — `show` ถูกเรียกทุกครั้งที่ snapshot ขยับ
@@ -346,25 +315,17 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         panel.showSessions(snapshot)
     }
 
-    /// รอบการยิง — ติ๊กตัวที่ใช้อยู่ ไม่มีตัวเลือก 30 วินาที (เหตุผลอยู่ที่ `PollInterval`)
+    /// รอบการยิง — ไม่มีตัวเลือก 30 วินาที (เหตุผลอยู่ที่ `PollInterval`)
     private func showIntervals() {
-        let menu = refreshItem.submenu ?? NSMenu()
-        menu.removeAllItems()
-        refreshItem.title = "Refresh quota: \(poller.interval.title)"
-        for interval in PollInterval.allCases {
-            let item = NSMenuItem(
-                title: interval.title, action: #selector(chooseInterval(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = interval.rawValue
-            item.state = interval == poller.interval ? .on : .off
-            menu.addItem(item)
-        }
-        refreshItem.submenu = menu
+        prefs.showInterval(poller.interval)
     }
 
-    /// ติ๊กอ่านจาก `starter` ไม่ใช่จาก `UserDefaults` — ตัวที่ตัดสินใจจริงคือตัวที่ควรถูกถาม
+    /// อ่านจาก `starter` ไม่ใช่จาก `UserDefaults` — ตัวที่ตัดสินใจจริงคือตัวที่ควรถูกถาม
     private func showAutoStart() {
-        autoStartItem.state = starter.enabled ? .on : .off
+        prefs.showToggles(
+            statusline: StatuslineInstaller.isInstalled,
+            autoStart: starter.enabled,
+            login: SMAppService.mainApp.status == .enabled)
     }
 
     /// รายการ org หลังลูกศรข้างชื่อที่หัวแผง — สร้างใหม่ทุกครั้งที่กด
@@ -488,21 +449,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         showBadge(lastDrawn?.badge)
     }
 
-    /// ติ๊กถูกสองอันอ่านค่าจริงทุกครั้งที่เมนูเด้ง ไม่ใช่ครั้งเดียวตอนสร้างเมนู —
-    /// ทั้งคู่แก้ที่อื่นได้ (settings.json, หน้า Login Items ของระบบ) โดยแอปไม่รู้เรื่อง
     private func showGearMenu(from button: NSButton) {
-        statuslineItem.state = StatuslineInstaller.isInstalled ? .on : .off
-        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        // ไฟล์ key แก้จากข้างนอกได้เหมือนกัน — อ่านสภาพจริงทุกครั้งที่เมนูเด้ง
-        keyItem.title = SessionKeyFile.isUsable() ? "Replace session key…" : "Set session key…"
-        showAutoStart()
-        showIntervals()
-        fitBrightnessRow()
         gearMenu.popUp(positioning: nil, at: NSPoint(x: 0, y: -2), in: button)
     }
 
-    @objc private func chooseBoard(_ sender: NSMenuItem) {
-        let id = sender.representedObject as? UUID
+    private func chooseBoard(_ id: UUID?) {
         ble.preferredBoard = id
         if let id {
             UserDefaults.standard.set(id.uuidString, forKey: Self.preferredKey)
@@ -512,8 +463,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         showBoards(boards)
     }
 
-    @objc private func chooseInterval(_ sender: NSMenuItem) {
-        let interval = PollInterval.stored(sender.representedObject as? Int)
+    private func chooseInterval(_ interval: PollInterval) {
         poller.interval = interval
         UserDefaults.standard.set(interval.rawValue, forKey: Self.intervalKey)
         // เลือกรอบใหม่แล้วต้องเห็นผลเดี๋ยวนี้ ไม่ใช่รออีกหนึ่งรอบเพื่อพิสูจน์ว่ามันทำงาน
@@ -521,7 +471,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         showIntervals()
     }
 
-    @objc private func toggleAutoStart() {
+    private func toggleAutoStart() {
         starter.enabled.toggle()
         UserDefaults.standard.set(starter.enabled, forKey: Self.autoStartKey)
         showAutoStart()
@@ -544,7 +494,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// ไม่ให้ผู้ใช้ไปสร้างไฟล์เอง: `sessionKey` เป็น credential เต็มบัญชี คนที่ลืม
     /// `chmod 600` จะเปิดบัญชีทั้งใบให้ทุกคนบนเครื่องโดยไม่รู้ตัว · key ไม่เคยถูก
     /// ใส่กลับเข้าช่องกรอกและไม่เคยโผล่ในข้อความไหน แม้แต่ตอนล้มเหลว
-    @objc private func setSessionKey() {
+    private func setSessionKey() {
         let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
         field.placeholderString = "sessionKey cookie from claude.ai"
 
@@ -590,12 +540,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         poller?.pollNow()
     }
 
-    @objc private func brightnessChanged() {
-        let value = Int(brightness.doubleValue.rounded())
+    private func setBrightness(_ value: Int) {
         ble.sendConfig(Data("{\"b\":\(value)}".utf8))
     }
 
-    @objc private func installHooks() {
+    private func installHooks() {
         do {
             try HookInstaller.install()
             alert(
@@ -610,7 +559,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     ///
     /// พูดกับผู้ใช้ด้วยผลลัพธ์ที่เขาเห็น ("แสดงโควตาบนจอ") ไม่ใช่กลไก ("ยึด statusLine")
     /// แต่ต้องบอกให้ชัดว่าไปแตะ settings.json เพราะเป็นไฟล์ที่เขาแก้เองอยู่
-    @objc private func toggleStatusline() {
+    private func toggleStatusline() {
         do {
             if StatuslineInstaller.isInstalled {
                 try StatuslineInstaller.uninstall()
@@ -629,10 +578,10 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         } catch {
             alert("Could not change the usage display", "\(error)")
         }
-        statuslineItem.state = StatuslineInstaller.isInstalled ? .on : .off
+        showAutoStart()
     }
 
-    @objc private func toggleLogin() {
+    private func toggleLogin() {
         do {
             if SMAppService.mainApp.status == .enabled {
                 try SMAppService.mainApp.unregister()
@@ -642,14 +591,14 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         } catch {
             alert("Could not change the login item", "\(error)")
         }
-        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+        showAutoStart()
     }
 
-    @objc private func openLog() {
+    private func openLog() {
         NSWorkspace.shared.open(Paths.log)
     }
 
-    @objc private func openProject() {
+    private func openProject() {
         guard let url = PanelText.projectURL else { return }
         NSWorkspace.shared.open(url)
     }

@@ -18,6 +18,25 @@ CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
 # snapshot ต้องเข้าได้ในการเขียนครั้งเดียว — daemon ตัดข้อความให้พอดี 500 ไบต์แล้ว
 CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=517
 CONFIG_BT_NIMBLE_LOG_LEVEL_WARNING=y
+# รหัส WiFi เดินผ่าน config characteristic ซึ่งประกาศ WRITE_ENC ไว้ — ไม่มี SM แล้ว
+# การเขียนนั้นถูกปฏิเสธทุกครั้ง และ bond ต้องอยู่ใน NVS ไม่งั้นรีบูตทีจับคู่ใหม่ที
+CONFIG_BT_NIMBLE_SM_SC=y
+CONFIG_BT_NIMBLE_SM_LEGACY=y
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+
+# WiFi station สำหรับทางเดินที่สองของ snapshot — วิทยุตัวเดียวกับ BLE จึงต้อง coexist
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=y
+# บอร์ดนี้ไม่มี PSRAM และ LVGL ถือ buffer อยู่ 30KB แล้ว — บัฟเฟอร์ WiFi ชุดเต็ม
+# (10 static rx / 32 dynamic rx) กินอีกเกือบ 60KB ซึ่งไม่มีให้ และเราส่ง snapshot
+# 500 ไบต์ทุกไม่กี่วินาที ไม่ใช่สตรีมวิดีโอ
+# WiFi ย้ายโค้ดร้อนของตัวเองเข้า IRAM โดยปริยาย แต่ IRAM ของ ESP32 มีก้อนเดียวและ
+# BLE controller จองไปแล้วเกือบหมด — ปิดสองสวิตช์นี้ ไม่งั้นลิงก์ไม่ผ่าน (`iram0_0_seg
+# overflowed`) ราคาคือ throughput ของ WiFi ซึ่งเราใช้ส่ง 500 ไบต์ทุกไม่กี่วินาที
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=4
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=12
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=12
 
 # LVGL v9
 CONFIG_LV_COLOR_DEPTH_16=y

@@ -6,6 +6,9 @@
 #include "esp_log.h"
 #include "host/ble_hs.h"
 #include "host/util/util.h"
+// ประกาศเอง: `store/config/ble_store_config.h` ไม่มีบรรทัดนี้ แม้ตัวฟังก์ชันจะอยู่ใน
+// คอมโพเนนต์เดียวกัน (ตัวอย่างของ ESP-IDF ทุกตัวก็ประกาศเองแบบนี้)
+void ble_store_config_init(void);
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
 #include "services/gap/ble_svc_gap.h"
@@ -32,6 +35,10 @@ static const ble_uuid128_t CHR_EVENT = UUID128_TAMA(0x04);
 static ct_ble_cbs_t s_cbs;
 static uint8_t s_addr_type;
 static uint16_t s_event_handle;
+static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
+// notify ที่ยังไม่มีใครสมัครรับคือการเผาแบตกับเวลาวิทยุเปล่าๆ และ NimBLE คืน error
+// ทุกครั้ง ซึ่งจะกลบ log จริงตอนสแกน WiFi ที่ยิงยี่สิบข้อความรวด
+static bool s_event_subscribed;
 
 static void advertise(void);
 
@@ -83,7 +90,10 @@ static const struct ble_gatt_svc_def GATT_SVCS[] = {
             {
                 .uuid = &CHR_CONFIG.u,
                 .access_cb = chr_access,
-                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE,
+                // รหัส WiFi ของผู้ใช้เดินผ่านตัวนี้ — เขียนได้เฉพาะเมื่อลิงก์เข้ารหัสแล้ว
+                // อ่านไม่บังคับ (มีแค่ความสว่าง) เพื่อไม่ให้ macOS เด้งจับคู่ตอนแค่เปิดแอป
+                .flags = BLE_GATT_CHR_F_READ | BLE_GATT_CHR_F_WRITE
+                         | BLE_GATT_CHR_F_WRITE_ENC,
             },
             {
                 .uuid = &CHR_EVENT.u,
@@ -102,15 +112,42 @@ static int gap_event(struct ble_gap_event *event, void *arg)
     switch (event->type) {
         case BLE_GAP_EVENT_CONNECT:
             ESP_LOGI(TAG, "connect %s", event->connect.status == 0 ? "ok" : "failed");
-            if (event->connect.status != 0) advertise();
+            if (event->connect.status == 0) {
+                s_conn_handle = event->connect.conn_handle;
+            } else {
+                advertise();
+            }
             if (s_cbs.on_link) s_cbs.on_link(event->connect.status == 0);
             return 0;
 
         case BLE_GAP_EVENT_DISCONNECT:
             ESP_LOGI(TAG, "disconnect, advertising again");
+            s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
+            s_event_subscribed = false;
             if (s_cbs.on_link) s_cbs.on_link(false);
             advertise();
             return 0;
+
+        case BLE_GAP_EVENT_SUBSCRIBE:
+            if (event->subscribe.attr_handle == s_event_handle) {
+                s_event_subscribed = event->subscribe.cur_notify;
+            }
+            return 0;
+
+        case BLE_GAP_EVENT_ENC_CHANGE:
+            ESP_LOGI(TAG, "encryption change: %d", event->enc_change.status);
+            return 0;
+
+        case BLE_GAP_EVENT_REPEAT_PAIRING: {
+            // ทุกครั้งที่แฟลชใหม่ bond เดิมฝั่งบอร์ดหายไปแต่ฝั่ง Mac ยังจำอยู่ ถ้าไม่ทิ้ง
+            // ของเก่าทิ้งแล้วจับคู่ใหม่ ผู้ใช้จะต้องไปลบอุปกรณ์ใน System Settings เอง
+            // ซึ่งบอร์ด GATT ล้วนไม่โผล่ให้ลบตรงนั้นด้วยซ้ำ
+            struct ble_gap_conn_desc desc;
+            if (ble_gap_conn_find(event->repeat_pairing.conn_handle, &desc) == 0) {
+                ble_store_util_delete_peer(&desc.peer_id_addr);
+            }
+            return BLE_GAP_REPEAT_PAIRING_RETRY;
+        }
 
         case BLE_GAP_EVENT_ADV_COMPLETE:
             advertise();
@@ -170,6 +207,17 @@ static void on_sync(void)
 
 static void on_reset(int reason) { ESP_LOGW(TAG, "host reset: %d", reason); }
 
+void ct_ble_notify(const char *json, int len)
+{
+    if (s_conn_handle == BLE_HS_CONN_HANDLE_NONE || !s_event_subscribed) return;
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(json, len);
+    if (!om) return;
+    int rc = ble_gatts_notify_custom(s_conn_handle, s_event_handle, om);
+    if (rc != 0) ESP_LOGW(TAG, "notify failed: %d", rc);
+}
+
+const char *ct_ble_name(void) { return s_device_name; }
+
 static void host_task(void *param)
 {
     nimble_port_run();
@@ -183,6 +231,18 @@ void ct_ble_init(const ct_ble_cbs_t *cbs)
 
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.reset_cb = on_reset;
+    ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
+
+    // จับคู่แบบไม่มีปุ่มไม่มีจอให้ยืนยัน (Just Works) — กันคนดักฟังผ่านๆ ได้ ไม่กัน
+    // MITM ที่อยู่ตรงนั้นพอดีตอนกด Connect ซึ่งเป็นราคาที่ยอมจ่ายเพราะบอร์ดไม่มีทาง
+    // ให้ผู้ใช้เทียบเลขหกหลักเลย
+    ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
+    ble_hs_cfg.sm_bonding = 1;
+    ble_hs_cfg.sm_mitm = 0;
+    ble_hs_cfg.sm_sc = 1;
+    ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_store_config_init();
 
     ble_svc_gap_init();
     ble_svc_gatt_init();

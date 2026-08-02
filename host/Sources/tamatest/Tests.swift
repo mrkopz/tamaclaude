@@ -936,10 +936,13 @@ func runAllTests() {
     }
 
     suite("the foot of the popover says what the menu used to say") {
-        equal(PanelText.board(connected: true), "Board connected", "connected reads plainly")
+        equal(PanelText.board(route: .ble), "Board connected", "connected reads plainly")
         equal(
-            PanelText.board(connected: false), "Looking for the board\u{2026}",
+            PanelText.board(route: .none), "Looking for the board\u{2026}",
             "not connected is a search in progress, not a failure")
+        equal(
+            PanelText.board(route: .lan), "Board connected over Wi-Fi",
+            "the fallback route says so — it dies when the mac leaves the network")
 
         equal(
             PanelText.sessions(Snapshot(clock: "10:00", date: "1 Jan")), ["No sessions"],
@@ -1658,6 +1661,224 @@ func runAllTests() {
             path: FileManager.default.temporaryDirectory
                 .appendingPathComponent("nope-\(UUID().uuidString).sock"))
         expect(!dead.send(Data("{}".utf8)), "no daemon means a clean false, not a hang")
+    }
+
+    suite("wifi commands") {
+        equal(
+            String(decoding: WiFiCommand.scan.payload, as: UTF8.self), #"{"c":"scan"}"#,
+            "scan is the whole command")
+        equal(
+            String(decoding: WiFiCommand.join(ssid: "cafe", psk: "hunter2").payload,
+                   as: UTF8.self),
+            #"{"c":"join","psk":"hunter2","ssid":"cafe"}"#,
+            "join carries both fields with sorted keys")
+        equal(
+            String(decoding: WiFiCommand.join(ssid: "he said \"hi\"", psk: "").payload,
+                   as: UTF8.self),
+            #"{"c":"join","psk":"","ssid":"he said \"hi\""}"#,
+            "a quote in the ssid is escaped, not passed through")
+        equal(
+            String(decoding: WiFiCommand.forget(ssid: "cafe").payload, as: UTF8.self),
+            #"{"c":"forget","ssid":"cafe"}"#, "forget names the network")
+        equal(
+            String(decoding: WiFiCommand.key(hex: "ab12").payload, as: UTF8.self),
+            #"{"c":"key","k":"ab12"}"#, "the lan key rides the same encrypted channel")
+    }
+
+    suite("board events") {
+        equal(
+            BoardEvent.decode(Data(#"{"t":"ap","s":"cafe","r":-52,"e":1}"#.utf8)),
+            .accessPoint(AccessPoint(ssid: "cafe", rssi: -52, secured: true)),
+            "one access point per notification")
+        equal(
+            BoardEvent.decode(Data(#"{"t":"ap","s":"open","r":-70,"e":0}"#.utf8)),
+            .accessPoint(AccessPoint(ssid: "open", rssi: -70, secured: false)),
+            "e=0 is an open network")
+        equal(BoardEvent.decode(Data(#"{"t":"ap_end"}"#.utf8)), .scanFinished,
+              "the sentinel ends the list")
+        equal(
+            BoardEvent.decode(
+                Data(#"{"t":"wifi","st":"connected","s":"cafe","ip":"10.0.0.5","nets":["cafe"]}"#
+                    .utf8)),
+            .wifi(WiFiStatus(state: .connected, ssid: "cafe", ip: "10.0.0.5", error: nil,
+                             saved: ["cafe"])),
+            "status carries the saved list with it")
+        equal(
+            BoardEvent.decode(
+                Data(#"{"t":"wifi","st":"failed","s":"cafe","ip":"","er":"wrong password"}"#.utf8)),
+            .wifi(WiFiStatus(state: .failed, ssid: "cafe", ip: "", error: "wrong password",
+                             saved: [])),
+            "a failure keeps its reason")
+        // firmware ที่ใหม่กว่าแอปต้องไม่ทำให้แอปพัง — ข้ามไปเงียบๆ คือคำตอบที่ถูก
+        equal(BoardEvent.decode(Data(#"{"t":"future"}"#.utf8)), nil, "unknown kinds are skipped")
+        equal(BoardEvent.decode(Data("not json".utf8)), nil, "garbage is skipped")
+        equal(BoardEvent.decode(Data(#"{"t":"ap","s":"","r":-1}"#.utf8)), nil,
+              "a nameless network is not a choice the user can make")
+    }
+
+    suite("network list") {
+        var list = NetworkList()
+        list.beginScan()
+        expect(list.scanning, "a scan is running until the board says otherwise")
+
+        list.apply(.accessPoint(AccessPoint(ssid: "far", rssi: -80, secured: true)))
+        list.apply(.accessPoint(AccessPoint(ssid: "near", rssi: -40, secured: true)))
+        equal(list.found.map(\.ssid), ["near", "far"], "strongest first")
+
+        list.apply(.accessPoint(AccessPoint(ssid: "far", rssi: -50, secured: true)))
+        equal(list.found.count, 2, "the same ssid twice is still one row")
+        equal(list.found.map(\.ssid), ["near", "far"], "the stronger reading wins its place")
+        equal(list.found.last?.rssi, -50, "and the stronger reading is the one kept")
+
+        list.apply(
+            .wifi(WiFiStatus(state: .connected, ssid: "near", ip: "10.0.0.5", error: nil,
+                             saved: ["near"])))
+        equal(list.saved, ["near"], "saved names come from the status message")
+
+        list.apply(.scanFinished)
+        expect(!list.scanning, "the sentinel stops the spinner")
+
+        list.beginScan()
+        list.linkLost()
+        expect(!list.scanning, "a spinner that outlives the link is a lie")
+    }
+
+    suite("lan key") {
+        let key = Data((0..<32).map { UInt8($0) })
+        equal(LanKey.hex(key).count, 64, "a 32 byte key is 64 hex characters")
+        equal(LanKey.decode(LanKey.hex(key)), key, "hex survives the round trip")
+        equal(LanKey.decode("ab"), nil, "a short string is not a key")
+        equal(LanKey.decode(String(repeating: "z", count: 64)), nil, "z is not hex")
+        equal(LanKey.fingerprint(key).count, 8, "the fingerprint is 4 bytes as hex")
+        equal(
+            LanKey.fingerprint(key), LanKey.fingerprint(key),
+            "the same key always gives the same fingerprint")
+        expect(
+            LanKey.fingerprint(key) != LanKey.fingerprint(Data(repeating: 7, count: 32)),
+            "different keys give different fingerprints")
+
+        // ไฟล์ต้องเกิดมาพร้อมสิทธิ์ 600 ไม่ใช่ถูก chmod ตามหลัง — ช่วงระหว่างนั้นคือช่วง
+        // ที่ทุกคนบนเครื่องอ่านได้ เหตุผลเดียวกับ session key
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("lan-key-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let made = LanKey.loadOrCreate(at: url)
+        equal(made?.count, 32, "a fresh key is 32 bytes")
+        equal(LanKey.load(from: url), made, "and it reads back the same")
+        let mode = (try? FileManager.default.attributesOfItem(atPath: url.path))?[
+            .posixPermissions] as? Int
+        equal(mode, 0o600, "the key file is readable only by its owner")
+    }
+
+    suite("lan frames") {
+        let key = Data(repeating: 0xA5, count: 32)
+        var sealer = try LanSealer(key: key, startingAfter: 41)
+        let frame = try sealer.seal(Data(#"{"c":"14:32"}"#.utf8))
+
+        equal(sealer.counter, 42, "the counter continues from where the board left off")
+        // [4B len][12B nonce][ciphertext][16B tag] — ต้องตรงกับ ct_lan.c ทุกไบต์
+        let header = [UInt8](frame.prefix(4))
+        var declared = 0
+        for byte in header { declared = (declared << 8) | Int(byte) }
+        equal(declared, frame.count - 4, "the length header counts the bytes after itself")
+        equal(
+            [UInt8](frame.dropFirst(4).prefix(12)),
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 42],
+            "the nonce is four zero bytes then the counter, big endian")
+
+        let opened = LanSealer.open(frame: frame, key: key)
+        equal(opened?.counter, 42, "the counter comes back out of the nonce")
+        equal(
+            opened.map { String(decoding: $0.payload, as: UTF8.self) }, #"{"c":"14:32"}"#,
+            "and so does the snapshot")
+
+        let second = try sealer.seal(Data("x".utf8))
+        equal(LanSealer.open(frame: second, key: key)?.counter, 43, "every frame moves it on")
+
+        expect(
+            LanSealer.open(frame: frame, key: Data(repeating: 0x5A, count: 32)) == nil,
+            "the wrong key opens nothing")
+
+        var tampered = frame
+        tampered[tampered.count - 1] ^= 0xFF
+        expect(LanSealer.open(frame: tampered, key: key) == nil,
+               "a flipped tag bit is rejected")
+
+        var cut = frame
+        cut.removeLast()
+        expect(LanSealer.open(frame: cut, key: key) == nil,
+               "a body shorter than its header is rejected before any crypto runs")
+
+        // ตัวนับต้องเดินแม้เฟรมนั้นจะใหญ่เกินจนส่งไม่ได้หรือไม่ ก็ไม่สำคัญเท่ากับว่ามันต้อง
+        // ไม่ถอยหลัง — nonce ซ้ำใน GCM ทำลายความลับของทั้งสองเฟรมที่ใช้มัน
+        do {
+            _ = try sealer.seal(Data(repeating: 0x20, count: 5000))
+            expect(false, "a payload past the board's buffer must not be sealed")
+        } catch {
+            equal(error as? LanSealer.Failure, .payloadTooLarge(5000), "and it says why")
+        }
+        do {
+            _ = try LanSealer(key: Data(repeating: 1, count: 16))
+            expect(false, "a 128 bit key is not what the board expects")
+        } catch {
+            equal(error as? LanSealer.Failure, .badKeyLength(16), "and it says why")
+        }
+    }
+
+    suite("the board's greeting") {
+        var hello = Data("TAMA".utf8)
+        hello.append(1)
+        hello.append(contentsOf: [0, 0, 0, 0, 0, 0, 1, 0])
+        equal(LanGreeting.decode(hello)?.counter, 256, "the counter is eight bytes, big endian")
+
+        var wrongMagic = hello
+        wrongMagic[0] = UInt8(ascii: "X")
+        equal(LanGreeting.decode(wrongMagic), nil, "something else on port 7333 is not a board")
+
+        var wrongVersion = hello
+        wrongVersion[4] = 9
+        equal(
+            LanGreeting.decode(wrongVersion), nil,
+            "a firmware that speaks a newer dialect is refused, not guessed at")
+        equal(LanGreeting.decode(hello.prefix(12)), nil, "a short greeting is no greeting")
+    }
+
+    suite("failover policy") {
+        // BLE หลุดสั้นๆ เกิดเป็นปกติ — เปิด LAN ทุกครั้งคือเปิดปิดซ็อกเก็ตทั้งวันเพื่อสิ่งที่
+        // CoreBluetooth ซ่อมเองอยู่แล้ว
+        var policy = FailoverPolicy(grace: 10, since: t0)
+        policy.update(ble: true, lan: false, now: t0)
+        expect(!policy.wantsLan, "while bluetooth is up the second path has no reason to exist")
+        equal(policy.route, .ble, "and that is the route")
+
+        policy.update(ble: false, lan: false, now: t0 + 1)
+        expect(!policy.wantsLan, "one second of silence is not a lost link")
+        equal(policy.route, LanRoute.none, "but nothing is carrying snapshots either")
+
+        policy.update(ble: false, lan: false, now: t0 + 9)
+        expect(!policy.wantsLan, "nine seconds is still inside the grace")
+        // นับจากจังหวะที่ *เห็น* ว่าหลุด (t0+1) ไม่ใช่จากจังหวะสุดท้ายที่เห็นว่าดี — แอปที่
+        // เพิ่งตื่นมาจากหลับสองชั่วโมงจะเห็นการหลุดครั้งแรกตอนนั้น ไม่ใช่ตอนก่อนหลับ
+        policy.update(ble: false, lan: false, now: t0 + 11)
+        expect(policy.wantsLan, "ten seconds after the drop was seen is the agreed threshold")
+
+        policy.update(ble: false, lan: true, now: t0 + 12)
+        equal(policy.route, .lan, "once the lan is up it is the route")
+
+        policy.update(ble: true, lan: true, now: t0 + 13)
+        expect(!policy.wantsLan, "bluetooth back means the fallback is dropped, not kept warm")
+        equal(policy.route, .ble, "the primary wins whenever it is there")
+
+        policy.update(ble: false, lan: false, now: t0 + 14)
+        expect(!policy.wantsLan, "the grace starts over from the moment it dropped again")
+        policy.update(ble: false, lan: false, now: t0 + 24)
+        expect(policy.wantsLan, "and expires ten seconds after that, not after the first drop")
+
+        // แอปเพิ่งเปิดขึ้นมาโดยที่บอร์ดอยู่คนละห้อง: BLE ไม่เคยต่อติดเลย ถ้าเริ่มนับจาก
+        // "ครั้งแรกที่หลุด" ก็จะไม่มีวันเริ่มนับ แล้วทาง LAN จะไม่ถูกเปิดเลยตลอดกาล
+        var cold = FailoverPolicy(grace: 10, since: t0)
+        cold.update(ble: false, lan: false, now: t0 + 10)
+        expect(cold.wantsLan, "a mac that starts out of range still tries the lan")
     }
 }
 

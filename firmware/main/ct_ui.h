@@ -9,8 +9,14 @@ void ct_ui_init(void);
 // เปลี่ยนภาพทั้งใบตาม snapshot ใหม่
 void ct_ui_set_snapshot(const ct_snapshot_t *snap);
 
-// BLE ต่ออยู่หรือไม่ — หลุดแล้วมาสคอตเป็นสีเทา ไม่มีไอคอน ไม่มีข้อความ (DESIGN.md)
+// มี snapshot สดอยู่ไหม — ไม่ว่าจะมาทาง BLE หรือ LAN ก็ตาม หลุดแล้วมาสคอตเป็นสีเทา
+// ไม่มีไอคอน ไม่มีข้อความ (DESIGN.md) · ตัวนี้คุมสี ส่วน `ct_ui_set_link` คุมข้อความ
 void ct_ui_set_connected(bool connected);
+
+// ไอคอนลิงก์บนแถบบน + ป้ายชื่อข้างจุด — BLE ชนะ WiFi เสมอเพราะเป็นทางหลัก
+// ทั้งคู่ false = ยังไม่มีใครคุยกับบอร์ดเลย · `ip` โผล่แทนชื่อเมื่อเหลือแต่ WiFi
+// ซึ่งเป็นตอนเดียวที่ผู้ใช้ต้องการมันจริงๆ (Mac หาบอร์ดไม่เจอ ต้องกรอกเอง)
+void ct_ui_set_link(bool ble, bool wifi, const char *ip);
 
 // เดินอนิเมชันหนึ่งเฟรม เรียกจากลูปหลัก
 void ct_ui_tick(void);

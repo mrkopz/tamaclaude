@@ -9,6 +9,13 @@ public protocol Transport: AnyObject {
     var onConnect: (() -> Void)? { get set }
     func start()
     func send(_ payload: Data)
+    /// นาฬิกาของ daemon เดินผ่านมาหนึ่งครั้ง — transport ที่ต้องตัดสินใจตามเวลา
+    /// (เช่น การสลับไป LAN เมื่อ BLE หายไปนานพอ) ทำตรงนี้ ไม่ใช่มี timer ของตัวเอง
+    func tick(now: Date)
+}
+
+extension Transport {
+    public func tick(now: Date) {}
 }
 
 /// พิมพ์ snapshot ออก stdout — ใช้ตรวจ pipeline ตั้งแต่ยังไม่มีบอร์ด

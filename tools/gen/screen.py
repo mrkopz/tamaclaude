@@ -83,7 +83,20 @@ class Screen:
     overflow: int = 0
     clock: str = "14:32"
     date: str = "Mon 27 Jul"
+    # มี snapshot สดอยู่ไหม — ไม่สนใจว่ามาทางไหน ตรงกับ ct_ui_set_connected
     connected: bool = True
+    # บอร์ดอยู่บน WiFi แล้วหรือยัง
+    wifi: bool = False
+    # ลิงก์ BLE ขึ้นอยู่ไหม — None = เหมือน connected (ฉากเก่าทั้งหมดคุยกันทาง BLE)
+    # แยกจาก connected ตั้งแต่ M2 เพราะ snapshot เดินทางมาทาง LAN ได้แล้ว: จอที่ข้อมูล
+    # สดแต่ BLE ตายเป็นสภาพที่มีจริง และไอคอนต้องบอกให้ถูก
+    ble: bool | None = None
+    # ที่อยู่บอร์ดบน LAN — ขึ้นแทนชื่อบนแถบเมื่อเหลือแต่ WiFi ซึ่งเป็นตอนเดียวที่ต้องใช้
+    ip: str = ""
+
+    @property
+    def ble_link(self) -> bool:
+        return self.connected if self.ble is None else self.ble
     # ใหม่สุดอยู่บน — session ที่เกิน 4 ตัวไม่มีมาสคอต แต่การเตือนยังมาโผล่ตรงนี้
     cards: list[Card] = field(default_factory=list)
     # การ์ดที่มีอยู่จริงแต่ไม่ได้ส่ง/วาดไม่พอ — daemon นับมาให้ (คีย์ "m" บนสาย)
@@ -114,17 +127,46 @@ def _fit(draw: ImageDraw.ImageDraw, text: str, f: ImageFont.FreeTypeFont, max_w:
     return text + ell
 
 
+# ไอคอนลิงก์ — ต้องตรงกับ ICON_* ใน firmware/main/ct_ui.c เป๊ะ
+# BLE = แท่งไต่ขึ้น (ทางหลัก) · WiFi = คลื่นซ้อน (ทางสำรอง) · ขาด = ขีดเดียวจางๆ
+_ICON_BLE = [(0, 6, 3, 3), (4, 3, 3, 6), (8, 0, 3, 9)]
+_ICON_WIFI = [(0, 0, 11, 2), (2, 3, 7, 2), (4, 6, 3, 3)]
+_ICON_NONE = [(1, 4, 9, 2)]
+
+
+def _link_icon(draw: ImageDraw.ImageDraw, s: Screen) -> None:
+    if s.ble_link:
+        parts, col = _ICON_BLE, PAL.good
+    elif s.wifi:
+        parts, col = _ICON_WIFI, PAL.accent
+    else:
+        parts, col = _ICON_NONE, PAL.text_dim
+    x0 = L.screen.width - 6 - L.topbar.link_icon_w
+    y0 = (L.topbar.height - L.topbar.link_icon_h) // 2
+    for x, y, w, h in parts:
+        draw.rectangle([x0 + x, y0 + y, x0 + x + w - 1, y0 + y + h - 1],
+                       fill=quantize565(col))
+
+
 def _topbar(draw: ImageDraw.ImageDraw, s: Screen) -> None:
     h = L.topbar.height
     draw.rectangle([0, 0, L.screen.width - 1, h - 1], fill=quantize565(PAL.bg_slot))
     dot = PAL.good if s.connected else PAL.gray
     draw.rectangle([6, h // 2 - 3, 11, h // 2 + 2], fill=quantize565(dot))
-    label = "tamaclaude" if s.connected else "no link"
+    # ป้ายบอกทาง ส่วนสีบอกว่าข้อมูลสดไหม — สองคำถามคนละอัน (ต้องตรงกับ ct_ui_set_link)
+    if s.ble_link:
+        label = "tamaclaude"
+    elif s.wifi and s.ip:
+        label = s.ip
+    else:
+        label = "no link"
     draw.text((17, h // 2), label, font=font(11),
               fill=quantize565(PAL.text if s.connected else PAL.text_dim), anchor="lm")
+    _link_icon(draw, s)
     # นาฬิกาบนแถบโผล่เมื่อพื้นที่ล่างถูกยึดไป (card หรือ usage) — ไม่ใช่ "เมื่อมี card"
     # อย่างเดิม เพราะตอนนี้มีผู้ยึดสองราย ถ้าเช็คแค่ card จะได้นาฬิกาซ้ำสองที่ในฉาก idle
-    right = L.screen.width - 6
+    # ไอคอนลิงก์จองขวาสุดไว้ถาวร ทุกอย่างบนแถบจึงเริ่มนับจากซ้ายของมัน
+    right = L.screen.width - 6 - L.topbar.link_icon_w - L.topbar.link_icon_gap
     cards, usage = s.shown_cards(), s.shown_usage()
     if cards or usage:
         draw.text((right, h // 2), s.clock, font=font(12),

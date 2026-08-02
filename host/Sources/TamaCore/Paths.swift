@@ -26,6 +26,12 @@ public enum Paths {
         stateDir.appendingPathComponent("session-key")
     }
 
+    /// กุญแจปิดผนึกเฟรมบน LAN — 32 ไบต์เป็น hex, mode 600 เหมือน `sessionKey`
+    /// คนละอย่างกับ `sessionKey` โดยสิ้นเชิง: อันนี้เปิดได้แค่ช่องคุยกับบอร์ด (`LanKey`)
+    public static var lanKey: URL {
+        stateDir.appendingPathComponent("lan-key")
+    }
+
     public static var log: URL {
         stateDir.appendingPathComponent("daemon.log")
     }

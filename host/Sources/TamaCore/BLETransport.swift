@@ -6,9 +6,9 @@ public enum GATT {
     public static let service = CBUUID(string: "7A9B0001-4C1E-4B6D-9E2A-1D5C3F0A0001")
     /// daemon เขียน snapshot ลงตัวนี้
     public static let state = CBUUID(string: "7A9B0002-4C1E-4B6D-9E2A-1D5C3F0A0002")
-    /// ความสว่าง ฯลฯ อ่าน/เขียนได้สองทาง
+    /// ความสว่าง + คำสั่ง WiFi — firmware บังคับให้ลิงก์เข้ารหัสก่อนถึงจะเขียนได้
     public static let config = CBUUID(string: "7A9B0003-4C1E-4B6D-9E2A-1D5C3F0A0003")
-    /// บอร์ดแจ้งกลับ — สงวนไว้ v2
+    /// บอร์ดแจ้งกลับ — ผลสแกน WiFi และสถานะการต่อ (`BoardEvent`)
     public static let event = CBUUID(string: "7A9B0004-4C1E-4B6D-9E2A-1D5C3F0A0004")
 
     /// ชื่อที่บอร์ดโฆษณา ใช้เป็นตัวกรองสำรองเมื่อ advertisement ไม่ประกาศ service
@@ -35,6 +35,10 @@ public final class BLETransport: NSObject, Transport {
     public var onConnect: (() -> Void)?
     /// รายชื่อบอร์ดที่เห็นตอนนี้เปลี่ยน — เมนูบาร์ใช้วาดรายการให้เลือก
     public var onBoardsChanged: (([Board]) -> Void)?
+    /// บอร์ดแจ้งอะไรกลับมาทาง event characteristic (ผลสแกน WiFi, สถานะการต่อ)
+    public var onEvent: ((BoardEvent) -> Void)?
+    /// ลิงก์ต่อติด/หลุด — หน้าตั้งค่าต้องหยุดสปินเนอร์เองเมื่อบอร์ดหายไปกลางสแกน
+    public var onLinkChanged: ((Bool) -> Void)?
 
     public private(set) var isConnected = false
 
@@ -146,10 +150,25 @@ extension BLETransport: CBCentralManagerDelegate {
             Log.info("bluetooth permission denied — grant it in System Settings > Privacy")
         case .poweredOff:
             Log.info("bluetooth is off")
-            isConnected = false
+            forgetPeripheral()
         default:
-            isConnected = false
+            forgetPeripheral()
         }
+    }
+
+    /// วิทยุดับ = CoreBluetooth ทิ้ง CBPeripheral ทุกตัวโดย *ไม่* เรียก
+    /// didDisconnectPeripheral ให้ ตัวที่ค้างอยู่จึงไม่มีวันถูกล้าง และ didDiscover ที่กัน
+    /// "ต่ออยู่แล้ว" ด้วย `peripheral == nil` จะไม่ยอมต่อกลับอีกเลยหลังเปิด Bluetooth คืน
+    /// — อาการคือบอร์ดค้างอยู่บนทาง LAN จนกว่าจะรีสตาร์ทแอป
+    private func forgetPeripheral() {
+        isConnected = false
+        peripheral = nil
+        stateChar = nil
+        configChar = nil
+        // CBPeripheral ที่เก็บไว้ก็ใช้ไม่ได้แล้วเช่นกัน รายชื่อจะถูกเติมใหม่ตอนสแกนรอบหน้า
+        seen.removeAll()
+        publishBoards()
+        onLinkChanged?(false)
     }
 
     public func centralManager(
@@ -191,6 +210,7 @@ extension BLETransport: CBCentralManagerDelegate {
         self.peripheral = nil
         scan()
         publishBoards()
+        onLinkChanged?(false)
     }
 
     public func centralManager(
@@ -202,6 +222,7 @@ extension BLETransport: CBCentralManagerDelegate {
         self.peripheral = nil
         scan()
         publishBoards()
+        onLinkChanged?(false)
     }
 }
 
@@ -238,8 +259,23 @@ extension BLETransport: CBPeripheralDelegate {
         Log.info("board connected (write limit \(writeLimit)B)")
         publishBoards()
         // ส่ง snapshot ปัจจุบันซ้ำทันที — บอร์ดไม่จำอะไรข้ามการเชื่อมต่อ
+        onLinkChanged?(true)
         onConnect?()
         flush()
+    }
+
+    public func peripheral(
+        _ peripheral: CBPeripheral,
+        didUpdateValueFor characteristic: CBCharacteristic,
+        error: Error?
+    ) {
+        guard characteristic.uuid == GATT.event, let data = characteristic.value else { return }
+        guard let event = BoardEvent.decode(data) else {
+            // firmware ใหม่กว่าแอปพูดอะไรที่เรายังไม่รู้จัก — ข้ามไป ไม่ใช่ล้ม
+            Log.debug("unknown board event (\(data.count)B)")
+            return
+        }
+        onEvent?(event)
     }
 
     public func peripheral(
