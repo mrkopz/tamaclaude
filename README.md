@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white" alt="Swift 6.0">
   <img src="https://img.shields.io/badge/ESP--IDF-v5.5-E7352C?logo=espressif&logoColor=white" alt="ESP-IDF v5.5">
   <img src="https://img.shields.io/badge/board-ESP32--2432S028R-3C3C3C" alt="ESP32-2432S028R">
-  <img src="https://img.shields.io/badge/link-BLE%20only-0082FC?logo=bluetooth&logoColor=white" alt="BLE only">
+  <img src="https://img.shields.io/badge/link-BLE%20%2B%20Wi--Fi-0082FC?logo=bluetooth&logoColor=white" alt="BLE with a Wi-Fi fallback">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3DA639" alt="MIT license"></a>
 </p>
 
@@ -48,8 +48,10 @@ are your Claude usage quota.
 
 *The board, and the menu bar app that feeds it.*
 
-Nothing is on the network. A menu bar app on your Mac reads Claude Code's hooks and
-pushes a small snapshot to the board over Bluetooth LE.
+Nothing leaves your network. A menu bar app on your Mac reads Claude Code's hooks and
+pushes a small snapshot to the board over Bluetooth LE — and, if you set up Wi-Fi, over
+your own LAN as a sealed fallback when Bluetooth goes quiet. The board never talks to
+claude.ai.
 
 ## What the screen says
 
@@ -196,9 +198,9 @@ through the window faster than the clock is.
 
 ## 4. Connect it to Claude Code
 
-Everything below is in the gear menu:
+Everything below is in **gear ▸ Settings… ▸ General**:
 
-- **Install hooks in ~/.claude/settings.json** — this is the one that matters. It teaches
+- **Install hooks in settings.json** — this is the one that matters. It teaches
   Claude Code to tell the app what it is doing. Nothing appears on the board without it.
   Your existing settings are kept, and a backup is written beside the file.
 - **Board** — pick your board by name, or leave it on *Any board*.
@@ -212,12 +214,12 @@ start moving.
 
 The bars at the bottom of the screen have two independent sources, both optional:
 
-- **Read quota from the statusline** (gear menu) installs a Claude Code statusline that hands
-  the app your current usage. It needs no password, but it only updates while Claude Code
-  is running.
-- **Set session key…** (gear menu) lets the app ask claude.ai directly, so the number
-  keeps moving even with Claude Code closed. **Refresh quota** then chooses how often
-  (Off / 60s / 5 min).
+- **Read quota from the statusline** (Settings ▸ General) installs a Claude Code statusline
+  that hands the app your current usage. It needs no password, but it only updates while
+  Claude Code is running.
+- **Set session key…** (Settings ▸ General) lets the app ask claude.ai directly, so the
+  number keeps moving even with Claude Code closed. **Refresh quota** then chooses how
+  often (Off / 60s / 5 min).
 
 > **About the session key.** It is the `sessionKey` cookie of a logged-in claude.ai
 > browser session, and it is a **full-account credential** — anyone holding it can act as
@@ -236,6 +238,28 @@ this instead — the same elements, colours, and `~/.claude/statusline-config.tx
 statusline that ships with Claude Usage.
 
 ![The statusline the app draws: directory, branch, model, changed lines, token count, then the 5-hour and weekly quota bars with a pace mark and a reset countdown](docs/images/statusline.jpg)
+
+## 6. Wi-Fi, so the screen survives Bluetooth (optional)
+
+Bluetooth is the main path and always wins. It also drops — you walk past the board, the
+Mac half-sleeps — and until now that left a frozen screen. Put the board on your network
+and the app keeps feeding it when Bluetooth has been quiet for ten seconds.
+
+**gear ▸ Settings… ▸ Wi-Fi**, with the board in Bluetooth range:
+
+1. The list fills in as the *board* scans — not your Mac, so what you see is what the
+   board can actually reach. It is 2.4 GHz only; a 5 GHz-only network will not appear.
+2. Pick a network, type the password, **Connect**. macOS pairs with the board the first
+   time; there is no six-digit code to enter.
+3. It says `Connected to <name>` with the board's address. The board remembers up to five
+   networks and comes back on its own after a power cut.
+
+You do not have to configure anything on the Mac side. The snapshot is sealed with
+AES-256-GCM under a key the app generates and pushes to the board over the same encrypted
+channel as your Wi-Fi password, and the board is found over mDNS — the address box at the
+bottom of the tab is only for networks that filter it.
+
+The board still never talks to claude.ai; your session key never leaves the Mac.
 
 ## Troubleshooting
 
@@ -264,9 +288,19 @@ Expected. The app is signed ad-hoc, so each build is a new identity as far as ma
 concerned. There is no way around it without an Apple Developer ID.
 
 **The mascot never moves.**
-The hooks are probably not installed — gear menu → *Install hooks in
-~/.claude/settings.json*. Sessions already open when you install them keep the old
-settings; start a new one. *Open log* in the gear menu shows what the app is receiving.
+The hooks are probably not installed — Settings ▸ General → *Install hooks in
+settings.json*. Sessions already open when you install them keep the old settings; start
+a new one. *Open log* in the same tab shows what the app is receiving.
+
+**The Wi-Fi list stays empty, or the spinner never stops.**
+Wi-Fi is set up over Bluetooth, so the board has to be connected first — the tab says so
+when it is not. The list only ever holds 2.4 GHz networks.
+
+**The board is on the network and pings, but the screen still freezes when Bluetooth
+goes.**
+macOS 15 and newer ask for Local Network permission separately, and a refusal silences
+both mDNS and direct connections with no error at all. System Settings ▸ Privacy &
+Security ▸ Local Network.
 
 ## Known limits
 
