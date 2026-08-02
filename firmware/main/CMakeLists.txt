@@ -8,7 +8,10 @@ idf_component_register(
         "ct_model.c"
         "ct_ui.c"
         "ct_ble.c"
+        "ct_wifi.c"
+        "ct_lan.c"
         "ct_led.c"
     INCLUDE_DIRS "."
-    REQUIRES driver esp_timer nvs_flash bt json
+    REQUIRES driver esp_timer nvs_flash bt json esp_wifi esp_netif esp_event
+             lwip mbedtls espressif__mdns
 )

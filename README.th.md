@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white" alt="Swift 6.0">
   <img src="https://img.shields.io/badge/ESP--IDF-v5.5-E7352C?logo=espressif&logoColor=white" alt="ESP-IDF v5.5">
   <img src="https://img.shields.io/badge/board-ESP32--2432S028R-3C3C3C" alt="ESP32-2432S028R">
-  <img src="https://img.shields.io/badge/link-BLE%20only-0082FC?logo=bluetooth&logoColor=white" alt="BLE only">
+  <img src="https://img.shields.io/badge/link-BLE%20%2B%20Wi--Fi-0082FC?logo=bluetooth&logoColor=white" alt="BLE with a Wi-Fi fallback">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3DA639" alt="MIT license"></a>
 </p>
 
@@ -46,8 +46,9 @@
 
 *บอร์ด กับแอปแถบเมนูที่ป้อนข้อมูลให้มัน*
 
-ไม่มีอะไรวิ่งออกอินเทอร์เน็ต แอปบนแถบเมนูของ Mac อ่าน hook ของ Claude Code แล้วส่งข้อมูลก้อนเล็กๆ
-ไปที่บอร์ดผ่าน Bluetooth LE
+ไม่มีอะไรวิ่งออกนอกวงเน็ตของคุณ แอปบนแถบเมนูของ Mac อ่าน hook ของ Claude Code แล้วส่งข้อมูล
+ก้อนเล็กๆ ไปที่บอร์ดผ่าน Bluetooth LE — และถ้าตั้ง Wi-Fi ไว้ ก็เดินทางบน LAN ของคุณเองแบบเข้ารหัส
+ตอน Bluetooth เงียบ ส่วนบอร์ดไม่เคยคุยกับ claude.ai เลย
 
 ## จอบอกอะไรบ้าง
 
@@ -71,6 +72,13 @@
 |:--|:--|:--|
 | ![โควตาปกติ](docs/images/screen_usage.gif) | ![ใกล้เต็ม](docs/images/screen_usage_hot.gif) | ![ยังไม่รู้ค่า](docs/images/screen_usage_unknown.gif) |
 | หน้าต่าง 5 ชั่วโมงปัจจุบันกับรายสัปดาห์ | ใกล้ชนเพดาน ขีดเล็กๆ บอกจังหวะการใช้เทียบกับเวลา | ขึ้น `--` ไม่เดาค่าให้ ตอนที่ยังไม่มีตัวเลขมาถึง |
+
+**ตอนเดินบน Wi-Fi**
+
+| ยังทำงานอยู่ | ไม่มีใครป้อน |
+|:--|:--|
+| ![บน LAN](docs/images/screen_lan.gif) | ![อยู่บนเน็ตเฉยๆ](docs/images/screen_wifi.gif) |
+| Bluetooth หลุดไปแล้ว ป้ายบนแถบจึงเปลี่ยนเป็น IP ของบอร์ดและไอคอนเป็นคลื่น แต่ snapshot ยังเดินทางมาถึงอยู่ เข้ารหัสมาทางเครือข่าย | บอร์ดอยู่บนเน็ตแต่ไม่มีอะไรจะแสดง — Mac Sleep หรือแอปไม่ได้เปิดอยู่ |
 
 ## ของที่ต้องมี
 
@@ -180,9 +188,9 @@ cd ../host
 
 ## 4. ต่อเข้ากับ Claude Code
 
-ทั้งหมดนี้อยู่ในเมนูเฟือง:
+ทั้งหมดนี้อยู่ใน **เฟือง ▸ Settings… ▸ General**:
 
-- **Install hooks in ~/.claude/settings.json** — ตัวที่สำคัญที่สุด มันสอนให้ Claude Code
+- **Install hooks in settings.json** — ตัวที่สำคัญที่สุด มันสอนให้ Claude Code
   บอกแอปว่ากำลังทำอะไรอยู่ ถ้าไม่กดอันนี้จอจะไม่มีอะไรขึ้นเลย ค่าที่คุณตั้งไว้เดิมยังอยู่ครบ
   และมีไฟล์สำรองเขียนไว้ข้างๆ ให้ด้วย
 - **Board** — เลือกบอร์ดตามชื่อ หรือปล่อยไว้ที่ *Any board*
@@ -195,9 +203,9 @@ cd ../host
 
 แถบด้านล่างของจอมีสองท่อที่เป็นอิสระต่อกัน และเป็นทางเลือกทั้งคู่:
 
-- **Read quota from the statusline** (เมนูเฟือง) ติดตั้ง statusline ของ Claude Code ที่ส่งค่าการใช้งาน
-  ปัจจุบันให้แอป ไม่ต้องใช้รหัสผ่านใดๆ แต่ค่าจะขยับเฉพาะตอนที่ Claude Code เปิดอยู่
-- **Set session key…** (เมนูเฟือง) ให้แอปถาม claude.ai ตรงๆ ตัวเลขจึงเดินต่อแม้ปิด Claude Code
+- **Read quota from the statusline** (Settings ▸ General) ติดตั้ง statusline ของ Claude Code
+  ที่ส่งค่าการใช้งานปัจจุบันให้แอป ไม่ต้องใช้รหัสผ่านใดๆ แต่ค่าจะขยับเฉพาะตอนที่ Claude Code เปิดอยู่
+- **Set session key…** (Settings ▸ General) ให้แอปถาม claude.ai ตรงๆ ตัวเลขจึงเดินต่อแม้ปิด Claude Code
   ไปแล้ว จากนั้น **Refresh quota** เลือกความถี่ (Off / 60s / 5 min)
 
 > **เรื่อง session key** มันคือคุกกี้ `sessionKey` ของเบราว์เซอร์ที่ล็อกอิน claude.ai อยู่ และเป็น
@@ -214,6 +222,24 @@ cd ../host
 และไฟล์ตั้งค่า `~/.claude/statusline-config.txt` ชุดเดียวกับ statusline ที่มากับ Claude Usage
 
 ![statusline ที่แอปวาด: โฟลเดอร์ branch โมเดล จำนวนบรรทัดที่แก้ จำนวน token แล้วต่อด้วยแถบโควตา 5 ชั่วโมงและรายสัปดาห์ พร้อมขีดบอกจังหวะและเวลานับถอยหลังถึงรีเซ็ต](docs/images/statusline.jpg)
+
+## 6. Wi-Fi เพื่อให้จอรอดตอน Bluetooth หาย (ทางเลือก)
+
+Bluetooth เป็นทางหลักและชนะเสมอ แต่มันก็หลุดได้ — คุณเดินผ่านบอร์ด Mac หลับไปครึ่งตัว
+ซึ่งที่ผ่านมาแปลว่าจอค้าง เอาบอร์ดขึ้นเน็ตของคุณแล้วแอปจะป้อนต่อให้เองเมื่อ Bluetooth เงียบครบสิบวินาที
+
+**เฟือง ▸ Settings… ▸ Wi-Fi** ตอนที่บอร์ดยังอยู่ในระยะ Bluetooth:
+
+1. รายการทยอยขึ้นตามที่*บอร์ด*สแกนเจอ ไม่ใช่ที่ Mac เจอ สิ่งที่เห็นจึงเป็นวงที่บอร์ดเข้าถึงได้จริง
+   บอร์ดรับได้แค่ 2.4GHz วงที่เป็น 5GHz ล้วนจะไม่โผล่
+2. เลือกวง พิมพ์รหัส กด **Connect** ครั้งแรก macOS จะจับคู่กับบอร์ดเอง ไม่มีเลขหกหลักให้กรอก
+3. จะขึ้น `Connected to <ชื่อวง>` พร้อมที่อยู่ของบอร์ด · บอร์ดจำได้ห้าวง และกลับขึ้นเน็ตเองหลังไฟดับ
+
+ฝั่ง Mac ไม่ต้องตั้งอะไรเพิ่ม snapshot ถูกเข้ารหัสด้วย AES-256-GCM ด้วยกุญแจที่แอปสุ่มขึ้นเอง
+แล้วผลักไปบอร์ดทางช่องที่เข้ารหัสอยู่แล้ว — ช่องเดียวกับรหัส Wi-Fi ของคุณ ส่วนการหาบอร์ดใช้ mDNS
+ช่องกรอกที่อยู่ตรงท้ายแท็บมีไว้เผื่อเน็ตที่กรอง multicast เท่านั้น
+
+บอร์ดยังไม่คุยกับ claude.ai อยู่ดี และ session key ไม่เคยออกจาก Mac
 
 ## แก้ปัญหา
 
@@ -240,9 +266,17 @@ cd ../host
 ไม่มีทางเลี่ยงถ้าไม่มี Apple Developer ID
 
 **มาสคอตไม่ขยับเลย**
-น่าจะยังไม่ได้ติดตั้ง hook — เมนูเฟือง → *Install hooks in ~/.claude/settings.json*
-session ที่เปิดค้างอยู่ก่อนหน้าจะยังใช้ค่าเดิม ให้เปิด session ใหม่ ส่วน *Open log* ในเมนูเฟือง
+น่าจะยังไม่ได้ติดตั้ง hook — Settings ▸ General → *Install hooks in settings.json*
+session ที่เปิดค้างอยู่ก่อนหน้าจะยังใช้ค่าเดิม ให้เปิด session ใหม่ ส่วน *Open log* ในแท็บเดียวกัน
 จะบอกว่าแอปได้รับอะไรมาบ้าง
+
+**รายการ Wi-Fi ว่างเปล่า หรือสปินเนอร์หมุนไม่หยุด**
+การตั้ง Wi-Fi เดินทางบน Bluetooth บอร์ดจึงต้องต่ออยู่ก่อน — ถ้าไม่ต่อ ในแท็บจะบอกไว้แล้ว
+และรายการมีแต่วง 2.4GHz เท่านั้นเสมอ
+
+**บอร์ดอยู่บนเน็ตและ ping ผ่าน แต่พอ Bluetooth หลุดจอก็ยังค้าง**
+macOS 15 ขึ้นไปขอสิทธิ์ Local Network แยกอีกตัว และถ้าถูกปฏิเสธ ทั้ง mDNS และการต่อไปหา IP ตรงๆ
+จะเงียบไปโดยไม่มี error ให้เห็นเลย ดูที่ System Settings ▸ Privacy & Security ▸ Local Network
 
 ## ข้อจำกัดที่รู้อยู่
 

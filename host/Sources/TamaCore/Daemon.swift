@@ -44,7 +44,7 @@ public final class Daemon {
 
         let t = DispatchSource.makeTimerSource(queue: work)
         t.schedule(deadline: .now(), repeating: tick)
-        t.setEventHandler { [weak self] in self?.publish() }
+        t.setEventHandler { [weak self] in self?.pulse() }
         timer = t
         t.resume()
     }
@@ -68,6 +68,16 @@ public final class Daemon {
                 Log.debug("bad event: \(error)")
             }
         }
+    }
+
+    /// หนึ่งจังหวะของนาฬิกา — transport ได้เวลาปัจจุบันก่อน แล้วค่อยคิดภาพใหม่
+    ///
+    /// เรียงลำดับนี้เพราะ tick อาจสลับทางเดิน ซึ่งจะล้าง `lastSent` ผ่าน `onConnect`
+    /// การ publish ก่อนแล้วค่อย tick จะทำให้ snapshot ก้อนแรกของทางใหม่ตกหายไปหนึ่งจังหวะ
+    private func pulse() {
+        let now = Date()
+        for t in transports { t.tick(now: now) }
+        publish()
     }
 
     /// ส่งเมื่อภาพเปลี่ยนจริงเท่านั้น — ไม่งั้นบอร์ดโดนยิงทุกวินาทีโดยเปล่าประโยชน์

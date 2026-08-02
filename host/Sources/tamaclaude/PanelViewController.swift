@@ -314,8 +314,8 @@ final class PanelViewController: NSViewController {
 
     // MARK: - อัปเดตข้อความ
 
-    func showBoard(connected: Bool) {
-        boardLabel.stringValue = PanelText.board(connected: connected)
+    func showBoard(route: LanRoute) {
+        boardLabel.stringValue = PanelText.board(route: route)
     }
 
     /// วาดใหม่เฉพาะตอนข้อความเปลี่ยนจริง — ถูกเรียกทุก snapshot ซึ่งขยับทุกนาที

@@ -8,6 +8,9 @@
 #define CT_SCREEN_HEIGHT             240
 
 #define CT_TOPBAR_HEIGHT             22
+#define CT_TOPBAR_LINK_ICON_W        11
+#define CT_TOPBAR_LINK_ICON_H        9
+#define CT_TOPBAR_LINK_ICON_GAP      6
 
 #define CT_SLOTS_COUNT               3
 #define CT_SLOTS_WIDTH               106

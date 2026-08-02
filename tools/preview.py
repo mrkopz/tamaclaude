@@ -138,6 +138,30 @@ SCENES: dict[str, screen.Screen] = {
             screen.Usage("Weekly", WEEKLY_WINDOW, 8, 5 * 86400 + 8 * 3600),
         ],
     ),
+    # BLE หลุด บอร์ดขึ้นเน็ตแล้วแต่ Mac ยังหาไม่เจอ — ข้อมูลบนจอตายเหมือน "offline"
+    # ต่างกันที่แถบบน ซึ่งบอกที่อยู่ให้ผู้ใช้เอาไปกรอกในหน้าตั้งค่าเมื่อ mDNS ไม่ผ่าน
+    "wifi": screen.Screen(
+        sessions=[screen.Session("tamaclaude", "idle", 0.0)],
+        connected=False,
+        wifi=True,
+        ip="192.168.1.42",
+        cards=[screen.Card("tamaclaude", "Needs your answer", "alert")],
+    ),
+    # BLE หลุดแต่ snapshot ยังเดินทางมาทาง LAN — ข้อมูลสดทั้งจอ ไอคอนเป็นคลื่น WiFi
+    "lan": screen.Screen(
+        sessions=[
+            screen.Session("tamaclaude", "writing", 0.0),
+            screen.Session("docs", "idle", 0.5),
+        ],
+        connected=True,
+        ble=False,
+        wifi=True,
+        ip="192.168.1.42",
+        usage=[
+            screen.Usage("Current", SESSION_WINDOW, 43, 1 * 3600 + 40 * 60),
+            screen.Usage("Weekly", WEEKLY_WINDOW, 8, 5 * 86400 + 8 * 3600),
+        ],
+    ),
     # ไม่มี session เลย — มาสคอตเดินข้ามแถบ slot ที่ว่างอยู่
     "empty": screen.Screen(
         sessions=[],
