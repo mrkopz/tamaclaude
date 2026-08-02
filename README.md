@@ -74,6 +74,13 @@ pushes a small snapshot to the board over Bluetooth LE.
 | ![usage](docs/images/screen_usage.gif) | ![usage hot](docs/images/screen_usage_hot.gif) | ![usage unknown](docs/images/screen_usage_unknown.gif) |
 | The current 5-hour window and the weekly one. | Near the limit; the tick marks your pace against the clock. | `--`, never a guess, when no number has arrived. |
 
+**Over Wi-Fi**
+
+| Still live | Nobody feeding it |
+|:--|:--|
+| ![lan](docs/images/screen_lan.gif) | ![wifi](docs/images/screen_wifi.gif) |
+| Bluetooth is gone, so the label is the board's IP and the icon is a wave — but the snapshot still arrives, sealed, over the network. | The board is on the network with nothing to show: the Mac is asleep or the app is not running. |
+
 ## What you need
 
 **Hardware**
