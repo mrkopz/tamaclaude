@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import mascot, sky
+from . import bitmapfont, mascot, sky, thai
 from .config import L, PAL
 from .mascot import BODY
 from .props import BOX_X0, BOX_X1, BOX_Y1
@@ -27,20 +27,56 @@ def font(size: int) -> ImageFont.FreeTypeFont:
     return _FONTS[size]
 
 
-def _ascii_only(**fields: str) -> None:
+def _drawable_only(**fields: str) -> None:
     """กันข้อความสาธิตที่ฟอนต์บนบอร์ดวาดไม่ได้ — จะได้กล่องสี่เหลี่ยมแทน
 
     ข้อความจริงผ่าน Text.sanitize ฝั่ง daemon (host/Sources/TamaCore/Text.swift)
-    มาแล้ว จอจึงเห็นแค่ ASCII 0x20..0x7E เสมอ ถ้า preview ยอมให้ใส่ em dash ได้
-    ภาพที่ออกมาจะสวยกว่าของจริง ซึ่งแย่กว่าการพังตรงนี้
+    มาแล้ว จอจึงเห็นแค่ ASCII 0x20..0x7E กับอักขระไทยเสมอ ถ้า preview ยอมให้ใส่
+    em dash ได้ ภาพที่ออกมาจะสวยกว่าของจริง ซึ่งแย่กว่าการพังตรงนี้
     """
     for name, value in fields.items():
-        bad = sorted({c for c in value if not (" " <= c <= "~")})
+        bad = sorted({c for c in value if not (" " <= c <= "~") and not thai.in_block(ord(c))})
         if bad:
             raise ValueError(
-                f"{name}={value!r} มีอักขระนอก ASCII พิมพ์ได้: {bad} "
+                f"{name}={value!r} มีอักขระที่ฟอนต์บนบอร์ดไม่มี: {bad} "
                 f"— daemon จะแทนที่ให้ก่อนส่ง ใส่ตัวที่แทนแล้วมาตรงนี้"
             )
+
+
+def _is_thai(s: str) -> bool:
+    return any(thai.in_block(ord(c)) for c in s)
+
+
+def _text(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str, *,
+          pil: int, board: int, fill: str, anchor: str, max_w: int | None = None) -> None:
+    """วาดข้อความหนึ่งบรรทัด — ไทยไปทางฟอนต์บิตแมปของบอร์ด ที่เหลือไปทางเดิม
+
+    `pil` คือขนาดที่ฟอนต์สาธิตฝั่ง PIL ใช้ `board` คือขนาดฟอนต์จริงบนบอร์ด สองค่านี้
+    ไม่เท่ากันเพราะฟอนต์คนละตัว (ดูหมายเหตุที่ lv_font_montserrat_24 ใน draw_usage)
+    ส่วนภาษาไทยไม่มีทางเลือก: ต้องเป็นบิตแมปตัวเดียวกับที่แฟลชลงบอร์ด (ADR-0008)
+    """
+    col = quantize565(fill)
+    if not _is_thai(text):
+        f = font(pil)
+        s = _fit(draw, text, f, max_w) if max_w is not None else text
+        draw.text(xy, s, font=f, fill=col, anchor=anchor)
+        return
+    bf = bitmapfont.font(board)
+    s = thai.shape(text)
+    if max_w is not None and bf.length(s) > max_w:
+        # ตัดทีละคลัสเตอร์ ไม่ใช่ทีละ scalar — ไม่งั้นวรรณยุกต์จะหลุดจากฐานของมัน
+        cells = thai.clusters(text)
+        while cells and bf.length("".join(cells) + "...") > max_w:
+            cells.pop()
+        s = "".join(cells) + "..."
+    x, y = xy
+    if anchor[0] == "m":
+        x -= bf.length(s) / 2
+    elif anchor[0] == "r":
+        x -= bf.length(s)
+    if anchor[1] == "m":
+        y -= bf.line_height / 2
+    bf.draw(draw, x, y, s, col)
 
 
 @dataclass(slots=True)
@@ -50,7 +86,7 @@ class Session:
     phase_offset: float = 0.0
 
     def __post_init__(self) -> None:
-        _ascii_only(project=self.project)
+        _drawable_only(project=self.project)
 
 
 @dataclass(slots=True)
@@ -60,7 +96,7 @@ class Card:
     kind: str = "info"  # info | alert | done
 
     def __post_init__(self) -> None:
-        _ascii_only(title=self.title, body=self.body)
+        _drawable_only(title=self.title, body=self.body)
 
 
 @dataclass(slots=True)
@@ -254,10 +290,8 @@ def _slot(draw: ImageDraw.ImageDraw, i: int, sess: Session | None, s: Screen,
     rects = mascot.build_centered(sess.state, p % 1.0, s.connected, cycle + int(p))
     draw_rects(draw, rects, px, ox, oy)
 
-    f = font(9)
-    name = _fit(draw, sess.project, f, sw - 8)
-    draw.text((x + sw / 2, foot_px + 11), name, font=f,
-              fill=quantize565(PAL.text if s.connected else PAL.text_dim), anchor="mm")
+    _text(draw, (x + sw / 2, foot_px + 11), sess.project, pil=9, board=12,
+          fill=PAL.text if s.connected else PAL.text_dim, anchor="mm", max_w=sw - 8)
 
 
 # --- มาสคอตเดินเล่นตอนไม่มี session ------------------------------------------
@@ -316,11 +350,11 @@ def _card(draw: ImageDraw.ImageDraw, c: Card, y: int) -> None:
 
     tx = pad + 9
     tw = w - pad - 8 - tx
-    ft, fb = font(12), font(10)
-    draw.text((tx, y + 11), _fit(draw, c.title, ft, tw), font=ft,
-              fill=quantize565(PAL.text), anchor="lm")
-    draw.text((tx, y + 25), _fit(draw, c.body, fb, tw), font=fb,
-              fill=quantize565(PAL.text_dim), anchor="lm")
+    # ขนาดฝั่งบอร์ดคือ 14/12 (montserrat กับฟอนต์ไทย) ฝั่ง PIL คือ 12/10 เพราะฟอนต์คนละตัว
+    _text(draw, (tx, y + 11), c.title, pil=12, board=14,
+          fill=PAL.text, anchor="lm", max_w=tw)
+    _text(draw, (tx, y + 25), c.body, pil=10, board=12,
+          fill=PAL.text_dim, anchor="lm", max_w=tw)
 
 
 def _cards(draw: ImageDraw.ImageDraw, cards: list[Card], overflow: int) -> None:

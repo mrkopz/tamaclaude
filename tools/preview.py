@@ -117,6 +117,17 @@ SCENES: dict[str, screen.Screen] = {
             screen.Usage("Weekly", WEEKLY_WINDOW, None, None),
         ],
     ),
+    # ภาษาไทยบนการ์ด — วาดด้วยฟอนต์บิตแมปตัวเดียวกับที่แฟลชลงบอร์ด ไม่ใช่ TTF ต้นฉบับ
+    # (ADR-0008) ฉากนี้คือที่ที่ตำแหน่งวรรณยุกต์ถูกตัดสินก่อนเห็นของจริง: ที่ (วรรณยุกต์
+    # เหนือสระบน) · ปั๊ (ฐานหางสูง) · ญู (สระล่างใต้ฐานหางยาว) อยู่ในบรรทัดเดียวกันหมด
+    "thai": screen.Screen(
+        sessions=[screen.Session("tamaclaude", "thinking", 0.0)],
+        clock="09:41",
+        cards=[
+            screen.Card("ประชุมทีม", "ที่ปั๊มน้ำมัน 10:30", "info"),
+            screen.Card("กตัญญู", "ฝั่งโน้น ญู ฐู ฟ้า ปี", "alert"),
+        ],
+    ),
     "done": screen.Screen(
         sessions=[
             screen.Session("tamaclaude", "celebrate", 0.0),

@@ -300,6 +300,38 @@ func runAllTests() {
         equal(Text.clip("abc", to: 5), "abc", "short text is untouched")
         let dirty = "Edit \u{2192} src/main.swift \u{2014} \u{201C}quoted\u{201D} \u{4E2D}"
         expect(Text.fit(dirty, to: 46).allSatisfy { $0.isASCII }, "output is always plain ASCII")
+        equal(Text.sanitize("นัด \u{4E2D} 9:30"), "นัด 9:30", "thai survives, the rest still does not")
+        equal(
+            Text.fit("ประชุมทีม", to: 6), "ประ...",
+            "clipping counts cells on screen, not scalars")
+        equal(Text.fit("ที่", to: 14), "\u{0E17}\u{0E35}\u{F70D}", "text leaves the daemon shaped")
+    }
+
+    // golden vectors ชุดเดียวกับที่ tools/test_thai.py อ่าน — ถ้าพอร์ตใดพอร์ตหนึ่งดริฟต์
+    // ฝั่งนั้นจะแดงคนเดียว ซึ่งคือทั้งหมดที่เทสต์ชุดนี้มีไว้จับ
+    suite("thai clusters agree with the python port") {
+        struct Golden: Decodable {
+            struct Case: Decodable {
+                let name: String
+                let `in`: String
+                let out: [String]
+                let width: Int
+            }
+            let cases: [Case]
+        }
+        let root = URL(fileURLWithPath: #filePath)  // host/Sources/tamatest/Tests.swift
+            .deletingLastPathComponent().deletingLastPathComponent()
+            .deletingLastPathComponent().deletingLastPathComponent()
+        let url = root.appendingPathComponent("tools/thai-golden.json")
+        let golden = try JSONDecoder().decode(Golden.self, from: Data(contentsOf: url))
+        expect(golden.cases.count >= 10, "the golden file is the real one, not an empty stub")
+        for c in golden.cases {
+            let want = String(String.UnicodeScalarView(
+                c.out.compactMap { UInt32($0, radix: 16) }.compactMap(Unicode.Scalar.init)))
+            equal(Thai.shape(c.in), want, c.name)
+            equal(Thai.displayWidth(c.in), c.width, "\(c.name) — width")
+            equal(Thai.shape(Thai.shape(c.in)), want, "\(c.name) — shaping twice changes nothing")
+        }
     }
 
     suite("wire format") {

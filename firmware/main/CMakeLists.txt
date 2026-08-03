@@ -12,6 +12,8 @@ idf_component_register(
         "ct_wifi.c"
         "ct_lan.c"
         "ct_led.c"
+        "ct_font_thai_12.c"
+        "ct_font_thai_14.c"
     INCLUDE_DIRS "."
     REQUIRES driver esp_timer nvs_flash bt json esp_wifi esp_netif esp_event
              lwip mbedtls espressif__mdns

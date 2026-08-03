@@ -1,0 +1,80 @@
+{
+  "note": "golden vectors ของการประกอบร่างคลัสเตอร์ไทย — อ่านทั้งจาก tamatest (Swift) และ tools/test_thai.py (Python) ค่าที่คาดไว้เขียนด้วยมือจาก thai.toml ไม่ได้ถ่ายจากผลลัพธ์ของโค้ด ถ้าแก้ตารางแล้วเทสต์แดง ให้แก้ค่าที่นี่ทีละตัวโดยรู้ว่าทำไม",
+  "cases": [
+    {
+      "name": "tone above an above-vowel is raised a level",
+      "in": "ที่",
+      "out": ["0E17", "0E35", "F70D"],
+      "width": 1
+    },
+    {
+      "name": "an above-vowel on a tall-tailed base steps aside",
+      "in": "ปี",
+      "out": ["0E1B", "F702"],
+      "width": 1
+    },
+    {
+      "name": "a tone alone on a tall-tailed base steps aside but stays low",
+      "in": "ฟ้า",
+      "out": ["0E1F", "F709", "0E32"],
+      "width": 2
+    },
+    {
+      "name": "tall base plus above-vowel plus tone takes both shifts",
+      "in": "ปั๊ม",
+      "out": ["0E1B", "F700", "F714", "0E21"],
+      "width": 2
+    },
+    {
+      "name": "a below-vowel on a plain base is left alone",
+      "in": "ดู",
+      "out": ["0E14", "0E39"],
+      "width": 1
+    },
+    {
+      "name": "a below-vowel under a long-tailed base drops clear of the tail",
+      "in": "กตัญญู",
+      "out": ["0E01", "0E15", "0E31", "0E0D", "0E0D", "F718"],
+      "width": 4
+    },
+    {
+      "name": "bare consonants pass through untouched",
+      "in": "คน",
+      "out": ["0E04", "0E19"],
+      "width": 2
+    },
+    {
+      "name": "thai and english on one line",
+      "in": "คิว CPU",
+      "out": ["0E04", "0E34", "0E27", "0020", "0043", "0050", "0055"],
+      "width": 6
+    },
+    {
+      "name": "a mark with nothing to sit on is dropped",
+      "in": "่ก",
+      "out": ["0E01"],
+      "width": 1
+    },
+    {
+      "name": "thanthakhat behaves like a tone",
+      "in": "สัตว์",
+      "out": ["0E2A", "0E31", "0E15", "0E27", "0E4C"],
+      "width": 3
+    },
+    {
+      "name": "a second mark in the same layer is dropped, not stacked",
+      "in": "ก้้",
+      "out": ["0E01", "0E49"],
+      "width": 1
+    },
+    {
+      "name": "a full sentence keeps every base and drops nothing",
+      "in": "ประชุมถัดไป 09:30",
+      "out": [
+        "0E1B", "0E23", "0E30", "0E0A", "0E38", "0E21", "0E16", "0E31", "0E14",
+        "0E44", "0E1B", "0020", "0030", "0039", "003A", "0033", "0030"
+      ],
+      "width": 15
+    }
+  ]
+}

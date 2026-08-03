@@ -86,6 +86,9 @@ uses those constants, not a chip model number.
 python3 tools/preview.py            # render every state + whole screens to out/ (PNG + GIF)
 python3 tools/preview.py --sheet    # contact sheet only
 python3 tools/export_layout.py      # tools/layout.toml -> firmware/main/layout.h
+python3 tools/export_thai.py        # tools/thai.toml -> ThaiTable.swift + gen/thai_table.py
+python3 tools/export_thai_font.py   # tools/thai.toml + Sarabun -> ct_font_thai_*.c + fonts/*.json
+python3 tools/test_thai.py          # thai golden vectors, python side (swift side is in tamatest)
 python3 tools/make_icon.py          # logo PNG (≥128px) + mascot (≤64px) -> host/Resources/AppIcon.icns
 ```
 
@@ -100,6 +103,11 @@ look at `out/`. It proves the *design*, not the C renderer.
   (star/grass/cloud positions). Python reads it via `tools/gen/config.py`; C gets it through
   the generated `firmware/main/layout.h`. **Never edit `layout.h`** — edit the TOML and rerun
   `export_layout.py`. If preview and board disagree, that is a renderer bug, by construction.
+- **`tools/thai.toml`** — every Thai glyph-variant rule and per-size shift. Swift gets
+  `ThaiTable.swift`, Python gets `gen/thai_table.py`, the font gets `ct_font_thai_{12,14}.c`,
+  all through `export_thai*.py`. **Never edit the generated files.** The cluster walk itself is
+  a parallel port (`TamaCore/ThaiShaper.swift` ↔ `gen/thai.py`) held together by
+  `tools/thai-golden.json`, which both test sides read. See ADR-0008.
 - **`tools/gen/*.py` ↔ `firmware/main/ct_*.c`** — deliberate parallel ports, file for file:
   `props.py`↔`ct_props.c`, `mascot.py`↔`ct_mascot.c`, `rects.py`↔`ct_rects.c`,
   `screen.py`↔`ct_ui.c`, `sky.py` folds into `ct_ui.c`. A visual change means editing both
@@ -117,7 +125,9 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/Protocol.swift` | `HookEvent`, `VisualState` (+ `priority`), `Snapshot`, MTU squeeze |
 | `TamaCore/SessionStore.swift` | all the logic: hook → per-session state → snapshot |
 | `TamaCore/ToolMap.swift` | tool name → `VisualState`, overridable via `~/.tamaclaude/tools.json` |
-| `TamaCore/Text.swift` | strip to the board font's charset, then truncate |
+| `TamaCore/Text.swift` | strip to the board font's charset, shape Thai, then truncate |
+| `TamaCore/ThaiShaper.swift` | the Thai cluster walk and glyph-variant choice (ADR-0008) |
+| `TamaCore/ThaiTable.swift` | generated from `tools/thai.toml` — never edit |
 | `TamaCore/SocketServer.swift` / `HookClient.swift` | Unix socket between `--hook` and the daemon |
 | `TamaCore/BLETransport.swift` | CoreBluetooth central + auto-reconnect + board events |
 | `TamaCore/WiFiProvisioning.swift` | the Wi-Fi commands and reports that ride the config/event characteristics |
