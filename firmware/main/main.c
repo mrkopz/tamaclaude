@@ -11,7 +11,7 @@
 #include "ct_led.h"
 #include "ct_mascot.h"
 #include "ct_model.h"
-#include "ct_ui.h"
+#include "ct_pages.h"
 #include "ct_wifi.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -234,8 +234,8 @@ static void apply_pending(void)
     if (link_changed) {
         // "สด" คือมีใครสักคนป้อน snapshot อยู่ ไม่ว่าจะทางไหน — จอที่ซ่อนการ์ดทิ้งทั้งที่
         // ข้อมูลกำลังไหลเข้ามาทาง LAN คือจอที่โกหกในทางกลับกัน
-        ct_ui_set_connected(link || lan);
-        ct_ui_set_link(link, wifi, ip);
+        ct_pages_set_connected(link || lan);
+        ct_pages_set_link(link, wifi, ip);
     }
     if (got_snapshot) {
         static bool had_alert = false;
@@ -243,7 +243,7 @@ static void apply_pending(void)
         // กะพริบเฉพาะตอนการเตือน *เกิดใหม่* ไม่ใช่ทุก snapshot ที่ยังมีการเตือนค้างอยู่
         if (alert && !had_alert) ct_led_flash();
         had_alert = alert;
-        ct_ui_set_snapshot(&snap);
+        ct_pages_set_snapshot(&snap);
     }
     if (backlight >= 0) ct_lcd_set_backlight(backlight);
 }
@@ -275,9 +275,9 @@ void app_main(void)
     lv_display_set_buffers(disp, s_buf1, s_buf2, DRAW_BUF_PX * sizeof(lv_color_t),
                            LV_DISPLAY_RENDER_MODE_PARTIAL);
 
-    ct_ui_init();
-    ct_ui_set_connected(false);
-    ct_ui_set_link(false, false, NULL);
+    ct_pages_init();
+    ct_pages_set_connected(false);
+    ct_pages_set_link(false, false, NULL);
 
     ct_ble_cbs_t cbs = {
         .on_state = on_state,
@@ -304,7 +304,7 @@ void app_main(void)
         apply_pending();
         since_frame += step_ms;
         if (since_frame >= 60) {  // ~16 เฟรมต่อวินาที พอสำหรับอนิเมชันบล็อกสี่เหลี่ยม
-            ct_ui_tick();
+            ct_pages_tick(since_frame);
             ct_led_tick(since_frame);
             since_frame = 0;
         }

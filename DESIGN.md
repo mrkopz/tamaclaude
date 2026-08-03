@@ -695,7 +695,8 @@ firmware/main/ct_rects.c    rect list ในพิกัด unit + ขอบ + �
 firmware/main/ct_props.c    prop ทั้ง 9 ชิ้น  (พอร์ตตรงจาก tools/gen/props.py)
 firmware/main/ct_mascot.c   mood + สถานะ + การจัดกึ่งกลาง (พอร์ตจาก mascot.py)
 firmware/main/ct_model.c    JSON snapshot -> struct (cJSON)
-firmware/main/ct_ui.c       หน้าจอทั้งใบด้วย LVGL 9.2 (โครงเดียวกับ screen.py)
+firmware/main/ct_pages.c    ตัวโฮสต์ของ page: active page + ที่เก็บเฟรมต่อหน้า + นาฬิกา
+firmware/main/ct_ui.c       หน้ามาสคอตด้วย LVGL 9.2 (โครงเดียวกับ screen.py)
 firmware/main/ct_ble.c      NimBLE GATT server 3 characteristic + bonding
 firmware/main/ct_wifi.c     WiFi station: สแกน จำเครือข่าย ต่อใหม่เอง (ดูหัวข้อ "WiFi")
 firmware/main/ct_lan.c      TCP 7333 + AES-GCM + mDNS — ทางเดินที่สองของ snapshot
@@ -720,6 +721,10 @@ firmware/main/main.c        ประกอบทุกอย่าง + ลู�
 - **ปิด `LV_USE_TEXTAREA` ไม่ได้** — spinbox ใน LVGL 9.2 พึ่งมันแบบ `#error`
 - **`ct_model_parse` เขียนทับ snapshot เดิมทีเดียวตอนท้าย** — JSON พังกลางทางต้องไม่ทิ้ง
   ภาพครึ่งๆ
+- **หนึ่ง page = หนึ่ง lv_obj เปล่าเต็มจอ** ที่ `ct_pages` สร้างให้ ไม่มี style ไม่มี padding
+  พิกัดของลูกจึงเท่ากับพิกัดบนจอเป๊ะ — หน้าไหนใส่ style ให้ผืนของตัวเอง ทุกพิกเซลในหน้านั้น
+  จะเลื่อนพร้อมกัน · พื้นหลังของจอเป็นของโฮสต์ ไม่ใช่ของหน้า (ตอนไม่มีฉากท้องฟ้า หน้ามาสคอต
+  ปล่อยให้เห็นพื้นนั้นตรงๆ)
 - **สถานะที่ firmware ไม่รู้จักตกเป็น `idle`** ไม่ใช่ค้างจอ — daemon อาจใหม่กว่า firmware
 - **ชื่ออุปกรณ์อยู่ใน scan response ส่วน adv บรรจุ service UUID 128 บิต** — ทั้งคู่ไม่พอ
   ใน 31 ไบต์ และฝั่ง Mac สแกนด้วย UUID จึงต้องเป็นตัวที่อยู่ใน adv

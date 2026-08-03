@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "ct_color.h"
 #include "ct_mascot.h"
 #include "ct_rects.h"
 #include "layout.h"
@@ -15,7 +16,6 @@
 
 // หนึ่งลูปอนิเมชันยาวเท่าไร (ms) — ตรงกับสมมติฐาน "ลูปหนึ่งราว 1 วินาที" ของ mascot.c
 #define LOOP_MS 1000
-#define FRAME_MS 60
 
 typedef struct {
     lv_obj_t *canvas;  // ตัววาดมาสคอต (วาดเองใน LV_EVENT_DRAW_MAIN)
@@ -43,7 +43,9 @@ typedef struct {
     lv_obj_t *reset;  // countdown
 } usage_row_t;
 
-static ct_snapshot_t s_snap;
+// page frame ที่หน้านี้วาด — เจ้าของคือ `ct_pages` ไม่ใช่ที่นี่ ตัวเรนเดอร์อ่านอย่างเดียว
+// (ที่เก็บต้องอยู่กับตัวโฮสต์เพราะเฟรมของหน้าที่ไม่ได้แสดงอยู่ก็ต้องรอดและนาฬิกาต้องเดินต่อ)
+static const ct_snapshot_t *s_frame;
 static bool s_connected = false;
 
 // แถบโควตาย่อบน topbar — ตรงกับ tools/gen/screen.py:_topbar
@@ -114,13 +116,6 @@ static usage_row_t s_usage[CT_USAGE_ROWS];
 
 static float s_phase = 0.0f;
 static int s_cycle = 0;
-
-// RGB565 -> สีของ LVGL (ขยายกลับเป็น 8 บิตต่อช่องแบบเดียวกับ quantize565 ฝั่ง Python)
-static lv_color_t ct_color(uint16_t c)
-{
-    uint8_t r5 = (c >> 11) & 0x1F, g6 = (c >> 5) & 0x3F, b5 = c & 0x1F;
-    return lv_color_make((r5 * 255 + 15) / 31, (g6 * 255 + 31) / 63, (b5 * 255 + 15) / 31);
-}
 
 // ขอบซ้ายของ slot ที่ i เมื่อกำลังแสดง session อยู่ n ตัว
 // ระยะห่างคงที่ 80px เสมอ แต่ยกทั้งกลุ่มมาไว้กึ่งกลางจอ — สิ่งที่ต้องนิ่งคือ *ลำดับ*
@@ -326,7 +321,7 @@ static void slot_draw_cb(lv_event_t *e)
 {
     lv_obj_t *obj = lv_event_get_target_obj(e);
     slot_t *slot = (slot_t *)lv_obj_get_user_data(obj);
-    if (!slot || slot->index >= s_snap.session_count) return;
+    if (!slot || slot->index >= s_frame->session_count) return;
 
     lv_layer_t *layer = lv_event_get_layer(e);
     lv_area_t coords;
@@ -341,7 +336,7 @@ static void slot_draw_cb(lv_event_t *e)
     // แต่ละตัวเดินคนละจังหวะเล็กน้อย ไม่งั้นดูเป็นหุ่นยนต์ชุดเดียวกัน
     float phase = fmodf(s_phase + slot->index * 0.17f, 1.0f);
 
-    ct_state_t state = s_snap.sessions[slot->index].state;
+    ct_state_t state = s_frame->sessions[slot->index].state;
     draw_shadow(layer, ox + (BODY_CX + ct_mascot_center_dx(state)) * px);
 
     ct_rects_t rects;
@@ -384,7 +379,7 @@ static void stroll_pose(float t, ct_state_t *state, float *x)
 
 static void stroll_draw_cb(lv_event_t *e)
 {
-    if (s_snap.session_count > 0) return;
+    if (s_frame->session_count > 0) return;
 
     lv_obj_t *obj = lv_event_get_target_obj(e);
     lv_layer_t *layer = lv_event_get_layer(e);
@@ -450,7 +445,7 @@ static void invalidate_sky_band(void)
 static void update_sky(void)
 {
     ct_sky_phase_t was = s_sky_phase;
-    float hours = s_connected ? ct_clock_hours(s_snap.clock) : -1.0f;
+    float hours = s_connected ? ct_clock_hours(s_frame->clock) : -1.0f;
     s_sky_hours = hours;
     s_sky_phase = hours < 0.0f ? CT_SKY_NONE : sky_phase_at(hours);
     if (s_sky_phase != was) {
@@ -657,15 +652,13 @@ static void build_idle_clock(lv_obj_t *scr)
     lv_obj_align(s_date, LV_ALIGN_TOP_MID, 0, cy + 26 - 8);
 }
 
-void ct_ui_init(void)
+void ct_ui_init(lv_obj_t *parent, const ct_snapshot_t *frame)
 {
-    ct_model_clear(&s_snap);
+    s_frame = frame;
 
-    lv_obj_t *scr = lv_screen_active();
-    lv_obj_remove_style_all(scr);
-    lv_obj_set_style_bg_color(scr, ct_color(CT_COL_BG), 0);
-    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
-    lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+    // พื้นหลังของจอเป็นของตัวโฮสต์ ที่นี่รับ `parent` มาแล้วปูทุกอย่างลงไปตามพิกัดเดิม —
+    // ผืนนี้เต็มจอและไม่มี style ใดๆ พิกัดของลูกจึงเท่ากับพิกัดบนจอเป๊ะ
+    lv_obj_t *scr = parent;
 
     build_sky(scr);
     build_topbar(scr);
@@ -674,13 +667,13 @@ void ct_ui_init(void)
     build_cards(scr);
     build_usage(scr);
     build_idle_clock(scr);
-    ct_ui_set_snapshot(&s_snap);
+    ct_ui_redraw();
 }
 
 // --- ปรับหน้าจอตาม snapshot ---------------------------------------------------
 static void layout_slots(void)
 {
-    int n = s_snap.session_count;
+    int n = s_frame->session_count;
     if (n == 0) {
         lv_obj_remove_flag(s_stroll, LV_OBJ_FLAG_HIDDEN);
     } else {
@@ -698,7 +691,7 @@ static void layout_slots(void)
         lv_obj_remove_flag(s->label, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_pos(s->canvas, x, CT_SLOTS_TOP);
 
-        lv_label_set_text(s->label, s_snap.sessions[i].project);
+        lv_label_set_text(s->label, s_frame->sessions[i].project);
         lv_obj_set_style_text_color(
             s->label, ct_color(s_connected ? CT_COL_TEXT : CT_COL_TEXT_DIM), 0);
         int foot = CT_SLOTS_TOP + CT_SLOTS_HEIGHT - CT_SLOTS_BASELINE_PAD;
@@ -719,12 +712,12 @@ static uint16_t card_accent(ct_card_kind_t kind)
 // จึงว่างทั้งแถบและตกเป็นของนาฬิกา ตรงกับ Screen.shown_{cards,usage}() ใน gen/screen.py
 static int shown_card_count(void)
 {
-    return s_connected ? s_snap.card_count : 0;
+    return s_connected ? s_frame->card_count : 0;
 }
 
 static bool usage_shown(void)
 {
-    return s_snap.has_usage && s_connected;
+    return s_frame->has_usage && s_connected;
 }
 
 static void layout_cards(void)
@@ -735,7 +728,7 @@ static void layout_cards(void)
             lv_obj_add_flag(s_cards[i].box, LV_OBJ_FLAG_HIDDEN);
             continue;
         }
-        const ct_card_t *c = &s_snap.cards[i];
+        const ct_card_t *c = &s_frame->cards[i];
         lv_obj_remove_flag(s_cards[i].box, LV_OBJ_FLAG_HIDDEN);
         lv_obj_set_style_bg_color(s_cards[i].accent, ct_color(card_accent(c->kind)), 0);
         lv_label_set_text(s_cards[i].title, c->title);
@@ -744,9 +737,9 @@ static void layout_cards(void)
 
     // การ์ดที่ไม่ได้วาดต้องเหลือร่องรอย ไม่ใช่หายเงียบ — "ไม่มีอะไรค้างแล้ว" กับ
     // "ยังค้างอีกสองเรื่องแต่จอไม่พอ" คือสองสถานะที่ต้องแยกออกได้ในเหลือบเดียว
-    if (n > 0 && s_snap.card_overflow > 0) {
+    if (n > 0 && s_frame->card_overflow > 0) {
         // ตัดที่ 99 — เกินกว่านั้นตัวเลขที่แน่นอนไม่ได้บอกอะไรเพิ่มแล้ว มีแต่จะล้นบรรทัด
-        int more = s_snap.card_overflow > 99 ? 99 : s_snap.card_overflow;
+        int more = s_frame->card_overflow > 99 ? 99 : s_frame->card_overflow;
         char buf[16];
         snprintf(buf, sizeof(buf), "+%d more", more);
         lv_label_set_text(s_card_more, buf);
@@ -827,7 +820,7 @@ static void layout_usage_topbar(void)
         lv_obj_add_flag(s_usage_track, LV_OBJ_FLAG_HIDDEN);
         return;
     }
-    const ct_usage_t *u = &s_snap.usage[0];
+    const ct_usage_t *u = &s_frame->usage[0];
     uint16_t col = usage_color(u->percent);
 
     if (u->percent < 0) {
@@ -838,7 +831,7 @@ static void layout_usage_topbar(void)
     lv_obj_set_style_text_color(s_usage_top, ct_color(col), 0);
 
     // หลบ "+N" เมื่อมันโผล่ ไม่งั้นทับกัน
-    int right = -(TOPBAR_RIGHT + 38 + (s_snap.overflow > 0 ? 26 : 0));
+    int right = -(TOPBAR_RIGHT + 38 + (s_frame->overflow > 0 ? 26 : 0));
     lv_obj_align(s_usage_top, LV_ALIGN_RIGHT_MID, right, 0);
     // align จัดที่ *ขอบขวา* ของ track ให้เอง — ไม่ต้องหักความกว้างแถบออกอีก
     // (ฝั่ง Pillow ต้องหักเองเพราะวาดจากมุมซ้ายบน) ตรงกับ tools/gen/screen.py:_topbar
@@ -876,7 +869,7 @@ static void layout_usage(void)
             lv_obj_add_flag(row->reset, LV_OBJ_FLAG_HIDDEN);
             continue;
         }
-        const ct_usage_t *u = &s_snap.usage[i];
+        const ct_usage_t *u = &s_frame->usage[i];
         uint16_t col = usage_bar_color(u, USAGE_WINDOWS[i]);
 
         lv_obj_remove_flag(row->percent, LV_OBJ_FLAG_HIDDEN);
@@ -933,18 +926,16 @@ static void layout_usage(void)
     }
 }
 
-void ct_ui_set_snapshot(const ct_snapshot_t *snap)
+void ct_ui_redraw(void)
 {
-    s_snap = *snap;
-
-    lv_label_set_text(s_clock_big, s_snap.clock);
-    lv_label_set_text(s_clock_small, s_snap.clock);
-    lv_label_set_text(s_date, s_snap.date);
+    lv_label_set_text(s_clock_big, s_frame->clock);
+    lv_label_set_text(s_clock_small, s_frame->clock);
+    lv_label_set_text(s_date, s_frame->date);
     lv_obj_align(s_clock_big, LV_ALIGN_TOP_MID, 0, CT_CARD_TOP + CT_CARD_HEIGHT / 2 - 32);
     lv_obj_align(s_date, LV_ALIGN_TOP_MID, 0, CT_CARD_TOP + CT_CARD_HEIGHT / 2 + 18);
 
-    if (s_snap.overflow > 0) {
-        lv_label_set_text_fmt(s_overflow, "+%d", s_snap.overflow);
+    if (s_frame->overflow > 0) {
+        lv_label_set_text_fmt(s_overflow, "+%d", s_frame->overflow);
         lv_obj_remove_flag(s_overflow, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(s_overflow, LV_OBJ_FLAG_HIDDEN);
@@ -1019,19 +1010,19 @@ void ct_ui_set_connected(bool connected)
     lv_obj_invalidate(s_stroll);
 }
 
-void ct_ui_tick(void)
+void ct_ui_tick(int elapsed_ms)
 {
-    s_phase += (float)FRAME_MS / (float)LOOP_MS;
+    s_phase += (float)elapsed_ms / (float)LOOP_MS;
     bool second_passed = false;
     while (s_phase >= 1.0f) {
         s_phase -= 1.0f;
         s_cycle++;
         second_passed = true;
     }
-    for (int i = 0; i < s_snap.session_count; i++) {
+    for (int i = 0; i < s_frame->session_count; i++) {
         lv_obj_invalidate(s_slots[i].canvas);
     }
-    if (s_snap.session_count == 0) lv_obj_invalidate(s_stroll);
+    if (s_frame->session_count == 0) lv_obj_invalidate(s_stroll);
 
     // ฟ้าวาดใหม่ตอนเมฆขยับถึงพิกเซลถัดไป (~4 ครั้ง/วิ) หรือตอนวินาทีเดิน (ดาวกะพริบ)
     // ไม่ใช่ทุกเฟรม — ที่ 60ms ต่อเฟรมจะได้ 16 ครั้ง/วิ โดยที่ภาพเปลี่ยนแค่ 4 ครั้ง
@@ -1043,20 +1034,17 @@ void ct_ui_tick(void)
         }
     }
 
-    // countdown เดินด้วยนาฬิกาของบอร์ดเอง ไม่ใช่ snapshot — เวลารีเซ็ตเป็นค่าสัมบูรณ์
-    // BLE หลุดแล้วตัวเลขนี้ยังจริง ส่วนเปอร์เซ็นต์หยุดนิ่ง (ซึ่งถูก มันหยุดจริง)
-    //
-    // วาดใหม่เฉพาะตอนวินาทีเดิน และเฉพาะตอนแผงโผล่อยู่ — LVGL วาดเฉพาะสิ่งที่
-    // invalidate เท่านั้น การเรียก layout_usage ทุกเฟรมจะกินเวลาไปเปล่าๆ
-    // ตอนหลุดลิงก์ countdown ยังเดินในหน่วยความจำ (ค่าที่ถูกตอนกลับมาต่อ) แต่ไม่มีอะไรให้วาด
-    if (second_passed && s_snap.has_usage) {
-        ct_model_tick_usage(&s_snap, 1);
-        if (usage_shown()) {
-            if (shown_card_count() == 0) {
-                layout_usage();
-            } else {
-                layout_usage_topbar();
-            }
-        }
+}
+
+// วาดใหม่เฉพาะตอนวินาทีเดิน และเฉพาะตอนแผงโผล่อยู่ — LVGL วาดเฉพาะสิ่งที่ invalidate
+// เท่านั้น การเรียก layout_usage ทุกเฟรมจะกินเวลาไปเปล่าๆ · ตอนหลุดลิงก์ countdown
+// ยังเดินในหน่วยความจำของตัวโฮสต์ (ค่าที่ถูกตอนกลับมาต่อ) แต่ไม่มีอะไรให้วาด
+void ct_ui_redraw_usage(void)
+{
+    if (!usage_shown()) return;
+    if (shown_card_count() == 0) {
+        layout_usage();
+    } else {
+        layout_usage_topbar();
     }
 }
