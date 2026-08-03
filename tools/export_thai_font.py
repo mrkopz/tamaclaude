@@ -32,7 +32,6 @@ THAI_TOML = TOOLS_DIR / "thai.toml"
 FONT_DIR = TOOLS_DIR / "fonts"
 FIRMWARE_DIR = REPO_DIR / "firmware" / "main"
 
-ASCII_RANGE = (0x20, 0x7E)
 BPP = 4
 
 
@@ -53,10 +52,15 @@ def load() -> dict:
 
 
 def ranges(raw: dict) -> list[tuple[int, int]]:
-    """ช่วง codepoint ที่ฟอนต์ต้องมี เรียงตามที่จะกลายเป็น cmap"""
+    """ช่วง codepoint ที่ฟอนต์ต้องมี เรียงตามที่จะกลายเป็น cmap
+
+    ไม่มี ASCII อยู่ในนี้ — บนบอร์ดฟอนต์นี้เป็น fallback ของ Montserrat ตัว ASCII จึงไม่มี
+    ทางถูกถามถึง การใส่ไว้คือ 26KB ที่ไม่มีใครวาด และ preview ก็วาด ASCII ด้วยฟอนต์
+    ฝั่ง PIL ตามบอร์ดอยู่แล้ว (ดู _cells ใน gen/screen.py)
+    """
     pua = raw["font"]["pua_start"]
     count = sum(len(raw["mark"][v["class"]]) for v in raw["variant"])
-    return [ASCII_RANGE, *[tuple(r) for r in raw["block"]["ranges"]], (pua, pua + count - 1)]
+    return [*[tuple(r) for r in raw["block"]["ranges"]], (pua, pua + count - 1)]
 
 
 def variant_plan(raw: dict, size: int) -> dict[int, tuple[int, int, int]]:
@@ -138,8 +142,6 @@ def build(raw: dict, size: int) -> tuple[list[Glyph], int, int]:
                 # พยัญชนะไทยทุกตัวถูกบังคับให้ก้าวเท่ากัน (ดูหมายเหตุใน thai.toml)
                 adv16 = 0
                 ox = -(advance + w) // 2
-            elif lo == ASCII_RANGE[0]:
-                adv16 = round(font.getlength(chr(cp)) * 16)
             else:
                 # ช่องว่างในช่วง (0E3B..0E3E ไม่มีอักขระใน Unicode) ไม่ควรกินความกว้าง
                 adv16 = advance * 16 if w else 0

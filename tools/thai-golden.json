@@ -26,6 +26,12 @@
       "width": 2
     },
     {
+      "name": "the other two tall-tailed bases take the same shifts",
+      "in": "ฝั่งฬๅ",
+      "out": ["0E1D", "F700", "F712", "0E07", "0E2C", "0E45"],
+      "width": 4
+    },
+    {
       "name": "a below-vowel on a plain base is left alone",
       "in": "ดู",
       "out": ["0E14", "0E39"],

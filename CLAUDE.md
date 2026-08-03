@@ -212,8 +212,9 @@ for byte.
 - Commit subjects are lowercase imperative with a conventional prefix (`feat:`, `fix:`) and
   read as a sentence about the visible effect, e.g. `feat: give the sky half the screen and
   cap cards at two`.
-- The board font has no em dash and no Thai glyphs — anything crossing BLE goes through
-  `Text.swift` first.
+- The board font has no em dash — anything crossing BLE goes through `Text.swift` first.
+  Thai does cross, but only shaped: `Text.fit` picks the glyph variants (ADR-0008), and it is
+  the only door, so nothing else may hand a raw Thai string to the wire.
 
 ## Agent skills
 

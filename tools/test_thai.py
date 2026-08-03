@@ -35,6 +35,10 @@ def main() -> int:
         if w != c["width"]:
             failed += 1
             print(f"FAIL {c['name']} — width want {c['width']} got {w}")
+        # ประกอบร่างซ้ำต้องได้ผลเดิม ไม่งั้นข้อความที่ผ่าน Text.clip สองรอบจะเพี้ยน
+        if thai.shape(got) != want:
+            failed += 1
+            print(f"FAIL {c['name']} — shaping twice changes the result")
     print(f"{len(cases)} cases, {failed} failures")
     return 1 if failed else 0
 

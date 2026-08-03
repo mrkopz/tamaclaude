@@ -17,7 +17,7 @@ public enum Thai {
 
     /// ร่างที่เลือกไว้ ถ้าตารางไม่มีก็ใช้ร่างปกติ — ตัวอักษรหายไปแย่กว่าวางเพี้ยน
     private static func variant(_ cp: UInt32, _ name: String) -> UInt32 {
-        ThaiTable.variants[name]?[cp] ?? cp
+        ThaiTable.variants[name]?[ThaiTable.canonical[cp] ?? cp] ?? cp
     }
 
     /// แตกข้อความเป็นคลัสเตอร์ที่ประกอบร่างแล้ว หนึ่งคลัสเตอร์ = หนึ่งช่องบนจอ

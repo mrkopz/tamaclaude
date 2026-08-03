@@ -47,9 +47,26 @@ def _is_thai(s: str) -> bool:
     return any(thai.in_block(ord(c)) for c in s)
 
 
+def _cells(draw: ImageDraw.ImageDraw, text: str, pil: int, board: int) -> list[tuple]:
+    """แตกเป็นช่องพร้อมความกว้าง — (ข้อความ, เป็นไทยไหม, กว้างกี่พิกเซล)
+
+    ไทยไปทางฟอนต์บิตแมปของบอร์ด ที่เหลือไปทางเดิม เพราะบอร์ดก็ทำแบบนี้: ป้ายใช้
+    Montserrat แล้วตกไปที่ฟอนต์ไทยเป็นราย codepoint ที่มันไม่มี (ct_ui.c) ถ้าที่นี่
+    ลากทั้งบรรทัดไปทางฟอนต์ไทย บรรทัดที่มีทั้งไทยและอังกฤษจะออกมาไม่เหมือนบอร์ด
+    """
+    f, bf = font(pil), bitmapfont.font(board)
+    out = []
+    for c in thai.clusters(text):
+        if _is_thai(c):
+            out.append((c, True, bf.length(c)))
+        else:
+            out.append((c, False, draw.textlength(c, font=f)))
+    return out
+
+
 def _text(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str, *,
           pil: int, board: int, fill: str, anchor: str, max_w: int | None = None) -> None:
-    """วาดข้อความหนึ่งบรรทัด — ไทยไปทางฟอนต์บิตแมปของบอร์ด ที่เหลือไปทางเดิม
+    """วาดข้อความหนึ่งบรรทัด
 
     `pil` คือขนาดที่ฟอนต์สาธิตฝั่ง PIL ใช้ `board` คือขนาดฟอนต์จริงบนบอร์ด สองค่านี้
     ไม่เท่ากันเพราะฟอนต์คนละตัว (ดูหมายเหตุที่ lv_font_montserrat_24 ใน draw_usage)
@@ -61,22 +78,33 @@ def _text(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str, *,
         s = _fit(draw, text, f, max_w) if max_w is not None else text
         draw.text(xy, s, font=f, fill=col, anchor=anchor)
         return
-    bf = bitmapfont.font(board)
-    s = thai.shape(text)
-    if max_w is not None and bf.length(s) > max_w:
-        # ตัดทีละคลัสเตอร์ ไม่ใช่ทีละ scalar — ไม่งั้นวรรณยุกต์จะหลุดจากฐานของมัน
-        cells = thai.clusters(text)
-        while cells and bf.length("".join(cells) + "...") > max_w:
-            cells.pop()
-        s = "".join(cells) + "..."
+
+    f, bf = font(pil), bitmapfont.font(board)
+    cells = _cells(draw, text, pil, board)
+    if max_w is not None:
+        # ตัดทีละช่อง ไม่ใช่ทีละ scalar — ไม่งั้นวรรณยุกต์จะหลุดจากฐานของมัน
+        ell = draw.textlength("...", font=f)
+        if sum(w for _, _, w in cells) > max_w:
+            while cells and sum(w for _, _, w in cells) + ell > max_w:
+                cells.pop()
+            cells.append(("...", False, ell))
+    total = sum(w for _, _, w in cells)
+
     x, y = xy
     if anchor[0] == "m":
-        x -= bf.length(s) / 2
+        x -= total / 2
     elif anchor[0] == "r":
-        x -= bf.length(s)
+        x -= total
     if anchor[1] == "m":
         y -= bf.line_height / 2
-    bf.draw(draw, x, y, s, col)
+    # เส้นฐานของบรรทัดมาจากฟอนต์ของบอร์ด แล้วตัวที่วาดด้วย PIL ไปเกาะเส้นเดียวกัน
+    base = y + bf.ascent
+    for s, is_thai, w in cells:
+        if is_thai:
+            bf.draw(draw, x, y, s, col)
+        else:
+            draw.text((x, base), s, font=f, fill=col, anchor="ls")
+        x += w
 
 
 @dataclass(slots=True)
