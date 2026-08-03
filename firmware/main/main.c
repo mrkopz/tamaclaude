@@ -36,6 +36,14 @@ static SemaphoreHandle_t s_lock;
 // ของที่ BLE ฝากไว้ให้ลูปหลักหยิบไปใช้
 static ct_snapshot_t s_pending;
 static bool s_has_pending;
+// เฟรมของหน้าอื่นเดินทางมาดิบๆ แล้วให้หน้านั้นแปลเอง — ที่นี่รู้แค่ว่ามันเป็นของหน้าไหน
+// (ADR-0004: การตีความเนื้อในเป็นของหน้าที่วาดมัน) · หนึ่งใบต่อหนึ่งรอบลูปพอ เพราะลูป
+// เดินทุก 10 ms ส่วนเฟรมของหน้าอากาศมาทุก 15 นาที
+static char s_pending_page[600];
+static int s_pending_page_len;
+static int s_pending_page_kind = -1;
+// หน้าที่ Mac สั่งให้ลืม (ผู้ใช้ปิดมัน) — คนละอย่างกับเฟรมที่ไม่มีข้อมูล
+static int s_forget_page = -1;
 static bool s_link;
 static bool s_link_changed = true;
 static bool s_wifi_up;
@@ -54,8 +62,54 @@ static void flush_cb(lv_display_t *disp, const lv_area_t *area, uint8_t *px_map)
 }
 
 // --- callback จาก NimBLE (คนละเธรดกับ LVGL) ---------------------------------
+// เฟรมนี้เป็นของหน้าไหน — คีย์ `g` ที่หายไปคือหน้ามาสคอต ไม่ใช่ความผิดพลาด
+//
+// ตัวแยกเป็น *การมีคีย์* ไม่ใช่ค่าของมัน เพราะ snapshot ของหน้ามาสคอตมีมาก่อนรอบ
+// multi-page และต้องเหมือนเดิมทุกไบต์ (ADR-0003) · `x` คือคำสั่งให้ลืมหน้านั้นทิ้ง
+// สแกนหาคีย์ ไม่ใช่ parse ทั้งก้อน — snapshot ของหน้ามาสคอตมาบ่อยที่สุดและถูกส่งต่อไป
+// parse เต็มใบอยู่แล้ว การ parse สองรอบต่อหนึ่งเฟรมคือ malloc ชุดที่สองบน ESP32 เพื่อ
+// ตอบคำถามเดียว · ปลอดภัยเพราะเครื่องหมายคำพูดใน *ค่า* ของ JSON ถูก escape เสมอ
+// ลำดับไบต์ `"g":` จึงโผล่ได้เฉพาะตรงที่เป็นคีย์จริง (เดียวกับที่ on_config ทำกับ "b")
+static int frame_page(const char *json, bool *forget)
+{
+    const char *kind = strstr(json, "\"g\":");
+    // `"x":1` เท่านั้น — Mac ส่งค่านี้ค่าเดียว การรับ true/1/"1" ทุกแบบคือการเดาแทนคู่สนทนา
+    *forget = strstr(json, "\"x\":1") != NULL;
+    return kind ? atoi(kind + 4) : CT_PAGE_MASCOT;
+}
+
 static void on_state(const char *json, int len)
 {
+    bool forget = false;
+    int page = frame_page(json, &forget);
+
+    if (page != CT_PAGE_MASCOT) {
+        if (page >= CT_PAGE_KIND_COUNT) {
+            // daemon ใหม่กว่า firmware — ทิ้งไป ไม่ใช่วาดมั่ว การประกาศ capability
+            // ตอนเชื่อมต่อมีไว้ไม่ให้สภาพนี้เกิดตั้งแต่แรก
+            ESP_LOGW(TAG, "frame for page %d, which this firmware does not know", page);
+            return;
+        }
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+        if (forget) {
+            s_forget_page = page;
+        } else if (len >= (int)sizeof(s_pending_page)) {
+            ESP_LOGW(TAG, "page %d sent %d bytes, more than one frame can be", page, len);
+        } else {
+            // ช่องเดียว: เฟรมที่มาซ้อนก่อนลูปหลักหยิบไปใช้ (10 ms) จะทับของเดิม ซึ่งเกิดได้
+            // เฉพาะตอนบอร์ดต่อกลับแล้วทุกหน้าถูกส่งใหม่พร้อมกัน — พูดออกมา ไม่ใช่หายเงียบ
+            if (s_pending_page_kind >= 0 && s_pending_page_kind != page) {
+                ESP_LOGW(TAG, "page %d arrived before page %d was drawn", page,
+                         s_pending_page_kind);
+            }
+            memcpy(s_pending_page, json, len);
+            s_pending_page_len = len;
+            s_pending_page_kind = page;
+        }
+        xSemaphoreGive(s_lock);
+        return;
+    }
+
     ct_snapshot_t parsed;
     if (!ct_model_parse(json, len, &parsed)) {
         ESP_LOGW(TAG, "snapshot was not valid json");
@@ -105,6 +159,17 @@ static void on_config(const char *json, int len)
     xSemaphoreTake(s_lock, portMAX_DELAY);
     s_pending_backlight = value;
     xSemaphoreGive(s_lock);
+}
+
+// Mac พร้อมฟังแล้ว — บอกไปว่าบอร์ดตัวนี้รู้จักหน้าอะไรบ้าง (ADR-0006)
+//
+// ประกาศเป็นความสามารถ ไม่ใช่เลขเวอร์ชัน: บอร์ดนี้ไม่มี OTA ผู้ใช้ลาก `.app` ใหม่ทับ
+// ได้ใน 5 วินาที แต่การแฟลชต้องหาสาย USB สภาพ "แอปใหม่ + firmware เก่า" จึงเป็นปกติ
+static void on_ready(void)
+{
+    char json[64];
+    int n = ct_pages_capability_json(json, sizeof(json));
+    ct_ble_notify(json, n);
 }
 
 static void on_link(bool connected)
@@ -204,6 +269,8 @@ static void apply_pending(void)
 {
     ct_snapshot_t snap;
     char ip[sizeof(s_ip)];
+    char page_json[sizeof(s_pending_page)];
+    int page_len = 0, page_kind = -1, forget_page = -1;
     bool got_snapshot = false, link = false, link_changed = false, wifi = false;
     int backlight = -1;
 
@@ -213,6 +280,14 @@ static void apply_pending(void)
         s_has_pending = false;
         got_snapshot = true;
     }
+    if (s_pending_page_kind >= 0) {
+        memcpy(page_json, s_pending_page, s_pending_page_len);
+        page_len = s_pending_page_len;
+        page_kind = s_pending_page_kind;
+        s_pending_page_kind = -1;
+    }
+    forget_page = s_forget_page;
+    s_forget_page = -1;
     link = s_link;
     wifi = s_wifi_up;
     memcpy(ip, s_ip, sizeof(ip));
@@ -244,6 +319,11 @@ static void apply_pending(void)
         if (alert && !had_alert) ct_led_flash();
         had_alert = alert;
         ct_pages_set_snapshot(&snap);
+    }
+    if (forget_page >= 0) ct_pages_forget((ct_page_kind_t)forget_page);
+    if (page_kind >= 0
+        && !ct_pages_set_frame((ct_page_kind_t)page_kind, page_json, page_len)) {
+        ESP_LOGW(TAG, "page %d sent a frame it cannot draw", page_kind);
     }
     if (backlight >= 0) ct_lcd_set_backlight(backlight);
 }
@@ -283,6 +363,7 @@ void app_main(void)
         .on_state = on_state,
         .on_config = on_config,
         .on_link = on_link,
+        .on_ready = on_ready,
     };
     ct_ble_init(&cbs);
 

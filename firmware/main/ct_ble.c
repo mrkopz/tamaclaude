@@ -130,7 +130,9 @@ static int gap_event(struct ble_gap_event *event, void *arg)
 
         case BLE_GAP_EVENT_SUBSCRIBE:
             if (event->subscribe.attr_handle == s_event_handle) {
+                bool was = s_event_subscribed;
                 s_event_subscribed = event->subscribe.cur_notify;
+                if (!was && s_event_subscribed && s_cbs.on_ready) s_cbs.on_ready();
             }
             return 0;
 

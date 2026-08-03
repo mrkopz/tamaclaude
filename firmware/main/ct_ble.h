@@ -16,6 +16,9 @@ typedef struct {
     void (*on_state)(const char *json, int len);
     void (*on_config)(const char *json, int len);
     void (*on_link)(bool connected);
+    // ฝั่ง Mac สมัครรับ event characteristic แล้ว — ก่อนหน้านี้ ct_ble_notify เงียบสนิท
+    // การประกาศความสามารถของบอร์ด (ADR-0006) จึงต้องรอจังหวะนี้ ไม่ใช่จังหวะ connect
+    void (*on_ready)(void);
 } ct_ble_cbs_t;
 
 void ct_ble_init(const ct_ble_cbs_t *cbs);

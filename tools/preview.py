@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gen import mascot, screen  # noqa: E402
+from gen import mascot, screen, weather  # noqa: E402
 from gen.config import L, PAL, REPO_DIR  # noqa: E402
 from gen.props import BOX_X0, BOX_X1, BOX_Y0, BOX_Y1  # noqa: E402
 from gen.render import quantize565, render_rects  # noqa: E402
@@ -197,6 +197,28 @@ SCENES: dict[str, screen.Screen] = {
 }
 
 
+# หน้าอากาศ — หน้าที่สองของจอ วาดจากค่าคงที่ชุดเดียวกับ firmware
+# ฉากถูกเลือกให้ครบสิ่งที่ต้องตัดสินด้วยตา: สัญลักษณ์ทุกกลุ่ม · ชื่อเมืองภาษาไทย ·
+# อายุข้อมูลที่ยังปกติกับที่เก่าจนต้องตะโกน · หน้าที่ยังไม่เคยได้ข้อมูล · ลิงก์หลุด
+WEATHER_SCENES: dict[str, weather.Weather] = {
+    "rain": weather.Weather(mascot_state="writing"),
+    "clear": weather.Weather(place="Chiang Mai", temp=36, high=38, low=27, code=0,
+                             age=45, mascot_state="waiting"),
+    "cold": weather.Weather(place="Sapporo", temp=28, high=31, low=19, code=73, unit="F",
+                            age=40 * 60, mascot_state="sleeping"),
+    "storm": weather.Weather(place="กรุงเทพ", temp=29,
+                             high=33, low=26, code=95, age=12 * 60, mascot_state="alert"),
+    # เก่าเกิน 10 เท่าของรอบดึง — ตัวเลขยังอ่านได้ แต่ต้องไม่มีใครเข้าใจว่ามันสด
+    "stale": weather.Weather(place="Bangkok", temp=31, high=34, low=26, code=3,
+                             age=4 * 3600, mascot_state="thinking"),
+    # ยังไม่เคยได้เฟรมของหน้านี้เลย — ห้ามเป็นจอเปล่าหรือโครงว่าง (ADR-0002)
+    "empty": weather.Weather(has_frame=False, mascot_state="idle"),
+    # Mac หายไป: ตัวเลขค้างอยู่แต่ไม่มีใครรับรองแล้ว และมาสคอตจิ๋วหายไปทั้งตัว
+    # (หายไป = ไม่มี Mac · หลับ = ไม่มี session)
+    "offline": weather.Weather(place="Bangkok", age=95 * 60, connected=False),
+}
+
+
 # ฉากตรวจท้องฟ้า — ไม่มี session เลย ซึ่งเป็นสภาพที่จอเป็นเกือบตลอดเวลา
 # และเป็นตอนที่ฟ้าโล่งที่สุด ส่วนตอนถูกมาสคอตบังดูได้จาก screen_busy/waiting
 SKY_CLOCKS = {"dawn": "05:40", "day": "12:00", "dusk": "18:10", "night": "02:14"}
@@ -250,6 +272,19 @@ def main() -> None:
         frames[0].save(OUT / f"screen_{name}.gif", save_all=True,
                        append_images=frames[1:], duration=90, loop=0)
     print(f"screen_*.png/gif      {len(SCENES)} ฉาก  (320x240)")
+
+    for name, w in WEATHER_SCENES.items():
+        img = weather.render(w, 0.25)
+        img.save(OUT / f"weather_{name}.png")
+        big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
+        big.save(OUT / f"weather_{name}@{args.scale}x.png")
+        frames = [
+            weather.render(w, (f % FRAMES) / FRAMES, f // FRAMES)
+            for f in range(FRAMES * LOOPS)
+        ]
+        frames[0].save(OUT / f"weather_{name}.gif", save_all=True,
+                       append_images=frames[1:], duration=90, loop=0)
+    print(f"weather_*.png/gif     {len(WEATHER_SCENES)} ฉาก  (320x240)")
 
     for name, clock in SKY_CLOCKS.items():
         sc = sky_scene(clock)

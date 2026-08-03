@@ -27,6 +27,8 @@ final class PreferencesWindowController: NSWindowController {
     var onForget: ((String) -> Void)?
     /// ที่อยู่บอร์ดที่ผู้ใช้กรอกเอง — สตริงว่างคือกลับไปให้แอปหาเอง
     var onBoardHost: ((String) -> Void)?
+    /// ค่าตั้งของหน้าอากาศเปลี่ยน — หน้าต่างไม่รู้จัก UserDefaults เหมือนทุกอย่างที่นี่
+    var onWeather: ((WeatherSettings) -> Void)?
 
     // --- General ------------------------------------------------------------
     private let boardPopup = NSPopUpButton()
@@ -40,6 +42,13 @@ final class PreferencesWindowController: NSWindowController {
     private let loginBox = NSButton(checkboxWithTitle: "Launch at login", target: nil,
                                     action: nil)
     private let keyLabel = NSTextField(labelWithString: "")
+
+    // --- Pages --------------------------------------------------------------
+    private let weatherBox = NSButton(checkboxWithTitle: "Show a weather page",
+                                      target: nil, action: nil)
+    private let placeField = NSTextField()
+    private let unitPopup = NSPopUpButton()
+    private let weatherStatus = NSTextField(labelWithString: "")
 
     // --- Wi-Fi --------------------------------------------------------------
     private let statusLabel = NSTextField(labelWithString: "")
@@ -89,6 +98,11 @@ final class PreferencesWindowController: NSWindowController {
         general.label = "General"
         general.view = pad(buildGeneral())
         tabs.addTabViewItem(general)
+
+        let pages = NSTabViewItem(identifier: "pages")
+        pages.label = "Pages"
+        pages.view = pad(buildPages())
+        tabs.addTabViewItem(pages)
 
         let wifi = NSTabViewItem(identifier: "wifi")
         wifi.label = "Wi-Fi"
@@ -185,6 +199,51 @@ final class PreferencesWindowController: NSWindowController {
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 10
+        return stack
+    }
+
+    /// หน้าอากาศ — ทุกค่าที่นี่ไปจบที่ `UserDefaults` และแอปเป็นบรรณาธิการเดียว
+    ///
+    /// เมืองเป็นชื่อที่พิมพ์เอง ไม่ใช่ CoreLocation: เลี่ยง TCC อีกใบ และของตั้งโต๊ะไม่ได้
+    /// ย้ายที่ · ปิดหน้านี้แล้วบอร์ดถูกสั่งให้ลืมมันจริงๆ ไม่ใช่แค่หยุดส่งของใหม่
+    private func buildPages() -> NSView {
+        weatherBox.target = self
+        weatherBox.action = #selector(weatherChanged)
+
+        placeField.placeholderString = "City (e.g. Bangkok)"
+        placeField.target = self
+        placeField.action = #selector(weatherChanged)
+
+        unitPopup.target = self
+        unitPopup.action = #selector(weatherChanged)
+        for unit in TempUnit.allCases {
+            unitPopup.addItem(withTitle: unit.title)
+            unitPopup.lastItem?.representedObject = unit.rawValue
+        }
+
+        weatherStatus.font = .systemFont(ofSize: 11)
+        weatherStatus.textColor = .secondaryLabelColor
+
+        let hint = NSTextField(wrappingLabelWithString:
+            "Figures come from Open-Meteo, fetched by this Mac every 15 minutes — the board "
+            + "never goes online itself. The screen turns between pages on its own and always "
+            + "says how old the figures are.")
+        hint.font = .systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+
+        let stack = NSStackView(views: [
+            row("", weatherBox),
+            row("City", placeField),
+            row("Units", unitPopup),
+            row("", weatherStatus),
+            separator(),
+            hint,
+        ])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        placeField.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        hint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return stack
     }
 
@@ -294,6 +353,27 @@ final class PreferencesWindowController: NSWindowController {
 
     func showBoardHost(_ host: String) { hostField.stringValue = host }
 
+    func showWeather(_ settings: WeatherSettings, status: String?, supported: Bool) {
+        weatherBox.state = settings.enabled ? .on : .off
+        placeField.stringValue = settings.place
+        unitPopup.selectItem(at: TempUnit.allCases.firstIndex(of: settings.unit) ?? 0)
+        placeField.isEnabled = settings.enabled
+        unitPopup.isEnabled = settings.enabled
+
+        // เหตุผลที่หน้านี้ยังไม่ขึ้นจอมีได้สามอย่าง และผู้ใช้แก้ได้คนละแบบ: firmware เก่า
+        // (ต้องแฟลช) · ยังไม่พิมพ์ชื่อเมือง (พิมพ์) · ดึงไม่สำเร็จ (รอ หรือแก้ชื่อเมือง)
+        if !supported {
+            weatherStatus.stringValue =
+                "The board's firmware does not know this page yet — flash it to use it."
+        } else if let status {
+            weatherStatus.stringValue = status
+        } else if settings.enabled && !settings.isUsable {
+            weatherStatus.stringValue = "Type a city to start."
+        } else {
+            weatherStatus.stringValue = ""
+        }
+    }
+
     func showKey(_ state: SessionKeyState) {
         keyLabel.stringValue = state.line
         keyLabel.textColor = state.isProblem ? .systemRed : .secondaryLabelColor
@@ -373,6 +453,15 @@ final class PreferencesWindowController: NSWindowController {
     @objc private func intervalChanged() {
         let raw = intervalPopup.selectedItem?.representedObject as? Int
         onInterval?(PollInterval.stored(raw))
+    }
+
+    @objc private func weatherChanged() {
+        let raw = unitPopup.selectedItem?.representedObject as? String
+        onWeather?(
+            WeatherSettings(
+                enabled: weatherBox.state == .on,
+                place: placeField.stringValue.trimmingCharacters(in: .whitespaces),
+                unit: TempUnit(rawValue: raw ?? "") ?? .celsius))
     }
 
     @objc private func setSessionKey() { onSetSessionKey?() }

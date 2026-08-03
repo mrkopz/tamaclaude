@@ -77,3 +77,11 @@ bool ct_model_parse(const char *json, int len, ct_snapshot_t *out);
 
 // snapshot ว่าง: ไม่มี session ไม่มีการ์ด นาฬิกาเป็นขีด
 void ct_model_clear(ct_snapshot_t *s);
+
+// ท่าเดียวที่แทนทั้งเครื่อง — ตัวที่ต้องการคนมากที่สุดชนะ
+//
+// มาสคอตจิ๋วบนหน้าอื่นมีที่ให้ท่าเดียว ถ้าหยิบ session ตัวแรกมาแสดง (ซึ่งเรียงซ้าย->ขวา
+// ตามลำดับที่เข้ามา ไม่ใช่ตามความเร่งด่วน) การรออนุญาตของตัวที่สามจะหายไปจากทุกหน้า
+// ที่ไม่ใช่หน้ามาสคอต ไม่มี session เลย = หลับ ซึ่งต่างจาก "ไม่มีมาสคอต" ที่แปลว่าจอ
+// หลุดจาก Mac · ลำดับต้องตรงกับ VisualState.priority ใน TamaCore/Protocol.swift
+ct_state_t ct_model_lead_state(const ct_snapshot_t *s);

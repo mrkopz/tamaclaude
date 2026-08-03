@@ -64,7 +64,7 @@ def _cells(draw: ImageDraw.ImageDraw, text: str, pil: int, board: int) -> list[t
     return out
 
 
-def _text(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str, *,
+def line(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str, *,
           pil: int, board: int, fill: str, anchor: str, max_w: int | None = None) -> None:
     """วาดข้อความหนึ่งบรรทัด
 
@@ -318,7 +318,7 @@ def _slot(draw: ImageDraw.ImageDraw, i: int, sess: Session | None, s: Screen,
     rects = mascot.build_centered(sess.state, p % 1.0, s.connected, cycle + int(p))
     draw_rects(draw, rects, px, ox, oy)
 
-    _text(draw, (x + sw / 2, foot_px + 11), sess.project, pil=9, board=12,
+    line(draw, (x + sw / 2, foot_px + 11), sess.project, pil=9, board=12,
           fill=PAL.text if s.connected else PAL.text_dim, anchor="mm", max_w=sw - 8)
 
 
@@ -379,9 +379,9 @@ def _card(draw: ImageDraw.ImageDraw, c: Card, y: int) -> None:
     tx = pad + 9
     tw = w - pad - 8 - tx
     # ขนาดฝั่งบอร์ดคือ 14/12 (montserrat กับฟอนต์ไทย) ฝั่ง PIL คือ 12/10 เพราะฟอนต์คนละตัว
-    _text(draw, (tx, y + 11), c.title, pil=12, board=14,
+    line(draw, (tx, y + 11), c.title, pil=12, board=14,
           fill=PAL.text, anchor="lm", max_w=tw)
-    _text(draw, (tx, y + 25), c.body, pil=10, board=12,
+    line(draw, (tx, y + 25), c.body, pil=10, board=12,
           fill=PAL.text_dim, anchor="lm", max_w=tw)
 
 

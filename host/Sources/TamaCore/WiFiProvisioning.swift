@@ -90,6 +90,12 @@ public enum BoardEvent: Equatable, Sendable {
     /// จบรายการสแกน — ไม่มีตัวนับ ไม่มีหมายเลขชิ้น มีแค่เครื่องหมายจบ
     case scanFinished
     case wifi(WiFiStatus)
+    /// รายการ `PageKind` ที่บอร์ดตัวนี้รู้จัก ประกาศตอนเชื่อมต่อ (ADR-0006)
+    ///
+    /// เป็น *ความสามารถ* ไม่ใช่เลขเวอร์ชัน: แอปใหม่กับ firmware เก่าเป็นสภาพปกติ
+    /// (ลาก `.app` ทับใช้เวลา 5 วินาที ส่วนการแฟลชต้องหาสาย USB) และการแปลเลข
+    /// เวอร์ชันเป็นรายการฟีเจอร์คือตารางที่เน่าทันทีที่ firmware มีสายที่สอง
+    case capability([PageKind])
 
     /// คืน nil เมื่อไม่ใช่ข้อความที่เรารู้จัก — firmware รุ่นใหม่กว่าต้องไม่ทำให้แอปพัง
     public static func decode(_ data: Data) -> BoardEvent? {
@@ -107,6 +113,12 @@ public enum BoardEvent: Equatable, Sendable {
 
         case "ap_end":
             return .scanFinished
+
+        case "cap":
+            // ค่าที่ยังไม่มีใน enum ฝั่งนี้ถูกทิ้ง ไม่ใช่ทำให้ทั้งข้อความใช้ไม่ได้ —
+            // firmware ที่ใหม่กว่าแอปคือสภาพที่มีจริงพอๆ กับทางกลับกัน
+            let ids = (object["p"] as? [Any])?.compactMap { ($0 as? NSNumber)?.intValue } ?? []
+            return .capability(ids.compactMap(PageKind.init(rawValue:)))
 
         case "wifi":
             let state = WiFiStatus.State(rawValue: object["st"] as? String ?? "") ?? .off
@@ -156,6 +168,8 @@ public struct NetworkList: Equatable, Sendable {
             scanning = false
         case .wifi(let status):
             saved = status.saved
+        case .capability:
+            break  // หน้า Wi-Fi ไม่รู้จักเรื่อง page — คนที่ฟังคือ `PageHub`
         }
     }
 

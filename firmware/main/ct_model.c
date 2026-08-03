@@ -44,6 +44,35 @@ void ct_model_clear(ct_snapshot_t *s)
     }
 }
 
+// ต้องตรงกับ VisualState.priority ใน host/Sources/TamaCore/Protocol.swift
+static int state_priority(ct_state_t state)
+{
+    switch (state) {
+        case CT_STATE_ALERT:
+        case CT_STATE_ERROR: return 40;
+        case CT_STATE_WAITING: return 30;
+        case CT_STATE_ENTERING:
+        case CT_STATE_LEAVING: return 25;
+        case CT_STATE_CONDUCTING: return 22;
+        case CT_STATE_CELEBRATE: return 15;
+        case CT_STATE_IDLE: return 10;
+        case CT_STATE_SLEEPING: return 0;
+        default: return 20;  // ท่าที่มาจาก tool ทุกตัว
+    }
+}
+
+ct_state_t ct_model_lead_state(const ct_snapshot_t *s)
+{
+    if (s->session_count <= 0) return CT_STATE_SLEEPING;
+    ct_state_t best = s->sessions[0].state;
+    for (int i = 1; i < s->session_count; i++) {
+        if (state_priority(s->sessions[i].state) > state_priority(best)) {
+            best = s->sessions[i].state;
+        }
+    }
+    return best;
+}
+
 void ct_model_tick_usage(ct_snapshot_t *s, int secs)
 {
     if (!s->has_usage) return;

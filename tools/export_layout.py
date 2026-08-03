@@ -13,7 +13,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gen import mascot  # noqa: E402
+from gen import mascot, pages  # noqa: E402
 from gen.config import LAYOUT_TOML, REPO_DIR, _raw  # noqa: E402
 from gen.props import BOX_X0, BOX_X1, BOX_Y0, BOX_Y1  # noqa: E402
 from gen.render import to_rgb565  # noqa: E402
@@ -83,7 +83,8 @@ def build_header() -> str:
         "#include <stdint.h>",
         "",
     ]
-    for section in ("screen", "topbar", "slots", "card", "usage", "stroll", "sky", "mascot"):
+    for section in ("screen", "topbar", "slots", "card", "usage", "stroll", "sky", "rotation",
+                    "weather", "mascot"):
         out += _emit_section(section, _raw[section])
         out.append("")
         out += _emit_tables(section, _raw[section])
@@ -116,6 +117,20 @@ def build_header() -> str:
     for st in mascot.all_states():
         out.append(f'    "{st}",')
     out += ["};", ""]
+
+    out += [
+        "// ชนิดของ page — ตัวเลขเดินทางบนสาย ห้ามเรียงใหม่ (ADR-0004)",
+        "// ฝั่ง Swift คือ `PageKind` (host/Sources/TamaCore/Pages.swift) ซึ่ง tamatest",
+        "// อ่านไฟล์นี้มาเทียบ ตารางจึงมีต้นทางเดียวจริงๆ ไม่ใช่สามสำเนาที่บังเอิญตรงกัน",
+        "typedef enum {",
+    ]
+    for i, page in enumerate(pages.PAGES):
+        out.append(f"    CT_PAGE_{page.upper():<12} = {i},")
+    out += [
+        f"    CT_PAGE_KIND_COUNT{'':<8} = {len(pages.PAGES)},",
+        "} ct_page_kind_t;",
+        "",
+    ]
     return "\n".join(out)
 
 

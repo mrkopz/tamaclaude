@@ -24,6 +24,8 @@ Claude Code hooks --> tamaclaude --hook --> Unix socket --> daemon --> BLE GATT 
                                                                        (only when BLE
                                                                         is 10 s gone)
 
+Open-Meteo --> WeatherService (every 15 min) --> page frame --> the same two paths
+
 Claude Code statusline --> ~/.tamaclaude/statusline.sh --.
                                                           >--> ~/.claude/.statusline-usage-cache
 menu bar timer --> tamaclaude --usage-poll --> claude.ai --'                |
@@ -35,7 +37,8 @@ event-driven, so it goes quiet exactly when the desk display is left alone; the 
 the user's `sessionKey` and keeps the number moving with Claude Code closed. Neither replaces
 the other and they are separate switches — see the reversal note in `DESIGN.md`.
 
-The daemon owns all logic. Firmware only knows a fixed `VisualState` enum and draws it.
+The daemon owns all logic. Firmware only knows two fixed enums — `VisualState` and
+`PageKind` — and draws them.
 Tool-to-animation mapping is host-side and user-overridable at `~/.tamaclaude/tools.json`.
 
 ## Commands
@@ -83,7 +86,7 @@ uses those constants, not a chip model number.
 ### Graphics / preview (Python + Pillow)
 
 ```bash
-python3 tools/preview.py            # render every state + whole screens to out/ (PNG + GIF)
+python3 tools/preview.py            # render every state + whole screens (incl. weather) to out/
 python3 tools/preview.py --sheet    # contact sheet only
 python3 tools/export_layout.py      # tools/layout.toml -> firmware/main/layout.h
 python3 tools/export_thai.py        # tools/thai.toml -> ThaiTable.swift + gen/thai_table.py
@@ -110,7 +113,8 @@ look at `out/`. It proves the *design*, not the C renderer.
   `tools/thai-golden.json`, which both test sides read. See ADR-0008.
 - **`tools/gen/*.py` ↔ `firmware/main/ct_*.c`** — deliberate parallel ports, file for file:
   `props.py`↔`ct_props.c`, `mascot.py`↔`ct_mascot.c`, `rects.py`↔`ct_rects.c`,
-  `screen.py`↔`ct_ui.c`, `sky.py` folds into `ct_ui.c`. A visual change means editing both
+  `screen.py`↔`ct_ui.c`, `weather.py`↔`ct_weather_ui.c`, `sky.py` folds into `ct_ui.c`.
+  `pages.py` is the odd one out: it feeds `export_layout.py`, which generates `ct_page_kind_t`. A visual change means editing both
   sides; the Python side is where you iterate, the C side is the port.
 - **Assets are rect lists**, `{x, y, w, h, color}` in mascot-relative *unit* coordinates —
   no bitmaps, no sprite pipeline. The preview and the board both come from `gen/mascot.py`.
@@ -123,6 +127,9 @@ look at `out/`. It proves the *design*, not the C renderer.
 | File | Role |
 |---|---|
 | `TamaCore/Protocol.swift` | `HookEvent`, `VisualState` (+ `priority`), `Snapshot`, MTU squeeze |
+| `TamaCore/Pages.swift` | `PageKind` (the firmware contract), `PageFrame`, `PageHub` — what may be sent, and what is worth resending |
+| `TamaCore/Weather.swift` | the weather page frame + the Open-Meteo payloads, as pure functions over bytes |
+| `TamaCore/WeatherService.swift` | the weather settings and the fetch schedule — fed `tick(now:)`, owns no timer |
 | `TamaCore/SessionStore.swift` | all the logic: hook → per-session state → snapshot |
 | `TamaCore/ToolMap.swift` | tool name → `VisualState`, overridable via `~/.tamaclaude/tools.json` |
 | `TamaCore/Text.swift` | strip to the board font's charset, shape Thai, then truncate |
@@ -179,6 +186,16 @@ look at `out/`. It proves the *design*, not the C renderer.
   adhoc signature changes cdhash on every build, so the item would prompt on every upgrade.
 - **`-v` and `-psn_*` are not modes.** LaunchServices appends `-psn_0_12345`; an app that
   rejects unknown args dies on double-click.
+- **`PageKind` is a three-way contract**: `Pages.swift`, `firmware/main/ct_pages.h`, and
+  `tools/gen/pages.py`. The raw values travel on the wire, so reordering one side silently
+  changes what every frame means. `tamatest` reads the real header to check.
+- **One frame per page, and each must fit `Wire.maxPayload` alone** (ADR-0003). A frame is a
+  mascot `Snapshot` exactly when it has **no** `g` key — that is what keeps old firmware
+  working. `{"g":N,"x":1}` retires a page the user turned off; simply not sending it leaves
+  yesterday's figures rotating on the board forever (ADR-0002).
+- **Page frames carry a data *age*, not a timestamp**, and the board counts on from there.
+  A re-read with identical figures is still sent (the age is the difference); an age that is
+  merely ticking is not a change.
 - **The `VisualState` enum is a contract with the firmware.** Adding or reordering it means
   changing `ct_model.c`/`ct_mascot.c` too. `tamatest` guards this.
 

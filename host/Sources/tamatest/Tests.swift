@@ -1943,6 +1943,280 @@ func runAllTests() {
         cold.update(ble: false, lan: false, now: t0 + 10)
         expect(cold.wantsLan, "a mac that starts out of range still tries the lan")
     }
+
+    // ADR-0004: ชนิดของ page เป็นชุดปิดที่บอร์ดรู้จักตั้งแต่ตอนแฟลช ตัวเลขคือสิ่งที่
+    // เดินทางบนสาย การเรียงใหม่ฝั่งใดฝั่งหนึ่งจึงเปลี่ยนความหมายของทุกเฟรมเงียบๆ
+    suite("page kinds are the contract with the firmware") {
+        // layout.h ถูก generate จาก tools/gen/pages.py — เทียบกับมันคือเทียบกับทั้งสองฝั่ง
+        let header = try String(contentsOf: repoFile("firmware/main/layout.h"), encoding: .utf8)
+        var fromC: [String: Int] = [:]
+        for line in header.split(whereSeparator: \.isNewline) {
+            let text = line.trimmingCharacters(in: .whitespaces)
+            guard text.hasPrefix("CT_PAGE_"), let eq = text.firstIndex(of: "=") else { continue }
+            let name = String(text[text.startIndex..<eq]).trimmingCharacters(in: .whitespaces)
+            guard name != "CT_PAGE_KIND_COUNT" else { continue }
+            let value = String(text[text.index(after: eq)...])
+                .trimmingCharacters(in: CharacterSet(charactersIn: " ,"))
+            fromC[name.replacingOccurrences(of: "CT_PAGE_", with: "").lowercased()] = Int(value)
+        }
+        var fromSwift: [String: Int] = [:]
+        for kind in PageKind.allCases { fromSwift["\(kind)".lowercased()] = kind.rawValue }
+        equal(fromSwift, fromC, "no page kind drifted from the generated header")
+        equal(
+            header.contains("CT_PAGE_KIND_COUNT"), true,
+            "the firmware still counts its own kinds rather than trusting a number from the wire")
+    }
+
+    // มาสคอตจิ๋วบนหน้าอื่นมีที่ให้ท่าเดียว บอร์ดจึงต้องเลือกเองว่าท่าไหนแทนทั้งเครื่อง
+    // ซึ่งเป็นสำเนาที่สองของตารางนี้ — สำเนาที่ไม่มีใครเฝ้าคือสำเนาที่ดริฟต์
+    suite("the board ranks poses the same way the daemon does") {
+        let source = try String(contentsOf: repoFile("firmware/main/ct_model.c"), encoding: .utf8)
+        guard let start = source.range(of: "static int state_priority("),
+            let end = source.range(of: "\n}", range: start.upperBound..<source.endIndex)
+        else {
+            expect(false, "ct_model.c still ranks poses somewhere")
+            return
+        }
+        let body = String(source[start.upperBound..<end.lowerBound])
+
+        var fallback: Int?
+        var fromC: [String: Int] = [:]
+        var pending: [String] = []
+        for raw in body.split(whereSeparator: \.isNewline) {
+            let text = raw.trimmingCharacters(in: .whitespaces)
+            if text.hasPrefix("case CT_STATE_") {
+                let name = text
+                    .replacingOccurrences(of: "case CT_STATE_", with: "")
+                    .prefix { $0 != ":" }
+                pending.append(String(name).lowercased())
+            }
+            // `case A:` ลอยเดี่ยวก็มี และ `case A: return N;` บรรทัดเดียวก็มี
+            guard let after = text.range(of: "return ") else { continue }
+            let value = Int(text[after.upperBound...].prefix { $0.isNumber })
+            if pending.isEmpty {
+                fallback = value  // `default:` — ท่าที่มาจาก tool ทุกตัว
+            } else {
+                for name in pending { fromC[name] = value }
+                pending = []
+            }
+        }
+
+        for state in VisualState.allCases {
+            let want = state.priority
+            let got = fromC[state.rawValue] ?? fallback
+            equal(got, want, "\(state.rawValue) ranks the same on both sides")
+        }
+    }
+
+    suite("a weather frame fits one mtu on its own") {
+        let reading = WeatherReading(temp: 31, high: 34, low: 26, code: 61, unit: .celsius)
+        let frame = WeatherFrame(place: "Bangkok", reading: reading, age: 420)
+        let data = try frame.encoded()
+        expect(data.count <= Wire.maxPayload, "a page frame travels alone (got \(data.count)B)")
+
+        let text = String(decoding: data, as: UTF8.self)
+        equal(
+            text,
+            #"{"a":420,"g":1,"h":34,"l":26,"p":"Bangkok","t":31,"u":"C","w":61}"#,
+            "keys are sorted, so 'did it change?' is a byte comparison")
+        equal(try JSONDecoder().decode(WeatherFrame.self, from: data), frame, "round trips")
+
+        // ชื่อเมืองมาจากบริการภายนอกและเป็นภาษาอะไรก็ได้ — ไทยกิน 3 ไบต์ต่อตัว
+        let long = WeatherFrame(
+            place: "กรุงเทพมหานคร อมรรัตนโกสินทร์ มหินทรายุธยา", reading: reading)
+        let squeezed = try long.encoded(maxBytes: 80)
+        expect(squeezed.count <= 80, "an unreasonable name is clipped, not dropped")
+        let back = try JSONDecoder().decode(WeatherFrame.self, from: squeezed)
+        equal(back.reading, reading, "the figures are never what gets cut")
+
+        // หน้ามาสคอตต้องไม่รู้เรื่องนี้เลย — ตัวแยกบนสายคือการ *มี* คีย์ "g"
+        let snapshot = Snapshot(clock: "14:32", date: "Mon 27 Jul")
+        expect(
+            !String(decoding: try snapshot.encoded(), as: UTF8.self).contains("\"g\""),
+            "the mascot frame is unchanged, byte for byte")
+    }
+
+    suite("only the pages the board admits to knowing are sent") {
+        let reading = WeatherReading(temp: 30, high: 33, low: 25, code: 0, unit: .celsius)
+        let hub = PageHub()
+        hub.submit(WeatherFrame(place: "Bangkok", reading: reading), observedAt: t0)
+        equal(hub.drain(now: t0).count, 0, "a board that never announced knows only the mascot")
+
+        hub.announce([.mascot, .weather])
+        let first = hub.drain(now: t0 + 90)
+        equal(first.count, 1, "once it says it knows the page, the page is sent")
+        expect(
+            String(decoding: first[0], as: UTF8.self).contains("\"a\":90"),
+            "data age counts from when the mac read the figure, not from when the frame left")
+
+        equal(hub.drain(now: t0 + 91).count, 0, "one more second is not a content change")
+        hub.submit(
+            WeatherFrame(place: "Bangkok", reading: reading), observedAt: t0 + 900)
+        equal(
+            hub.drain(now: t0 + 900).count, 1,
+            "the same figures read again are new — the age they carry is the point")
+
+        hub.forgetSent()
+        equal(hub.drain(now: t0 + 901).count, 1, "a board that came back remembers nothing")
+
+        // เลิกส่งเฉยๆ ไม่พอ: บอร์ดเก็บหน้าไว้ใน RAM แล้วจะหมุนมาเจอตัวเลขของเมื่อวาน
+        hub.drop(.weather)
+        let retired = hub.drain(now: t0 + 902)
+        equal(retired.count, 1, "a page the user turned off is retired out loud")
+        equal(
+            String(decoding: retired[0], as: UTF8.self), #"{"g":1,"x":1}"#,
+            "and the board is told which page to forget")
+        equal(hub.drain(now: t0 + 903).count, 0, "once is enough")
+    }
+
+    suite("the board announces what it knows, not how old it is") {
+        equal(
+            BoardEvent.decode(Data(#"{"t":"cap","p":[0,1]}"#.utf8)),
+            .capability([.mascot, .weather]),
+            "a capability list is a list of page kinds")
+        equal(
+            BoardEvent.decode(Data(#"{"t":"cap","p":[0,1,77]}"#.utf8)),
+            .capability([.mascot, .weather]),
+            "a kind this app has never heard of is skipped, not fatal")
+        equal(
+            BoardEvent.decode(Data(#"{"t":"cap"}"#.utf8)), .capability([]),
+            "a board that lists nothing gets nothing but the mascot")
+    }
+
+    suite("the weather schedule is fed the time and holds no timer of its own") {
+        var schedule = FetchSchedule(interval: 900, retry: 60)
+        expect(schedule.start(now: t0), "the first round happens straight away")
+        expect(!schedule.start(now: t0), "and only once — a round in flight blocks the next")
+        schedule.finished(ok: true)
+
+        expect(!schedule.start(now: t0 + 899), "the second round waits out the interval")
+        expect(schedule.start(now: t0 + 900), "and happens when it is due")
+        schedule.finished(ok: false)
+        // เน็ตหลุดสิบวินาทีไม่ควรทำให้หน้าอากาศค้างอีก 15 นาที แต่ก็ไม่ยิงรัวเช่นกัน
+        expect(!schedule.start(now: t0 + 959), "a failed round is retried sooner, not instantly")
+        expect(schedule.start(now: t0 + 960), "one minute later")
+        schedule.finished(ok: true)
+
+        schedule.invalidate()
+        expect(
+            schedule.start(now: t0 + 961),
+            "new settings answer a different question — the next round is due now")
+    }
+
+    suite("what open-meteo says becomes a reading, and rubbish stays rubbish") {
+        let forecast = Data(
+            """
+            {"latitude":13.75,"longitude":100.5,"timezone":"Asia/Bangkok",
+             "current":{"time":"2026-08-03T12:00","temperature_2m":31.4,"weather_code":61},
+             "daily":{"time":["2026-08-03"],"temperature_2m_max":[33.8],
+                      "temperature_2m_min":[25.2]}}
+            """.utf8)
+        let reading = try WeatherSource.reading(from: forecast, unit: .celsius)
+        equal(
+            reading, WeatherReading(temp: 31, high: 34, low: 25, code: 61, unit: .celsius),
+            "degrees are rounded on the mac — the board has no room for decimals")
+
+        for broken in [
+            "", "not json at all", "{}", #"{"current":{"temperature_2m":31.4}}"#,
+            #"{"current":{"temperature_2m":31.4,"weather_code":61},"daily":{}}"#,
+            #"{"current":{"weather_code":61},"daily":{"temperature_2m_max":[1],"temperature_2m_min":[0]}}"#,
+        ] {
+            do {
+                _ = try WeatherSource.reading(from: Data(broken.utf8), unit: .celsius)
+                expect(false, "a payload missing what the page needs is refused: \(broken)")
+            } catch {
+                equal(error as? WeatherError, .badPayload, "and says so plainly")
+            }
+        }
+
+        let geo = Data(
+            #"{"results":[{"name":"Bangkok","latitude":13.75,"longitude":100.5}]}"#.utf8)
+        equal(
+            try WeatherSource.place(from: geo),
+            GeoPlace(name: "Bangkok", latitude: 13.75, longitude: 100.5),
+            "a city name becomes a point on the map")
+        do {
+            // ไม่มีคีย์ results คือสัญญาของบริการว่า "หาไม่เจอ" ไม่ใช่ payload พัง —
+            // สองอย่างนี้บอกผู้ใช้คนละเรื่องกัน (พิมพ์ชื่อผิด vs บริการล่ม)
+            _ = try WeatherSource.place(from: Data(#"{"generationtime_ms":0.2}"#.utf8))
+            expect(false, "a name that matches nothing is not a place")
+        } catch {
+            equal(error as? WeatherError, .noSuchPlace, "and it is not the same as a broken reply")
+        }
+
+        let url = WeatherSource.forecastURL(
+            GeoPlace(name: "x", latitude: 13.75, longitude: 100.5), unit: .fahrenheit)
+        let query = url?.query ?? ""
+        expect(query.contains("temperature_unit=fahrenheit"), "the unit rides along in the request")
+        expect(query.contains("timezone=auto"), "today's high and low are the city's day, not ours")
+        expect(
+            WeatherSource.forecastURL(
+                GeoPlace(name: "x", latitude: 1, longitude: 2), unit: .celsius)?
+                .query?.contains("temperature_unit") != true,
+            "celsius is the service default, so it costs no bytes to ask for")
+    }
+
+    suite("the weather page fetches on its own clock and never on a real network") {
+        var asked: [String] = []
+        var replies: [String: Result<Data, Error>] = [
+            "geocoding-api.open-meteo.com":
+                .success(Data(#"{"results":[{"name":"Bangkok","latitude":13.75,"longitude":100.5}]}"#.utf8)),
+            "api.open-meteo.com":
+                .success(Data((
+                    #"{"current":{"temperature_2m":31.4,"weather_code":61},"#
+                    + #""daily":{"temperature_2m_max":[33.8],"temperature_2m_min":[25.2]}}"#).utf8)),
+        ]
+        let service = WeatherService(
+            settings: WeatherSettings(enabled: true, place: "Bangkok", unit: .celsius),
+            interval: 900
+        ) { url, done in
+            asked.append(url.host ?? "")
+            done(replies[url.host ?? ""] ?? .failure(WeatherError.badPayload))
+        }
+        var frames: [WeatherFrame] = []
+        service.onFrame = { frame, _ in frames.append(frame) }
+
+        service.tick(now: t0)
+        equal(asked, ["geocoding-api.open-meteo.com", "api.open-meteo.com"],
+              "a name is turned into a point before the weather is asked for")
+        equal(frames.count, 1, "and the page gets a frame")
+        equal(frames.last?.place, "Bangkok", "labelled with the name the service knows it by")
+
+        service.tick(now: t0 + 899)
+        equal(asked.count, 2, "nothing happens between rounds")
+        service.tick(now: t0 + 900)
+        equal(
+            asked, ["geocoding-api.open-meteo.com", "api.open-meteo.com", "api.open-meteo.com"],
+            "a city does not move — the point is looked up once and kept")
+
+        // ผู้ใช้พิมพ์เมืองใหม่: ของที่ถืออยู่ตอบคำถามคนละข้อแล้ว
+        service.update(WeatherSettings(enabled: true, place: "Chiang Mai", unit: .fahrenheit))
+        service.tick(now: t0 + 901)
+        equal(asked.count, 5, "a new city is looked up again straight away")
+
+        replies["api.open-meteo.com"] = .success(Data("{}".utf8))
+        service.update(WeatherSettings(enabled: true, place: "Chiang Mai", unit: .celsius))
+        service.tick(now: t0 + 902)
+        equal(frames.count, 3, "a reply we cannot read leaves the last good frame standing")
+        expect(service.status != nil, "and the settings window has something to say about it")
+
+        let off = WeatherService(
+            settings: WeatherSettings(enabled: false, place: "Bangkok"), interval: 900
+        ) { _, _ in expect(false, "a page that is off never asks anyone anything") }
+        off.tick(now: t0)
+        let blank = WeatherService(
+            settings: WeatherSettings(enabled: true, place: "  "), interval: 900
+        ) { _, _ in expect(false, "neither does one with no city typed in yet") }
+        blank.tick(now: t0)
+    }
+}
+
+/// ไฟล์ในรีโปเทียบจากตำแหน่งของไฟล์เทสต์เอง — เทสต์ถูกรันจาก `host/` ไม่ใช่รากรีโป
+func repoFile(_ path: String) -> URL {
+    URL(fileURLWithPath: #filePath)  // host/Sources/tamatest/Tests.swift
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent(path)
 }
 
 /// ที่พักข้อมูลข้ามคิวสำหรับเทสต์ socket

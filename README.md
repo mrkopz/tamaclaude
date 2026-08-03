@@ -76,6 +76,20 @@ claude.ai.
 | ![usage](docs/images/screen_usage.gif) | ![usage hot](docs/images/screen_usage_hot.gif) | ![usage unknown](docs/images/screen_usage_unknown.gif) |
 | The current 5-hour window and the weekly one. | Near the limit; the tick marks your pace against the clock. | `--`, never a guess, when no number has arrived. |
 
+**The weather page**
+
+The screen holds more than one page now, and turns between them on its own every 20
+seconds. The board keeps the clock, so the pages keep turning with the Mac asleep.
+
+| Live | Long stale | Never arrived |
+|:--|:--|:--|
+| ![weather](docs/images/weather_rain.gif) | ![stale](docs/images/weather_stale.gif) | ![no weather](docs/images/weather_empty.gif) |
+| Now, today's high and low, and how old the figures are. The mascot shrinks into the corner so you can still see what your sessions are doing. | Far past the refresh window, so it says so out loud rather than in small print. | The page says what is missing instead of showing an empty frame. |
+
+Turn it on in **Settings ▸ Pages** and type a city. Figures come from Open-Meteo — no
+account, no API key — fetched by your Mac every 15 minutes. The board still never goes
+online itself.
+
 **Over Wi-Fi**
 
 | Still live | Nobody feeding it |

@@ -84,6 +84,30 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
     168, 174, 191, 200, 228, 235, 247, 268, 273, 288, 298, 310,
 };
 
+#define CT_ROTATION_SECONDS          20
+
+#define CT_WEATHER_PLACE_X           12
+#define CT_WEATHER_PLACE_Y           30
+#define CT_WEATHER_TEMP_X            14
+#define CT_WEATHER_TEMP_Y            64
+#define CT_WEATHER_HILO_X            18
+#define CT_WEATHER_HILO_Y            140
+#define CT_WEATHER_TEMP_FONT         48
+#define CT_WEATHER_TEMP_FONT_PIL     46
+#define CT_WEATHER_ICON_X            232
+#define CT_WEATHER_ICON_Y            92
+#define CT_WEATHER_ICON_PX           5
+#define CT_WEATHER_ICON_GRID         10
+#define CT_WEATHER_EMPTY_Y           80
+#define CT_WEATHER_EMPTY_SUB_Y       104
+#define CT_WEATHER_AGE_X             12
+#define CT_WEATHER_AGE_Y             214
+#define CT_WEATHER_REFRESH_S         900
+#define CT_WEATHER_STALE_FACTOR      10
+#define CT_WEATHER_MINI_UNIT_PX      1.5f
+#define CT_WEATHER_MINI_RIGHT        10
+#define CT_WEATHER_MINI_BOTTOM_Y     44
+
 #define CT_MASCOT_GRID_W             16.5f
 #define CT_MASCOT_GRID_H             12
 #define CT_MASCOT_CORNER             0.25f
@@ -175,3 +199,12 @@ static const char *const ct_state_names[CT_STATE_COUNT] = {
     "conducting",
     "beacon",
 };
+
+// ชนิดของ page — ตัวเลขเดินทางบนสาย ห้ามเรียงใหม่ (ADR-0004)
+// ฝั่ง Swift คือ `PageKind` (host/Sources/TamaCore/Pages.swift) ซึ่ง tamatest
+// อ่านไฟล์นี้มาเทียบ ตารางจึงมีต้นทางเดียวจริงๆ ไม่ใช่สามสำเนาที่บังเอิญตรงกัน
+typedef enum {
+    CT_PAGE_MASCOT       = 0,
+    CT_PAGE_WEATHER      = 1,
+    CT_PAGE_KIND_COUNT         = 2,
+} ct_page_kind_t;

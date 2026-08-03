@@ -5,8 +5,9 @@
 #include <string.h>
 
 #include "ct_color.h"
-#include "ct_font_thai.h"
+#include "ct_fonts.h"
 #include "ct_mascot.h"
+#include "ct_paint.h"
 #include "ct_rects.h"
 #include "layout.h"
 #include "lvgl.h"
@@ -292,30 +293,10 @@ static void draw_shadow(lv_layer_t *layer, float body_cx)
 }
 
 // --- การวาดมาสคอต ------------------------------------------------------------
+// ลูปวาดจริงอยู่ที่ ct_paint.c — หน้าอากาศวาด rect list ชุดเดียวกันนี้แบบย่อ
 static void draw_mascot_rects(lv_layer_t *layer, const ct_rects_t *rects, float ox, float oy)
 {
-    const float px = CT_SLOTS_UNIT_PX;
-    lv_draw_rect_dsc_t dsc;
-    lv_draw_rect_dsc_init(&dsc);
-    dsc.bg_opa = LV_OPA_COVER;
-    dsc.border_width = 0;
-
-    for (int i = 0; i < rects->count; i++) {
-        const ct_rect_t *r = &rects->items[i];
-        int x0 = (int)lroundf(ox + r->x * px);
-        int y0 = (int)lroundf(oy + r->y * px);
-        int x1 = (int)lroundf(ox + (r->x + r->w) * px);
-        int y1 = (int)lroundf(oy + (r->y + r->h) * px);
-        if (x1 <= x0 || y1 <= y0) continue;  // ชิ้นที่บางกว่าหนึ่งพิกเซลหายไปเลย
-        // clamp เองแทนที่จะปล่อยให้ LVGL ทำ — ฝั่ง preview ใช้ PIL ซึ่งไม่ clamp ให้
-        // ถ้าปล่อยไปคนละทาง ขาที่ยุบจนเตี้ยจะออกมาคนละรูปบนจอกับบน preview
-        int radius = (int)lroundf(r->r * px);
-        int half = ((x1 - x0) < (y1 - y0) ? (x1 - x0) : (y1 - y0)) / 2;
-        dsc.radius = radius < half ? radius : half;
-        dsc.bg_color = ct_color(r->color);
-        lv_area_t a = {.x1 = x0, .y1 = y0, .x2 = x1 - 1, .y2 = y1 - 1};
-        lv_draw_rect(layer, &dsc, &a);
-    }
+    ct_paint_rects(layer, rects, ox, oy, CT_SLOTS_UNIT_PX);
 }
 
 static void slot_draw_cb(lv_event_t *e)
@@ -411,22 +392,6 @@ static lv_obj_t *plain_obj(lv_obj_t *parent, int w, int h)
     lv_obj_set_size(o, w, h);
     lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE);
     return o;
-}
-
-// ฟอนต์ของข้อความที่มาจาก host — Montserrat เหมือนเดิม แต่ตัวที่มันไม่มีตกไปที่ฟอนต์ไทย
-//
-// daemon เลิกทิ้งอักขระไทยแล้ว (Text.sanitize) ข้อความไทยจึงมาถึงจอได้จริงตั้งแต่ตอนนี้
-// ถ้าไม่ต่อ fallback ไว้ ชื่อโปรเจกต์หรือหัวการ์ดภาษาไทยจะกลายเป็นบรรทัดว่าง
-// ตัวที่ประกอบร่างมาแล้วอยู่ใน PUA ซึ่ง Montserrat ไม่มีอยู่แล้ว จึงตกมาทางนี้ทั้งคลัสเตอร์
-static lv_font_t s_text_12;
-static lv_font_t s_text_14;
-
-static void init_text_fonts(void)
-{
-    s_text_12 = lv_font_montserrat_12;
-    s_text_12.fallback = &ct_font_thai_12;
-    s_text_14 = lv_font_montserrat_14;
-    s_text_14.fallback = &ct_font_thai_14;
 }
 
 static lv_obj_t *plain_label(lv_obj_t *parent, const lv_font_t *font, uint16_t color)
@@ -531,7 +496,7 @@ static void build_slots(lv_obj_t *scr)
         lv_obj_add_event_cb(o, slot_draw_cb, LV_EVENT_DRAW_MAIN, NULL);
         s_slots[i].canvas = o;
 
-        lv_obj_t *l = plain_label(scr, &s_text_12, CT_COL_TEXT);
+        lv_obj_t *l = plain_label(scr, ct_font_text_12(), CT_COL_TEXT);
         lv_obj_set_width(l, CT_SLOTS_WIDTH - 4);
         lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
         lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
@@ -562,12 +527,12 @@ static void build_cards(lv_obj_t *scr)
         lv_obj_set_pos(accent, 0, 0);
         lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
 
-        lv_obj_t *title = plain_label(box, &s_text_14, CT_COL_TEXT);
+        lv_obj_t *title = plain_label(box, ct_font_text_14(), CT_COL_TEXT);
         lv_obj_set_width(title, w - 18);
         lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
         lv_obj_set_pos(title, 9, 4);
 
-        lv_obj_t *body = plain_label(box, &s_text_12, CT_COL_TEXT_DIM);
+        lv_obj_t *body = plain_label(box, ct_font_text_12(), CT_COL_TEXT_DIM);
         lv_obj_set_width(body, w - 18);
         lv_label_set_long_mode(body, LV_LABEL_LONG_DOT);
         lv_obj_set_pos(body, 9, 20);
@@ -677,7 +642,7 @@ void ct_ui_init(lv_obj_t *parent, const ct_snapshot_t *frame)
     // ผืนนี้เต็มจอและไม่มี style ใดๆ พิกัดของลูกจึงเท่ากับพิกัดบนจอเป๊ะ
     lv_obj_t *scr = parent;
 
-    init_text_fonts();  // ต้องมาก่อน build_* ทุกตัว — ป้ายถือ pointer ไปยังฟอนต์พวกนี้
+    ct_fonts_init();  // ต้องมาก่อน build_* ทุกตัว — ป้ายถือ pointer ไปยังฟอนต์พวกนี้
     build_sky(scr);
     build_topbar(scr);
     build_slots(scr);

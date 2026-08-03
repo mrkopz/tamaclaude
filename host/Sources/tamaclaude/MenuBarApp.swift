@@ -33,9 +33,17 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private static let autoStartKey = "autoStartSession"
     /// ที่อยู่บอร์ดที่ผู้ใช้กรอกเอง — ทางออกเมื่อเราเตอร์ไม่ส่ง mDNS ข้าม subnet/VLAN
     private static let boardHostKey = "boardHost"
+    /// หน้าที่บอร์ดตัวล่าสุดบอกว่ารู้จัก (ADR-0006)
+    ///
+    /// จำข้ามการเปิดปิดแอปเพราะการประกาศเกิดบน BLE เท่านั้น — Mac ที่เปิดขึ้นมาไกลจาก
+    /// บอร์ดและคุยกันได้แต่ทาง LAN จะไม่ได้ยินคำประกาศเลย แล้วหน้าอากาศจะไม่มีวันถูกส่ง
+    private static let capabilityKey = "boardPages"
 
     private var poller: UsagePoller!
     private var starter: SessionStarter!
+    private var weather: WeatherService!
+    /// หน้าที่บอร์ดประกาศว่ารู้จัก — ว่างคือ firmware ที่ยังไม่รู้จักการประกาศ
+    private var boardPages: [PageKind] = []
     /// แถวโควตาชุดล่าสุดที่ daemon ประกาศออกมา — ตัวเดียวกับที่แบดจ์กิน
     private var usage: [UsageSnap]?
 
@@ -147,6 +155,18 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return
         }
 
+        // หน้าที่บอร์ดตัวล่าสุดรู้จัก — ของที่จำไว้ใช้ได้จนกว่าบอร์ดจะบอกใหม่
+        boardPages = (UserDefaults.standard.array(forKey: Self.capabilityKey) as? [Int] ?? [])
+            .compactMap(PageKind.init(rawValue:))
+        daemon.announce(boardPages)
+
+        weather = WeatherService(
+            settings: WeatherSettings.load(), fetch: WeatherFetch.urlSession())
+        weather.onFrame = { [weak self] frame, observedAt in
+            self?.daemon.submit(frame, observedAt: observedAt)
+        }
+        if !weather.settings.enabled { daemon.drop(.weather) }
+
         poller = UsagePoller(
             interval: PollInterval.stored(
                 UserDefaults.standard.object(forKey: Self.intervalKey) as? Int),
@@ -171,6 +191,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return }
             self.refreshLink()
             self.poller.tick()
+            self.weather.tick()
             // แถวโควตาที่ daemon อ่านไว้แล้ว ไม่ใช่การอ่านไฟล์รอบที่สองทุกวินาที
             self.starter.tick(usage: self.usage)
         }
@@ -223,7 +244,29 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self?.ble.sendConfig(WiFiCommand.forget(ssid: ssid).payload)
         }
         window.onBoardHost = { [weak self] host in self?.chooseBoardHost(host) }
+        window.onWeather = { [weak self] settings in self?.chooseWeather(settings) }
         return window
+    }
+
+    /// ผู้ใช้เปลี่ยนค่าหน้าอากาศ — เก็บลง `UserDefaults` แล้วให้ตัวที่ดึงข้อมูลรู้ทันที
+    ///
+    /// ปิดหน้านี้ = สั่งบอร์ดให้ลืมมัน ไม่ใช่แค่หยุดส่งของใหม่ (บอร์ดเก็บทุกหน้าไว้ใน RAM
+    /// หน้าที่ถูกลืมส่งจะยังหมุนมาให้เห็นพร้อมตัวเลขของเมื่อวานตลอดไป)
+    private func chooseWeather(_ settings: WeatherSettings) {
+        settings.save()
+        weather.update(settings)
+        if settings.enabled {
+            weather.tick()
+        } else {
+            daemon.drop(.weather)
+        }
+        showWeather()
+    }
+
+    private func showWeather() {
+        prefs.showWeather(
+            weather.settings, status: weather.status,
+            supported: boardPages.isEmpty || boardPages.contains(.weather))
     }
 
     private func chooseBoardHost(_ host: String) {
@@ -248,6 +291,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         prefs.showBoardHost(UserDefaults.standard.string(forKey: Self.boardHostKey) ?? "")
         prefs.showRoute(route, detail: lanStatus)
         prefs.showKey(keyState)
+        showWeather()
         prefs.show()
         // ถามสถานะซ้ำเสมอ: บอร์ดรายงานตอนมันเปลี่ยน ซึ่งอาจเป็นก่อนที่หน้าต่างนี้จะมีตัวตน
         ble.sendConfig(WiFiCommand.status.payload)
@@ -271,6 +315,13 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// ทันที ไม่ต้องรอให้ผู้ใช้ไปกดอะไร — เขาไม่มีทางรู้ว่าตัวเลขสองชุดนี้ต่างกันอยู่
     private func boardSaid(_ event: BoardEvent) {
         prefs.apply(event)
+        if case .capability(let kinds) = event {
+            boardPages = kinds
+            UserDefaults.standard.set(kinds.map(\.rawValue), forKey: Self.capabilityKey)
+            daemon.announce(kinds)
+            showWeather()
+            return
+        }
         guard case .wifi(let status) = event else { return }
         lan.noteBoardAddress(status.ip)
         guard let key = LanKey.loadOrCreate() else { return }
