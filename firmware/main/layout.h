@@ -132,6 +132,24 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_CRYPTO_EMPTY_SUB_Y        104
 #define CT_CRYPTO_REFRESH_S          60
 
+#define CT_CALENDAR_ROWS             4
+#define CT_CALENDAR_ROW_Y            32
+#define CT_CALENDAR_ROW_H            44
+#define CT_CALENDAR_TIME_X           12
+#define CT_CALENDAR_TIME_W           74
+#define CT_CALENDAR_DAY_X            12
+#define CT_CALENDAR_DAY_W            74
+#define CT_CALENDAR_TITLE_X          92
+#define CT_CALENDAR_TITLE_W          216
+#define CT_CALENDAR_TIME_FONT        24
+#define CT_CALENDAR_TIME_FONT_PIL    20
+#define CT_CALENDAR_TIME_DY          2
+#define CT_CALENDAR_DAY_DY           28
+#define CT_CALENDAR_TITLE_DY         12
+#define CT_CALENDAR_EMPTY_Y          80
+#define CT_CALENDAR_EMPTY_SUB_Y      104
+#define CT_CALENDAR_REFRESH_S        300
+
 #define CT_MASCOT_GRID_W             16.5f
 #define CT_MASCOT_GRID_H             12
 #define CT_MASCOT_CORNER             0.25f
@@ -231,5 +249,6 @@ typedef enum {
     CT_PAGE_MASCOT       = 0,
     CT_PAGE_WEATHER      = 1,
     CT_PAGE_CRYPTO       = 2,
-    CT_PAGE_KIND_COUNT         = 3,
+    CT_PAGE_CALENDAR     = 3,
+    CT_PAGE_KIND_COUNT         = 4,
 } ct_page_kind_t;

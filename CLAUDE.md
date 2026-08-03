@@ -134,6 +134,9 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/WeatherService.swift` | the weather settings and the fetch schedule — fed `tick(now:)`, owns no timer |
 | `TamaCore/Crypto.swift` | the crypto page frame + the CoinGecko payloads — the squeeze never cuts a symbol |
 | `TamaCore/CryptoService.swift` | the watchlist (5 max) and its 60 s round — the shape a stock page will borrow |
+| `TamaCore/Calendar.swift` | the calendar page frame + the appointment-to-rows converter, as pure functions |
+| `TamaCore/CalendarService.swift` | which calendars may show, the 5 min round, and what the page says when it cannot read |
+| `TamaCore/EventKitCalendars.swift` | the only file that touches EventKit — read-only, and thin enough to have nothing to test |
 | `TamaCore/SessionStore.swift` | all the logic: hook → per-session state → snapshot |
 | `TamaCore/ToolMap.swift` | tool name → `VisualState`, overridable via `~/.tamaclaude/tools.json` |
 | `TamaCore/Text.swift` | strip to the board font's charset, shape Thai, then truncate |

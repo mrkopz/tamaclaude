@@ -15,6 +15,8 @@ idf_component_register(
         "ct_weather_ui.c"
         "ct_crypto.c"
         "ct_crypto_ui.c"
+        "ct_calendar.c"
+        "ct_calendar_ui.c"
         "ct_ble.c"
         "ct_wifi.c"
         "ct_lan.c"

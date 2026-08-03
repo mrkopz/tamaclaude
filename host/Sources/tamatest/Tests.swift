@@ -2219,26 +2219,28 @@ func runAllTests() {
         equal(settings.isOn(.mascot), true, "the mascot page cannot be turned off")
         settings.setOn(.weather, false)
         equal(
-            settings.plan.order, [.mascot, .crypto],
+            settings.plan.order, [.mascot, .crypto, .calendar],
             "a page that is off is not in the plan at all")
         settings.setOn(.weather, true)
         equal(
-            settings.plan.order, [.mascot, .weather, .crypto], "and comes back where it was")
+            settings.plan.order, [.mascot, .weather, .crypto, .calendar],
+            "and comes back where it was")
 
         settings.move(.weather, by: -1)
         equal(
-            settings.order, [.weather, .mascot, .crypto],
+            settings.order, [.weather, .mascot, .crypto, .calendar],
             "arranging moves one step, not to the end")
         settings.move(.weather, by: -1)
         equal(
-            settings.order, [.weather, .mascot, .crypto],
+            settings.order, [.weather, .mascot, .crypto, .calendar],
             "and stops at the edge instead of wrapping")
 
         // ค่าที่บีบแล้วต้องบีบตั้งแต่ตอนสร้าง ไม่ใช่ตอนส่ง — หน้าต่างแสดงค่าที่เก็บจริง
         equal(PageSettings(rotation: 1, hold: 99_999).rotation, 5, "a turn too fast to read is clamped")
         equal(PageSettings(rotation: 1, hold: 99_999).hold, 3600, "so is a hold that never ends")
         equal(
-            PageSettings(order: [.weather, .weather]).order, [.weather, .mascot, .crypto],
+            PageSettings(order: [.weather, .weather]).order,
+            [.weather, .mascot, .crypto, .calendar],
             "a stored order that lost a page or repeated one is repaired, not obeyed")
 
         let store = UserDefaults(suiteName: "tamatest.pages")!
@@ -2275,7 +2277,7 @@ func runAllTests() {
         equal(first.count, 1, "once it says it knows about pages, the rules are sent")
         equal(
             String(decoding: first[0], as: UTF8.self),
-            #"{"h":600,"j":0,"pl":[0,1,2],"r":30}"#,
+            #"{"h":600,"j":0,"pl":[0,1,2,3],"r":30}"#,
             "keys are sorted and the marker is 'pl', so a snapshot is still a snapshot")
         equal(hub.drain(now: t0 + 1).count, 0, "and not repeated every second afterwards")
 
@@ -2288,7 +2290,7 @@ func runAllTests() {
         let both = hub.drain(now: t0 + 2)
         equal(both.count, 2, "new rules and a new frame travel in the same round")
         equal(
-            String(decoding: both[0], as: UTF8.self), #"{"h":300,"j":1,"pl":[0,2],"r":20}"#,
+            String(decoding: both[0], as: UTF8.self), #"{"h":300,"j":1,"pl":[0,2,3],"r":20}"#,
             "the rules go first, and a page the user turned off is simply not in them")
 
         hub.forgetSent()
@@ -2585,6 +2587,196 @@ func runAllTests() {
             expect(false, "an empty watchlist asks nobody anything")
         }
         blank.tick(now: t0)
+    }
+
+    suite("a calendar frame fits one mtu and never cuts the when off an appointment") {
+        let rows = (0..<4).map {
+            CalendarFrame.CalendarSlot(
+                day: "Tomorrow", time: "09:3\($0)",
+                title: "ประชุมทีมที่ปั๊มน้ำมันกับผู้รับเหมาเรื่องหลังคาใหม่ \($0)")
+        }
+        let frame = CalendarFrame(events: rows, age: 42)
+        let data = try frame.encoded()
+        expect(data.count <= Wire.maxPayload, "a full page fits one mtu")
+
+        let text = String(data: data, encoding: .utf8) ?? ""
+        expect(text.contains("\"g\":3"), "the calendar page names itself on the wire")
+        expect(text.contains("\"a\":42"), "and carries the age of what it says")
+
+        let back = try JSONDecoder().decode(CalendarFrame.self, from: data)
+        equal(back.events.count, 4, "four appointments make the round trip")
+        equal(back.state, .ok, "and the page says it has something to show")
+        equal(
+            back.events.map(\.time), rows.map(\.time),
+            "with the times untouched by the squeeze")
+
+        // บีบจนแคบ: ชื่อนัดสั้นลงได้ แต่วันกับเวลาต้องมาครบทุกแถวที่ยังอยู่
+        let tight = try frame.encoded(maxBytes: 200)
+        let squeezed = try JSONDecoder().decode(CalendarFrame.self, from: tight)
+        expect(tight.count <= 200, "a tighter budget still produces a frame")
+        expect(!squeezed.events.isEmpty, "and it still has appointments in it")
+        for (i, slot) in squeezed.events.enumerated() {
+            equal(slot.time, rows[i].time, "row \(i) keeps the time it was given")
+            equal(slot.day, rows[i].day, "row \(i) keeps the day it was given")
+        }
+
+        // ชื่อไทยยาวกว่าเพดานถูกตัดเป็น *ช่อง* ไม่ใช่ scalar — วรรณยุกต์กับสระบนกว้างศูนย์
+        let long = CalendarFrame(events: [
+            CalendarFrame.CalendarSlot(
+                day: "Today", time: "10:30",
+                title: "ที่ปั๊มน้ำมันกับกตัญญูและฝั่งโน้นอีกหลายคำที่ยาวเกินคอลัมน์")
+        ])
+        let clipped = try JSONDecoder().decode(
+            CalendarFrame.self, from: try long.encoded())
+        equal(
+            Text.displayWidth(clipped.events[0].title), CalendarFrame.titleLimit,
+            "a long thai title uses the whole column instead of stopping short")
+
+        do {
+            _ = try frame.encoded(maxBytes: 40)
+            expect(false, "a budget smaller than the page itself is an error")
+        } catch {
+            equal(
+                error as? CalendarError, .frameTooLong,
+                "and it says so instead of sending rubbish")
+        }
+
+        // จอเปล่าไม่ใช่คำตอบ — เฟรมที่ไม่มีนัดต้องพกเหตุผลของมันมาด้วยเสมอ
+        equal(
+            CalendarFrame(events: [], state: .ok).state, .empty,
+            "no rows and nothing to say is not a state the board can be left in")
+        equal(
+            CalendarFrame(events: rows, state: .needsAccess).state, .needsAccess,
+            "and a page without permission says that, whatever rows it was handed")
+    }
+
+    suite("the calendar keeps what is ahead, inside seven days, and at most four") {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Bangkok")!
+        // จันทร์ 6 ก.ค. 2026 เวลา 08:00 — วันที่คงที่ เทสต์จึงไม่เปลี่ยนผลตามวันที่รัน
+        let now = cal.date(from: DateComponents(year: 2026, month: 7, day: 6, hour: 8))!
+        let events = [
+            CalendarEvent(title: "เมื่อวาน", start: now - 86400),
+            CalendarEvent(title: "ผ่านไปแล้วเมื่อเช้า", start: now - 3600),
+            CalendarEvent(title: "อีกสิบวัน", start: now + 10 * 86400),
+            CalendarEvent(title: "พรุ่งนี้", start: now + 86400 + 3600),
+            CalendarEvent(title: "วันนี้บ่าย", start: now + 6 * 3600),
+            CalendarEvent(title: "ศุกร์", start: now + 4 * 86400),
+            CalendarEvent(title: "วันหยุดทั้งวัน", start: now + 2 * 86400 - 8 * 3600,
+                          isAllDay: true),
+            CalendarEvent(title: "เสาร์", start: now + 5 * 86400),
+        ]
+        let picked = CalendarPage.upcoming(events, now: now, calendar: cal)
+        equal(
+            picked.map(\.title), ["วันนี้บ่าย", "พรุ่งนี้", "วันหยุดทั้งวัน", "ศุกร์"],
+            "what is behind us or past the week is gone, and the rest is in time order")
+
+        // นัดทั้งวันของ *วันนี้* เริ่มที่เที่ยงคืนที่ผ่านมาแล้ว แต่ยังไม่ผ่านไป — วันเกิดกับ
+        // วันหยุดต้องไม่หายจากจอตั้งแต่ 00:00:01 ของวันเดียวที่มันมีความหมาย
+        let birthday = CalendarEvent(
+            title: "วันเกิด", start: cal.startOfDay(for: now), isAllDay: true)
+        equal(
+            CalendarPage.upcoming([birthday], now: now, calendar: cal).map(\.title),
+            ["วันเกิด"], "an all-day event today is still ahead of us at eight in the morning")
+        equal(
+            CalendarPage.upcoming(
+                [CalendarEvent(title: "เมื่อวานทั้งวัน", start: cal.startOfDay(for: now) - 86400,
+                               isAllDay: true)], now: now, calendar: cal).count,
+            0, "while yesterday's is gone, which is the only difference between the two")
+
+        let frame = CalendarPage.frame(events: events, now: now, calendar: cal)
+        equal(frame.events.count, 4, "four is what the screen has room for")
+        equal(frame.events[0].day, "Today", "the first is today")
+        equal(frame.events[0].time, "14:00", "at a time written the same width every row")
+        equal(frame.events[1].day, "Tomorrow", "tomorrow has a word of its own")
+        equal(
+            frame.events[2].time, "all day",
+            "an all-day appointment says so instead of showing midnight")
+        equal(
+            frame.events[3].day, "Fri",
+            "and further out is a weekday, which is unambiguous inside seven days")
+
+        equal(
+            CalendarPage.frame(events: [], now: now, calendar: cal).state, .empty,
+            "an empty week says it is empty rather than showing nothing")
+        equal(
+            CalendarPage.frame(events: events, now: now, state: .needsAccess).events.count, 0,
+            "and a page that may not read anything shows no appointments at all")
+    }
+
+    suite("the calendar page reads on its own clock and never touches a real calendar") {
+        let fake = FakeCalendars()
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "Asia/Bangkok")!
+        let t0 = cal.date(from: DateComponents(year: 2026, month: 7, day: 6, hour: 8))!
+
+        let service = CalendarService(
+            settings: CalendarSettings(), source: fake, interval: 300)
+        var frames: [CalendarFrame] = []
+        service.onFrame = { frame, _ in frames.append(frame) }
+
+        // ยังไม่เคยถามสิทธิ์ — หน้าต้องบอกว่าต้องทำอะไรต่อ ไม่ใช่เงียบจนดูเหมือนพัง
+        service.tick(now: t0)
+        equal(frames.count, 1, "a page with no permission still sends a frame")
+        equal(
+            frames[0].state, .notAsked,
+            "which says nobody has been asked yet — the next step is the app, not System Settings")
+        expect(service.status != nil, "and the settings window has a sentence to show")
+        equal(fake.reads, 0, "nothing was read from the calendar store")
+
+        let unasked = service.status
+        fake.access = .denied
+        service.restart()
+        service.tick(now: t0 + 1)
+        equal(
+            frames.last?.state, .needsAccess,
+            "a refusal is a different state from never having been asked")
+        expect(
+            service.status != unasked,
+            "and it says something else, because the way out is somewhere else")
+
+        fake.access = .granted
+        service.restart()
+        service.tick(now: t0 + 2)
+        equal(
+            frames.last?.state, .noCalendars,
+            "permission alone is not a choice of calendars")
+        equal(fake.reads, 0, "and a screen other people can see stays quiet until asked")
+
+        fake.events = [CalendarEvent(title: "ประชุมทีม", start: t0 + 7200)]
+        service.update(CalendarSettings(calendars: ["work"]))
+        service.tick(now: t0 + 3)
+        equal(frames.last?.state, .ok, "a ticked calendar is what starts the reading")
+        equal(frames.last?.events.first?.title, "ประชุมทีม", "and the appointment reaches the board")
+        equal(fake.lastIDs, ["work"], "only the calendars the user ticked are asked about")
+        equal(service.status, nil, "a page that works says nothing about itself")
+
+        // ตัวจัดตารางเป็นของหน้านี้ ไม่ใช่ของ timer ข้างนอก
+        service.tick(now: t0 + 200)
+        equal(fake.reads, 1, "the clock inside decides, not how often it is ticked")
+        service.tick(now: t0 + 304)
+        equal(fake.reads, 2, "and five minutes later it reads again")
+    }
+}
+
+/// ปฏิทินปลอมสำหรับเทสต์ — ตัวจริง (`EventKitCalendars`) บางจนไม่มีอะไรให้เทสต์
+/// และการเรียกมันจริงจะเด้งกล่องขอสิทธิ์ใส่เครื่องที่รันชุดเทสต์ (ADR-0005)
+final class FakeCalendars: CalendarReading, @unchecked Sendable {
+    var access: CalendarAccess = .notDetermined
+    var events: [CalendarEvent] = []
+    var reads = 0
+    var lastIDs: [String] = []
+
+    func requestAccess(_ done: @escaping (CalendarAccess) -> Void) { done(access) }
+
+    func calendars() -> [CalendarInfo] {
+        [CalendarInfo(id: "work", title: "Work", source: "Google")]
+    }
+
+    func events(from: Date, to: Date, calendarIDs: [String]) -> [CalendarEvent] {
+        reads += 1
+        lastIDs = calendarIDs
+        return events
     }
 }
 

@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gen import crypto, mascot, screen, weather  # noqa: E402
+from gen import calendar, crypto, mascot, screen, weather  # noqa: E402
 from gen.config import L, PAL, REPO_DIR  # noqa: E402
 from gen.props import BOX_X0, BOX_X1, BOX_Y0, BOX_Y1  # noqa: E402
 from gen.render import quantize565, render_rects  # noqa: E402
@@ -251,6 +251,40 @@ CRYPTO_SCENES: dict[str, crypto.Crypto] = {
 }
 
 
+# หน้าปฏิทิน — ใบเดียวที่อ่านข้อมูลจากเครื่องเอง ไม่ใช่จากเน็ต (ADR-0005)
+# ฉากถูกเลือกให้ครบสิ่งที่ต้องตัดสินด้วยตา: ชื่อนัดภาษาไทยที่มีวรรณยุกต์เหนือสระบน ·
+# ชื่อที่ยาวจนถูกตัด · นัดทั้งวันที่ไม่มีเวลา · ทุกสภาพที่ไม่มีนัดให้แสดง · ลิงก์หลุด
+CALENDAR_SCENES: dict[str, calendar.Calendar] = {
+    "full": calendar.Calendar(events=[
+        calendar.Appointment("Today", "09:30", "ประชุมทีมที่ปั๊มน้ำมัน"),
+        calendar.Appointment("Today", "14:00", "1:1 with Ann"),
+        calendar.Appointment("Tomorrow", "all day", "กตัญญู ฝั่งโน้น ฐู ฟ้า ปี"),
+        calendar.Appointment("Fri", "08:15", "Flight BKK -> CNX"),
+    ], age=95),
+    # นัดเดียวต้องดูเหมือนนัดเดียว ไม่ใช่สี่นัดที่หายไปสาม
+    "one": calendar.Calendar(events=[
+        calendar.Appointment("Tomorrow", "10:00", "หมอฟัน"),
+    ], age=12),
+    # ชื่อที่ถูกตัดมาแล้วฝั่ง Mac — จุดไข่ปลาอยู่ท้ายคลัสเตอร์ ไม่ใช่กลางวรรณยุกต์
+    "long": calendar.Calendar(events=[
+        calendar.Appointment("Today", "16:45", "ที่ปั๊มน้ำมันกับผู้รับเหมาเรื..."),
+    ], age=200),
+    # สัปดาห์ที่ว่างจริงๆ — ต้องบอกว่าไม่มีนัด ไม่ใช่หน้าว่าง
+    "empty": calendar.Calendar(state=calendar.EMPTY, age=60),
+    # ถูกปฏิเสธสิทธิ์ TCC ไปแล้ว — ทางแก้อยู่ที่ System Settings เท่านั้น
+    "denied": calendar.Calendar(state=calendar.NEEDS_ACCESS, age=20),
+    # ยังไม่เคยถูกถามเลย — ก้าวถัดไปคือปุ่มในแอป ไม่ใช่ System Settings ที่ยังไม่มีแถวให้กด
+    "unasked": calendar.Calendar(state=calendar.NOT_ASKED, age=20),
+    # ได้สิทธิ์แล้วแต่ยังไม่ได้ติ๊กปฏิทินสักใบ (จอนี้วางให้คนอื่นเห็นได้)
+    "unpicked": calendar.Calendar(state=calendar.NO_CALENDARS, age=20),
+    # Mac หายไป: นัดที่ค้างอยู่เป็นเทา เหมือนราคาบนหน้าคริปโต
+    "offline": calendar.Calendar(events=[
+        calendar.Appointment("Today", "09:30", "ประชุมทีมที่ปั๊มน้ำมัน"),
+        calendar.Appointment("Wed", "13:00", "Design review"),
+    ], age=50 * 60, connected=False),
+}
+
+
 # ฉากตรวจท้องฟ้า — ไม่มี session เลย ซึ่งเป็นสภาพที่จอเป็นเกือบตลอดเวลา
 # และเป็นตอนที่ฟ้าโล่งที่สุด ส่วนตอนถูกมาสคอตบังดูได้จาก screen_busy/waiting
 SKY_CLOCKS = {"dawn": "05:40", "day": "12:00", "dusk": "18:10", "night": "02:14"}
@@ -325,6 +359,14 @@ def main() -> None:
         big.save(OUT / f"crypto_{name}@{args.scale}x.png")
     # ไม่มี GIF: หน้านี้ไม่มีอะไรขยับเลย (ไม่มีมาสคอตจิ๋ว) นอกจากบรรทัดอายุที่เดินทีละวินาที
     print(f"crypto_*.png          {len(CRYPTO_SCENES)} ฉาก  (320x240)")
+
+    for name, c in CALENDAR_SCENES.items():
+        img = calendar.render(c)
+        img.save(OUT / f"calendar_{name}.png")
+        big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
+        big.save(OUT / f"calendar_{name}@{args.scale}x.png")
+    # ไม่มี GIF ด้วยเหตุผลเดียวกับหน้าคริปโต — ไม่มีอะไรบนหน้านี้ขยับนอกจากบรรทัดอายุ
+    print(f"calendar_*.png        {len(CALENDAR_SCENES)} ฉาก  (320x240)")
 
     for name, clock in SKY_CLOCKS.items():
         sc = sky_scene(clock)

@@ -33,6 +33,10 @@ final class PreferencesWindowController: NSWindowController {
     var onPages: ((PageSettings) -> Void)?
     /// watchlist ของหน้าคริปโตเปลี่ยน — ทั้งก้อนเสมอ ไม่ใช่ "เพิ่มตัวนี้" ทีละคำสั่ง
     var onCrypto: ((CryptoSettings) -> Void)?
+    /// ปฏิทินที่ผู้ใช้ติ๊กให้ขึ้นจอเปลี่ยน — ทั้งก้อนเหมือน watchlist
+    var onCalendar: ((CalendarSettings) -> Void)?
+    /// ผู้ใช้กดขอสิทธิ์ปฏิทิน — กล่องของระบบเด้งจากฝั่ง `MenuBarApp` ไม่ใช่จากที่นี่
+    var onCalendarAccess: (() -> Void)?
 
     // --- General ------------------------------------------------------------
     private let boardPopup = NSPopUpButton()
@@ -74,6 +78,17 @@ final class PreferencesWindowController: NSWindowController {
     private var cryptoOn = true
     /// ค่าที่หน้าต่างกำลังแสดงอยู่ — ปุ่มทุกปุ่มแก้ของก้อนนี้แล้วส่งออกทั้งก้อน
     private var crypto = CryptoSettings()
+
+    // --- Calendar ------------------------------------------------------------
+    /// รายการปฏิทินเป็นติ๊ก ไม่ใช่ช่องพิมพ์: ผู้ใช้ไม่ได้ตั้งชื่อปฏิทินเอง เขาเลือกจากที่
+    /// macOS sync มาให้ (ADR-0005) และชื่อที่พิมพ์ผิดจะกลายเป็นหน้าที่ว่างโดยไม่บอกอะไร
+    private let calendarList = NSStackView()
+    private let accessButton = NSButton(title: "Allow access", target: nil, action: nil)
+    private let calendarStatus = NSTextField(labelWithString: "")
+    /// id ของแต่ละแถวเรียงตามที่วาด — ปุ่มติ๊กพก `tag` เป็นตัวเลขได้อย่างเดียว
+    private var calendarIDs: [String] = []
+    private var calendarOn = true
+    private var calendars = CalendarSettings()
 
     // --- Wi-Fi --------------------------------------------------------------
     private let statusLabel = NSTextField(labelWithString: "")
@@ -133,6 +148,11 @@ final class PreferencesWindowController: NSWindowController {
         cryptoTab.label = "Crypto"
         cryptoTab.view = pad(buildCrypto())
         tabs.addTabViewItem(cryptoTab)
+
+        let calendarTab = NSTabViewItem(identifier: "calendar")
+        calendarTab.label = "Calendar"
+        calendarTab.view = pad(buildCalendar())
+        tabs.addTabViewItem(calendarTab)
 
         let wifi = NSTabViewItem(identifier: "wifi")
         wifi.label = "Wi-Fi"
@@ -412,6 +432,69 @@ final class PreferencesWindowController: NSWindowController {
         }
     }
 
+    /// ปฏิทินใบไหนได้ขึ้นจอบ้าง — ติ๊กทีละใบ พร้อมปุ่มขอสิทธิ์ตอนที่ยังไม่มี
+    ///
+    /// ไม่มีปุ่ม "เลือกทั้งหมด": จอนี้วางให้คนอื่นเห็นได้ การเปิดทุกใบด้วยการกดครั้งเดียว
+    /// คือการเผลอเอาปฏิทินหมอกับปฏิทินครอบครัวขึ้นจอพร้อมกันโดยไม่ได้อ่านชื่อสักใบ
+    private func buildCalendar() -> NSView {
+        calendarList.orientation = .vertical
+        calendarList.alignment = .leading
+        calendarList.spacing = 4
+
+        accessButton.target = self
+        accessButton.action = #selector(askCalendarAccess)
+        accessButton.bezelStyle = .rounded
+
+        calendarStatus.font = .systemFont(ofSize: 11)
+        calendarStatus.textColor = .secondaryLabelColor
+
+        let hint = NSTextField(wrappingLabelWithString:
+            "Appointments are read from the calendars macOS already syncs, so TamaClaude never "
+            + "holds a calendar password of its own — add the account in System Settings and "
+            + "tick it here. The page shows the next four appointments within seven days, "
+            + "read-only: nothing on the desk can change an appointment.")
+        hint.font = .systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+
+        let stack = NSStackView(views: [
+            calendarList,
+            accessButton,
+            calendarStatus,
+            separator(),
+            hint,
+        ])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        hint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return stack
+    }
+
+    /// วาดรายการปฏิทินใหม่ทั้งแถบ — เหตุผลเดียวกับรายการหน้าและ watchlist
+    private func rebuildCalendarList(_ available: [CalendarInfo]) {
+        for view in calendarList.arrangedSubviews { view.removeFromSuperview() }
+        calendarIDs = available.map(\.id)
+        for (index, info) in available.enumerated() {
+            // ชื่อบัญชีต่อท้ายเสมอ — ปฏิทินชื่อ "Calendar" สองใบจากคนละบัญชีแยกกันไม่ออก
+            // ถ้าไม่บอกว่ามาจากไหน แล้วผู้ใช้จะติ๊กใบผิดขึ้นจอที่คนอื่นมองเห็น
+            let title = info.source.isEmpty ? info.title : "\(info.title)  (\(info.source))"
+            let box = NSButton(
+                checkboxWithTitle: title, target: self, action: #selector(calendarTicked))
+            box.tag = index
+            box.state = calendars.isOn(info.id) ? .on : .off
+            box.isEnabled = calendarOn
+            calendarList.addArrangedSubview(box)
+        }
+    }
+
+    @objc private func calendarTicked(_ sender: NSButton) {
+        guard calendarIDs.indices.contains(sender.tag) else { return }
+        calendars.setOn(calendarIDs[sender.tag], sender.state == .on)
+        onCalendar?(calendars)
+    }
+
+    @objc private func askCalendarAccess() { onCalendarAccess?() }
+
     private func buildWiFi() -> NSView {
         statusLabel.font = .systemFont(ofSize: 12, weight: .medium)
         ipLabel.font = .systemFont(ofSize: 11)
@@ -573,6 +656,34 @@ final class PreferencesWindowController: NSWindowController {
             cryptoStatus.stringValue = "Five coins is the most this page shows."
         } else {
             cryptoStatus.stringValue = ""
+        }
+    }
+
+    func showCalendar(
+        _ settings: CalendarSettings, available: [CalendarInfo], access: CalendarAccess,
+        status: String?, supported: Bool, on: Bool
+    ) {
+        calendars = settings
+        calendarOn = on
+        rebuildCalendarList(available)
+
+        // ปุ่มขอสิทธิ์มีความหมายครั้งเดียวในชีวิตของแอป — หลังผู้ใช้ปฏิเสธไปแล้ว macOS
+        // จะไม่ถามซ้ำ กดอีกกี่ครั้งก็ไม่มีอะไรเกิดขึ้น ปุ่มจึงต้องดับและประโยคต้องเปลี่ยน
+        accessButton.isHidden = access == .granted
+        accessButton.isEnabled = on && access == .notDetermined
+
+        // ประโยคของแต่ละสภาพมาจาก `CalendarService` ที่เดียว — หน้าต่างเติมเฉพาะสิ่งที่
+        // มันรู้อยู่คนเดียว: firmware ที่ยังไม่รู้จักหน้านี้ (ต้องแฟลช) และทางออกของสิทธิ์
+        // ที่ถูกปฏิเสธ ซึ่งยาวเกินกว่าจะขึ้นจอ 320px ได้
+        if !supported {
+            calendarStatus.stringValue =
+                "The board's firmware does not know this page yet — flash it to use it."
+        } else if access == .denied {
+            calendarStatus.stringValue =
+                "Calendar access was refused. Turn TamaClaude on in System Settings > "
+                + "Privacy & Security > Calendars."
+        } else {
+            calendarStatus.stringValue = status ?? ""
         }
     }
 

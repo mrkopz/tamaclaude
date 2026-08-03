@@ -33,6 +33,11 @@
        ทำให้ทั้ง Bonjour และการต่อไปหา IP ตรงๆ เงียบไปเฉยๆ ไม่มี error ให้เห็น -->
   <key>NSLocalNetworkUsageDescription</key>
   <string>TamaClaude sends the display update to the desk board over your local network when Bluetooth is out of range.</string>
+  <!-- หน้าปฏิทินอ่านจาก EventKit ที่ macOS sync มาให้ (ADR-0005) แอปนี้จึงไม่ถือ
+       credential ของปฏิทินเลย · ขาดคีย์นี้แล้ว EventKit ยิง SIGABRT ใส่ทั้งโปรเซส
+       เหมือนที่ Bluetooth ทำ ไม่ใช่ปฏิเสธอย่างสุภาพ -->
+  <key>NSCalendarsFullAccessUsageDescription</key>
+  <string>TamaClaude shows your next appointments on the desk display. It only reads them.</string>
   <key>NSBonjourServices</key>
   <array>
     <string>_tamaclaude._tcp</string>

@@ -43,6 +43,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var starter: SessionStarter!
     private var weather: WeatherService!
     private var crypto: CryptoService!
+    private var calendar: CalendarService!
     /// หน้าที่บอร์ดประกาศว่ารู้จัก — ว่างคือ firmware ที่ยังไม่รู้จักการประกาศ
     private var boardPages: [PageKind] = []
     /// พฤติกรรมของจอที่ผู้ใช้ตั้งไว้ — อ่านจาก `UserDefaults` ครั้งเดียวตอนเปิดแอป
@@ -173,6 +174,12 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         crypto.onFrame = { [weak self] frame, observedAt in
             self?.daemon.submit(frame, observedAt: observedAt)
         }
+        // ปฏิทินอ่านจากเครื่องนี้เอง ไม่ใช่จากเน็ต (ADR-0005) — ท่อหลังจากนั้นเป็นท่อเดิม
+        calendar = CalendarService(
+            settings: CalendarSettings.load(), source: EventKitCalendars())
+        calendar.onFrame = { [weak self] frame, observedAt in
+            self?.daemon.submit(frame, observedAt: observedAt)
+        }
         pages = PageSettings.load()
         applyPages()
 
@@ -202,6 +209,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.poller.tick()
             if self.pages.isOn(.weather) { self.weather.tick() }
             if self.pages.isOn(.crypto) { self.crypto.tick() }
+            if self.pages.isOn(.calendar) { self.calendar.tick() }
             // แถวโควตาที่ daemon อ่านไว้แล้ว ไม่ใช่การอ่านไฟล์รอบที่สองทุกวินาที
             self.starter.tick(usage: self.usage)
         }
@@ -257,6 +265,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.onWeather = { [weak self] settings in self?.chooseWeather(settings) }
         window.onPages = { [weak self] settings in self?.choosePages(settings) }
         window.onCrypto = { [weak self] settings in self?.chooseCrypto(settings) }
+        window.onCalendar = { [weak self] settings in self?.chooseCalendar(settings) }
+        window.onCalendarAccess = { [weak self] in self?.askCalendarAccess() }
         return window
     }
 
@@ -276,6 +286,24 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         showCrypto()
     }
 
+    /// ผู้ใช้ติ๊กปฏิทินที่ให้ขึ้นจอ — เก็บลง `UserDefaults` แล้วให้ตัวที่อ่านรู้ทันที
+    private func chooseCalendar(_ settings: CalendarSettings) {
+        settings.save()
+        calendar.update(settings)
+        if pages.isOn(.calendar) { calendar.tick() }
+        showCalendar()
+    }
+
+    /// กล่องขอสิทธิ์ของระบบเด้งจากที่นี่ — มีความหมายครั้งเดียว หลังจากนั้น macOS
+    /// จะไม่ถามซ้ำ และทางแก้เหลือทางเดียวคือ System Settings
+    private func askCalendarAccess() {
+        calendar.requestAccess { [weak self] _ in
+            guard let self else { return }
+            if self.pages.isOn(.calendar) { self.calendar.tick() }
+            self.showCalendar()
+        }
+    }
+
     /// ผู้ใช้เปลี่ยนพฤติกรรมของจอ — บอร์ดต้องเห็นผลเดี๋ยวนี้ ไม่ใช่ตอนเปิดแอปรอบหน้า
     private func choosePages(_ settings: PageSettings) {
         let wasOn = Set(PageKind.allCases.filter(pages.isOn))
@@ -292,8 +320,13 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             crypto.restart()
             crypto.tick()
         }
+        if !wasOn.contains(.calendar) && pages.isOn(.calendar) {
+            calendar.restart()
+            calendar.tick()
+        }
         showWeather()
         showCrypto()
+        showCalendar()
     }
 
     /// ส่งกติกาไปให้บอร์ด แล้วสั่งลืมหน้าที่ถูกปิด
@@ -318,6 +351,14 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             crypto.settings, status: crypto.status,
             supported: boardPages.isEmpty || boardPages.contains(.crypto),
             on: pages.isOn(.crypto))
+    }
+
+    private func showCalendar() {
+        prefs.showCalendar(
+            calendar.settings, available: calendar.available(), access: calendar.access,
+            status: calendar.status,
+            supported: boardPages.isEmpty || boardPages.contains(.calendar),
+            on: pages.isOn(.calendar))
     }
 
     private func chooseBoardHost(_ host: String) {
@@ -345,6 +386,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         prefs.showPages(pages)
         showWeather()
         showCrypto()
+        showCalendar()
         prefs.show()
         // ถามสถานะซ้ำเสมอ: บอร์ดรายงานตอนมันเปลี่ยน ซึ่งอาจเป็นก่อนที่หน้าต่างนี้จะมีตัวตน
         ble.sendConfig(WiFiCommand.status.payload)
@@ -374,6 +416,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             daemon.announce(kinds)
             showWeather()
             showCrypto()
+            showCalendar()
             return
         }
         guard case .wifi(let status) = event else { return }
