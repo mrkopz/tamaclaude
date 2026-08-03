@@ -25,6 +25,7 @@ Claude Code hooks --> tamaclaude --hook --> Unix socket --> daemon --> BLE GATT 
                                                                         is 10 s gone)
 
 Open-Meteo --> WeatherService (every 15 min) --> page frame --> the same two paths
+CoinGecko  --> CryptoService  (every 60 s)  --> page frame --> the same two paths
 
 Claude Code statusline --> ~/.tamaclaude/statusline.sh --.
                                                           >--> ~/.claude/.statusline-usage-cache
@@ -86,7 +87,7 @@ uses those constants, not a chip model number.
 ### Graphics / preview (Python + Pillow)
 
 ```bash
-python3 tools/preview.py            # render every state + whole screens (incl. weather) to out/
+python3 tools/preview.py            # render every state + whole screens (weather, crypto) to out/
 python3 tools/preview.py --sheet    # contact sheet only
 python3 tools/export_layout.py      # tools/layout.toml -> firmware/main/layout.h
 python3 tools/export_thai.py        # tools/thai.toml -> ThaiTable.swift + gen/thai_table.py
@@ -113,7 +114,8 @@ look at `out/`. It proves the *design*, not the C renderer.
   `tools/thai-golden.json`, which both test sides read. See ADR-0008.
 - **`tools/gen/*.py` ↔ `firmware/main/ct_*.c`** — deliberate parallel ports, file for file:
   `props.py`↔`ct_props.c`, `mascot.py`↔`ct_mascot.c`, `rects.py`↔`ct_rects.c`,
-  `screen.py`↔`ct_ui.c`, `weather.py`↔`ct_weather_ui.c`, `sky.py` folds into `ct_ui.c`.
+  `screen.py`↔`ct_ui.c`, `weather.py`↔`ct_weather_ui.c`, `crypto.py`↔`ct_crypto_ui.c`,
+  `age.py`↔`ct_age.c`, `sky.py` folds into `ct_ui.c`.
   `pages.py` is the odd one out: it feeds `export_layout.py`, which generates `ct_page_kind_t`. A visual change means editing both
   sides; the Python side is where you iterate, the C side is the port.
 - **Assets are rect lists**, `{x, y, w, h, color}` in mascot-relative *unit* coordinates —
@@ -130,6 +132,8 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/Pages.swift` | `PageKind` (the firmware contract), `PageFrame`, `PageHub` — what may be sent, and what is worth resending |
 | `TamaCore/Weather.swift` | the weather page frame + the Open-Meteo payloads, as pure functions over bytes |
 | `TamaCore/WeatherService.swift` | the weather settings and the fetch schedule — fed `tick(now:)`, owns no timer |
+| `TamaCore/Crypto.swift` | the crypto page frame + the CoinGecko payloads — the squeeze never cuts a symbol |
+| `TamaCore/CryptoService.swift` | the watchlist (5 max) and its 60 s round — the shape a stock page will borrow |
 | `TamaCore/SessionStore.swift` | all the logic: hook → per-session state → snapshot |
 | `TamaCore/ToolMap.swift` | tool name → `VisualState`, overridable via `~/.tamaclaude/tools.json` |
 | `TamaCore/Text.swift` | strip to the board font's charset, shape Thai, then truncate |

@@ -2218,20 +2218,27 @@ func runAllTests() {
         settings.setOn(.mascot, false)
         equal(settings.isOn(.mascot), true, "the mascot page cannot be turned off")
         settings.setOn(.weather, false)
-        equal(settings.plan.order, [.mascot], "a page that is off is not in the plan at all")
+        equal(
+            settings.plan.order, [.mascot, .crypto],
+            "a page that is off is not in the plan at all")
         settings.setOn(.weather, true)
-        equal(settings.plan.order, [.mascot, .weather], "and comes back where it was")
+        equal(
+            settings.plan.order, [.mascot, .weather, .crypto], "and comes back where it was")
 
         settings.move(.weather, by: -1)
-        equal(settings.order, [.weather, .mascot], "arranging moves one step, not to the end")
+        equal(
+            settings.order, [.weather, .mascot, .crypto],
+            "arranging moves one step, not to the end")
         settings.move(.weather, by: -1)
-        equal(settings.order, [.weather, .mascot], "and stops at the edge instead of wrapping")
+        equal(
+            settings.order, [.weather, .mascot, .crypto],
+            "and stops at the edge instead of wrapping")
 
         // ค่าที่บีบแล้วต้องบีบตั้งแต่ตอนสร้าง ไม่ใช่ตอนส่ง — หน้าต่างแสดงค่าที่เก็บจริง
         equal(PageSettings(rotation: 1, hold: 99_999).rotation, 5, "a turn too fast to read is clamped")
         equal(PageSettings(rotation: 1, hold: 99_999).hold, 3600, "so is a hold that never ends")
         equal(
-            PageSettings(order: [.weather, .weather]).order, [.weather, .mascot],
+            PageSettings(order: [.weather, .weather]).order, [.weather, .mascot, .crypto],
             "a stored order that lost a page or repeated one is repaired, not obeyed")
 
         let store = UserDefaults(suiteName: "tamatest.pages")!
@@ -2268,7 +2275,7 @@ func runAllTests() {
         equal(first.count, 1, "once it says it knows about pages, the rules are sent")
         equal(
             String(decoding: first[0], as: UTF8.self),
-            #"{"h":600,"j":0,"pl":[0,1],"r":30}"#,
+            #"{"h":600,"j":0,"pl":[0,1,2],"r":30}"#,
             "keys are sorted and the marker is 'pl', so a snapshot is still a snapshot")
         equal(hub.drain(now: t0 + 1).count, 0, "and not repeated every second afterwards")
 
@@ -2281,7 +2288,7 @@ func runAllTests() {
         let both = hub.drain(now: t0 + 2)
         equal(both.count, 2, "new rules and a new frame travel in the same round")
         equal(
-            String(decoding: both[0], as: UTF8.self), #"{"h":300,"j":1,"pl":[0],"r":20}"#,
+            String(decoding: both[0], as: UTF8.self), #"{"h":300,"j":1,"pl":[0,2],"r":20}"#,
             "the rules go first, and a page the user turned off is simply not in them")
 
         hub.forgetSent()
@@ -2353,6 +2360,231 @@ func runAllTests() {
         equal(
             macro("CT_ROTATION_HOLD_SECONDS"), PageSettings.defaultHold,
             "and holding a swiped page for the same time")
+    }
+
+    suite("a crypto frame fits one mtu without ever cutting the symbol off a number") {
+        let quotes = [
+            CryptoQuote(symbol: "BTC", price: 64230.12, change: -2.13),
+            CryptoQuote(symbol: "ETH", price: 3125.4, change: 1.1),
+            CryptoQuote(symbol: "DOGE", price: 0.1423, change: -0.5),
+            CryptoQuote(symbol: "SOL", price: 172.05, change: 3.04),
+            CryptoQuote(symbol: "PEPE", price: 0.00000812, change: 14.0),
+        ]
+        let frame = CryptoFrame(quotes: quotes, age: 42)
+        let data = try frame.encoded()
+        expect(data.count <= Wire.maxPayload, "a page frame travels alone (got \(data.count)B)")
+
+        let text = String(decoding: data, as: UTF8.self)
+        equal(
+            text,
+            #"{"a":42,"c":[{"d":-21,"p":"64230","s":"BTC"},{"d":11,"p":"3125","s":"ETH"},"#
+                + #"{"d":-5,"p":"0.1423","s":"DOGE"},{"d":30,"p":"172.05","s":"SOL"},"#
+                + #"{"d":140,"p":"0.000008","s":"PEPE"}],"g":2}"#,
+            "keys are sorted, and the decimals follow the size of the price")
+
+        let back = try JSONDecoder().decode(CryptoFrame.self, from: data)
+        equal(back.quotes.map(\.symbol), ["BTC", "ETH", "DOGE", "SOL", "PEPE"], "round trips")
+        equal(back.quotes[0].change, -2.1, "the percentage travels as tenths, not as a float")
+
+        // ขั้นแรกของการบีบคือทศนิยม ไม่ใช่แถวและไม่ใช่สัญลักษณ์ — ตัวเลขหยาบขึ้นแต่ยัง
+        // เป็นเรื่องจริง ส่วนแถวที่หายไปคือเหรียญที่ผู้ใช้ใส่ไว้แล้วไม่ได้เห็น
+        let tight = try frame.encoded(maxBytes: data.count - 3)
+        let trimmed = try JSONDecoder().decode(CryptoFrame.self, from: tight)
+        equal(
+            trimmed.quotes.map(\.symbol), ["BTC", "ETH", "DOGE", "SOL", "PEPE"],
+            "a frame three bytes over loses precision, not coins")
+
+        // บีบจนต้องตัดแถวจริงๆ: แถวที่เหลือยังมีสัญลักษณ์เต็มทุกตัว แถวที่ไปก็ไปทั้งแถว
+        let hard = try frame.encoded(maxBytes: 110)
+        expect(hard.count <= 110, "and it does fit what it was given")
+        let few = try JSONDecoder().decode(CryptoFrame.self, from: hard)
+        expect(few.quotes.count < 5, "something had to go")
+        equal(
+            few.quotes.map(\.symbol), Array(["BTC", "ETH", "DOGE", "SOL", "PEPE"]
+                .prefix(few.quotes.count)),
+            "what is left is the head of the list, spelled out in full")
+
+        do {
+            _ = try frame.encoded(maxBytes: 8)
+            expect(false, "a ceiling smaller than an empty frame is refused")
+        } catch {
+            equal(error as? CryptoError, .frameTooLong, "and says so instead of sending rubbish")
+        }
+
+        // ตัวแยกบนสายยังเป็นการ *มี* คีย์ "g" เหมือนเดิม
+        equal(
+            (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["g"] as? Int, 2,
+            "the crypto page names itself on the wire")
+    }
+
+    suite("the crypto watchlist is capped at five and keeps the order the user gave it") {
+        var settings = CryptoSettings(
+            coins: ["btc", "ETH", "btc", "  ", "sol", "ada", "xrp", "dot"])
+        equal(
+            settings.coins, ["btc", "ETH", "sol", "ada", "xrp"],
+            "five at most, no blanks, and the same coin twice is once")
+
+        expect(!settings.add("link"), "a full list refuses the sixth")
+        equal(settings.coins.count, 5, "and stays five")
+        settings.remove(4)
+        expect(settings.add("link"), "with room again it takes one")
+        equal(settings.coins, ["btc", "ETH", "sol", "ada", "link"], "at the end, where it was put")
+        expect(!settings.add("BTC"), "a coin already on the list is not added twice")
+
+        settings.move(0, by: 1)
+        equal(settings.coins, ["ETH", "btc", "sol", "ada", "link"], "a coin moves one step")
+        settings.move(0, by: -1)
+        equal(settings.coins, ["ETH", "btc", "sol", "ada", "link"], "and stops at the edge")
+
+        // เพดานเดียวกันต้องบังคับตอนอ่านค่าเก่าด้วย ไม่ใช่แค่ตอนผู้ใช้กดปุ่ม
+        equal(
+            CryptoFrame(quotes: (0..<9).map {
+                CryptoQuote(symbol: "C\($0)", price: 1, change: 0)
+            }).quotes.count, CryptoSettings.maxCoins,
+            "and the frame refuses to carry more than the page can show")
+    }
+
+    suite("what coingecko says becomes rows, and rubbish stays rubbish") {
+        let markets = Data(
+            """
+            [{"id":"bitcoin","symbol":"btc","name":"Bitcoin","current_price":64230.12,
+              "price_change_percentage_24h":-2.134},
+             {"id":"pepe","symbol":"pepe","current_price":0.00000812,
+              "price_change_percentage_24h":null}]
+            """.utf8)
+        let quotes = try CryptoSource.quotes(from: markets)
+        equal(
+            quotes["bitcoin"], CryptoQuote(symbol: "BTC", price: 64230.12, change: -2.134),
+            "the symbol comes from the service, not from what the user typed")
+        // เหรียญที่เพิ่งขึ้น list ยังไม่มีตัวเลข 24 ชั่วโมง — ราคายังจริงและยังต้องขึ้นจอ
+        equal(quotes["pepe"]?.change, 0, "a missing 24h figure is flat, not a broken payload")
+
+        for broken in ["", "not json at all", "{}", "[]", #"[{"id":"x"}]"#] {
+            do {
+                _ = try CryptoSource.quotes(from: Data(broken.utf8))
+                expect(false, "a payload with no usable price is refused: \(broken)")
+            } catch {
+                equal(error as? CryptoError, .badPayload, "and says so plainly")
+            }
+        }
+
+        let search = Data(
+            #"{"coins":[{"id":"bitcoin","symbol":"BTC"},{"id":"bitcoin-cash"}],"nfts":[]}"#.utf8)
+        equal(try CryptoSource.coinID(from: search), "bitcoin", "a typed name becomes an id")
+        do {
+            // ลิสต์ว่างคือ "หาไม่เจอ" ตามสัญญาของบริการ ไม่ใช่ payload พัง — สองอย่างนี้
+            // บอกผู้ใช้คนละเรื่องกัน (พิมพ์ชื่อผิด vs บริการล่ม)
+            _ = try CryptoSource.coinID(from: Data(#"{"coins":[]}"#.utf8))
+            expect(false, "a name that matches nothing is not a coin")
+        } catch {
+            equal(error as? CryptoError, .noSuchCoin, "and it is not the same as a broken reply")
+        }
+        do {
+            _ = try CryptoSource.coinID(from: Data(#"{"nfts":[]}"#.utf8))
+            expect(false, "a reply with no coins key at all is not an answer")
+        } catch {
+            equal(error as? CryptoError, .badPayload, "it is a broken reply")
+        }
+
+        let url = CryptoSource.marketsURL(ids: ["bitcoin", "ethereum"])
+        expect(url?.query?.contains("ids=bitcoin,ethereum") == true,
+               "the whole watchlist is asked for in one request, unlike a stock page")
+        expect(CryptoSource.marketsURL(ids: []) == nil, "and nothing is asked for nothing")
+    }
+
+    suite("the crypto page fetches on its own clock and never on a real network") {
+        var asked: [String] = []
+        var markets: Result<Data, Error> = .success(Data(
+            """
+            [{"id":"bitcoin","symbol":"btc","current_price":64230.12,
+              "price_change_percentage_24h":-2.1},
+             {"id":"ethereum","symbol":"eth","current_price":3125.4,
+              "price_change_percentage_24h":1.1}]
+            """.utf8))
+        let service = CryptoService(
+            settings: CryptoSettings(coins: ["btc", "eth"]), interval: 60
+        ) { url, done in
+            let query = url.query ?? ""
+            if url.path.hasSuffix("/search") {
+                asked.append("search:\(query.replacingOccurrences(of: "query=", with: ""))")
+                let id = query.contains("btc") ? "bitcoin" : "ethereum"
+                done(.success(Data(#"{"coins":[{"id":"\#(id)"}]}"#.utf8)))
+            } else {
+                asked.append("markets")
+                done(markets)
+            }
+        }
+        var frames: [CryptoFrame] = []
+        service.onFrame = { frame, _ in frames.append(frame) }
+
+        service.tick(now: t0)
+        equal(
+            asked, ["search:btc", "search:eth", "markets"],
+            "every typed name is turned into an id before prices are asked for, once")
+        equal(frames.count, 1, "and the page gets a frame")
+        equal(
+            frames.last?.quotes.map(\.symbol), ["BTC", "ETH"],
+            "in the order the user arranged, not the order the service replied in")
+
+        service.tick(now: t0 + 59)
+        equal(asked.count, 3, "nothing happens between rounds — the market is open all night")
+        service.tick(now: t0 + 60)
+        equal(asked.last, "markets", "a coin does not change its id — only prices are asked again")
+        equal(asked.count, 4, "one request per round, for the whole watchlist")
+
+        let good = markets
+        markets = .success(Data("{}".utf8))
+        service.tick(now: t0 + 120)
+        equal(frames.count, 2, "a reply we cannot read leaves the last good frame standing")
+        expect(service.status != nil, "and the settings window has something to say about it")
+
+        // เน็ตที่สะดุดหนึ่งครั้งต้องไม่ทำให้หน้าตั้งค่าบอกว่าหน้านี้พังไปตลอดกาล
+        markets = good
+        service.tick(now: t0 + 180)
+        equal(frames.count, 3, "the next good round reaches the board")
+        equal(service.status, nil, "and takes the complaint down with it")
+
+        // เหรียญที่บริการเลิก list ไปแล้ว: แถวหายไปเงียบๆ คือ watchlist ห้าตัวที่ขึ้นจอสี่
+        // ตัวโดยไม่มีใครบอกว่าตัวไหน
+        markets = .success(Data(
+            #"[{"id":"bitcoin","symbol":"btc","current_price":1,"price_change_percentage_24h":0}]"#
+                .utf8))
+        service.tick(now: t0 + 240)
+        equal(frames.last?.quotes.map(\.symbol), ["BTC"], "what is still listed still shows")
+        expect(
+            service.status?.contains("eth") == true,
+            "and the coin that did not come back is named, not dropped in silence")
+
+        // คำที่พิมพ์ผิดต้องไม่กันทั้ง watchlist ไว้ และต้องไม่ถูกถามซ้ำทุกรอบตลอดไป
+        var lookups = 0
+        let typo = CryptoService(
+            settings: CryptoSettings(coins: ["btc", "nosuchcoin"]), interval: 60
+        ) { url, done in
+            if url.path.hasSuffix("/search") {
+                lookups += 1
+                let found = (url.query ?? "").contains("btc")
+                let reply = found ? #"{"coins":[{"id":"bitcoin"}]}"# : #"{"coins":[]}"#
+                done(.success(Data(reply.utf8)))
+            } else {
+                done(.success(Data((
+                    #"[{"id":"bitcoin","symbol":"btc","current_price":1,"#
+                        + #""price_change_percentage_24h":0}]"#).utf8)))
+            }
+        }
+        var typoFrames = 0
+        typo.onFrame = { _, _ in typoFrames += 1 }
+        typo.tick(now: t0)
+        equal(lookups, 2, "both names are looked up")
+        equal(typoFrames, 1, "and the coin that does exist still reaches the board")
+        expect(typo.status != nil, "with a word about the one that does not")
+        typo.tick(now: t0 + 60)
+        equal(lookups, 2, "a name that matches nothing is not asked about again")
+
+        // "หน้านี้เปิดอยู่ไหม" เป็นคำถามของ `PageSettings` ไม่ใช่ของที่นี่
+        let blank = CryptoService(settings: CryptoSettings(), interval: 60) { _, _ in
+            expect(false, "an empty watchlist asks nobody anything")
+        }
+        blank.tick(now: t0)
     }
 }
 

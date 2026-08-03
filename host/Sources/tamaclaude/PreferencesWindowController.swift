@@ -31,6 +31,8 @@ final class PreferencesWindowController: NSWindowController {
     var onWeather: ((WeatherSettings) -> Void)?
     /// พฤติกรรมของจอเปลี่ยน (หน้าไหนเปิด ลำดับ รอบหมุน) — ทางเดียวกับทุกอย่างที่นี่
     var onPages: ((PageSettings) -> Void)?
+    /// watchlist ของหน้าคริปโตเปลี่ยน — ทั้งก้อนเสมอ ไม่ใช่ "เพิ่มตัวนี้" ทีละคำสั่ง
+    var onCrypto: ((CryptoSettings) -> Void)?
 
     // --- General ------------------------------------------------------------
     private let boardPopup = NSPopUpButton()
@@ -58,6 +60,20 @@ final class PreferencesWindowController: NSWindowController {
     private let placeField = NSTextField()
     private let unitPopup = NSPopUpButton()
     private let weatherStatus = NSTextField(labelWithString: "")
+
+    // --- Crypto --------------------------------------------------------------
+    /// watchlist ได้แท็บของตัวเอง ไม่ได้ต่อท้ายแท็บ Pages เหมือนเมืองของหน้าอากาศ —
+    /// เหตุผลเดียวกับที่ Wi-Fi ต้องมีแท็บ: รายการที่ยาวไม่แน่นอนพร้อมปุ่มของแต่ละแถว
+    /// ไม่มีที่ยืนใต้ของอื่นในหน้าต่างสูง 520 pt ส่วนหน้าอากาศมีแค่สองช่อง
+    private let coinList = NSStackView()
+    private let coinField = NSTextField()
+    private let addButton = NSButton(title: "Add", target: nil, action: nil)
+    private let cryptoStatus = NSTextField(labelWithString: "")
+    /// หน้านี้เปิดอยู่ไหม — ปุ่มของทุกแถวถูกสร้างใหม่ตอน `rebuildCoinList` ซึ่งเกิดตอนที่
+    /// ผู้เรียกยังไม่ได้บอกค่านี้เข้ามาก็ได้ จึงต้องจำไว้ ไม่ใช่ส่งผ่านเป็นพารามิเตอร์
+    private var cryptoOn = true
+    /// ค่าที่หน้าต่างกำลังแสดงอยู่ — ปุ่มทุกปุ่มแก้ของก้อนนี้แล้วส่งออกทั้งก้อน
+    private var crypto = CryptoSettings()
 
     // --- Wi-Fi --------------------------------------------------------------
     private let statusLabel = NSTextField(labelWithString: "")
@@ -112,6 +128,11 @@ final class PreferencesWindowController: NSWindowController {
         pagesTab.label = "Pages"
         pagesTab.view = pad(buildPages())
         tabs.addTabViewItem(pagesTab)
+
+        let cryptoTab = NSTabViewItem(identifier: "crypto")
+        cryptoTab.label = "Crypto"
+        cryptoTab.view = pad(buildCrypto())
+        tabs.addTabViewItem(cryptoTab)
 
         let wifi = NSTabViewItem(identifier: "wifi")
         wifi.label = "Wi-Fi"
@@ -316,6 +337,81 @@ final class PreferencesWindowController: NSWindowController {
         }
     }
 
+    /// watchlist ของหน้าคริปโต — เพิ่ม ลบ จัดลำดับ และเพดานห้าตัวที่กดผ่านไม่ได้
+    ///
+    /// ผู้ใช้พิมพ์ชื่อที่เขาเรียกมันเอง ("btc", "bitcoin") ไม่ใช่ id ของบริการ การแปลงเป็น id
+    /// เกิดครั้งเดียวใน `CryptoService` แล้วถูกจำไว้ — คนซื้อคริปโตไม่ได้จำ slug ของ CoinGecko
+    private func buildCrypto() -> NSView {
+        coinList.orientation = .vertical
+        coinList.alignment = .leading
+        coinList.spacing = 4
+
+        coinField.placeholderString = "Coin (e.g. btc)"
+        coinField.target = self
+        coinField.action = #selector(addCoin)
+        coinField.widthAnchor.constraint(equalToConstant: 180).isActive = true
+
+        addButton.target = self
+        addButton.action = #selector(addCoin)
+        addButton.bezelStyle = .rounded
+
+        cryptoStatus.font = .systemFont(ofSize: 11)
+        cryptoStatus.textColor = .secondaryLabelColor
+
+        let entry = NSStackView(views: [coinField, addButton])
+        entry.orientation = .horizontal
+        entry.spacing = 6
+
+        let hint = NSTextField(wrappingLabelWithString:
+            "Prices come from CoinGecko, fetched here every 60 seconds around the clock — the "
+            + "crypto market never closes. Five coins at most: that is what keeps one request "
+            + "per round and one frame per page. Gains and losses are told apart by the arrow "
+            + "as well as the colour.")
+        hint.font = .systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+
+        let stack = NSStackView(views: [
+            coinList,
+            entry,
+            cryptoStatus,
+            separator(),
+            hint,
+        ])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        hint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return stack
+    }
+
+    /// วาดรายการเหรียญใหม่ทั้งแถบจากค่าที่ถืออยู่ — เหตุผลเดียวกับรายการหน้า:
+    /// ไม่กี่แถว ลำดับขยับได้ และ view ที่ต้องคอยย้ายที่เองแลกไม่คุ้ม
+    private func rebuildCoinList() {
+        for view in coinList.arrangedSubviews { view.removeFromSuperview() }
+        for (index, coin) in crypto.coins.enumerated() {
+            let label = NSTextField(labelWithString: coin)
+            label.widthAnchor.constraint(equalToConstant: 140).isActive = true
+
+            let up = NSButton(title: "▲", target: self, action: #selector(moveCoinUp))
+            let down = NSButton(title: "▼", target: self, action: #selector(moveCoinDown))
+            let remove = NSButton(title: "Remove", target: self, action: #selector(removeCoin))
+            for button in [up, down, remove] {
+                button.bezelStyle = .rounded
+                button.tag = index
+                button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+            }
+            up.isEnabled = cryptoOn && index > 0
+            down.isEnabled = cryptoOn && index < crypto.coins.count - 1
+            remove.isEnabled = cryptoOn
+            label.textColor = cryptoOn ? .labelColor : .disabledControlTextColor
+
+            let row = NSStackView(views: [label, up, down, remove])
+            row.orientation = .horizontal
+            row.spacing = 4
+            coinList.addArrangedSubview(row)
+        }
+    }
+
     private func buildWiFi() -> NSView {
         statusLabel.font = .systemFont(ofSize: 12, weight: .medium)
         ipLabel.font = .systemFont(ofSize: 11)
@@ -454,6 +550,32 @@ final class PreferencesWindowController: NSWindowController {
         }
     }
 
+    func showCrypto(_ settings: CryptoSettings, status: String?, supported: Bool, on: Bool) {
+        crypto = settings
+        cryptoOn = on
+        rebuildCoinList()
+        // ปิดหน้านี้แล้วยังแก้ watchlist ได้ครึ่งเดียวคือหน้าต่างที่บอกคนละเรื่องกับตัวเอง —
+        // ปุ่มทุกปุ่มดับพร้อมกัน เหมือนช่องเมืองกับหน่วยของหน้าอากาศ
+        let room = settings.coins.count < CryptoSettings.maxCoins
+        coinField.isEnabled = on && room
+        addButton.isEnabled = on && room
+
+        // เหตุผลที่หน้านี้ยังไม่ขึ้นจอมีได้สี่อย่าง และผู้ใช้แก้ได้คนละแบบ: firmware เก่า
+        // (ต้องแฟลช) · ยังไม่ใส่เหรียญ (ใส่) · เต็มเพดานแล้ว (ลบก่อน) · ดึงไม่สำเร็จ
+        if !supported {
+            cryptoStatus.stringValue =
+                "The board's firmware does not know this page yet — flash it to use it."
+        } else if let status {
+            cryptoStatus.stringValue = status
+        } else if on && !settings.isUsable {
+            cryptoStatus.stringValue = "Add a coin to start."
+        } else if settings.coins.count >= CryptoSettings.maxCoins {
+            cryptoStatus.stringValue = "Five coins is the most this page shows."
+        } else {
+            cryptoStatus.stringValue = ""
+        }
+    }
+
     func showKey(_ state: SessionKeyState) {
         keyLabel.stringValue = state.line
         keyLabel.textColor = state.isProblem ? .systemRed : .secondaryLabelColor
@@ -576,6 +698,35 @@ final class PreferencesWindowController: NSWindowController {
             attentionJump: pages.attentionJump)
         onPages?(settled)
         showPages(settled)
+    }
+
+    @objc private func addCoin() {
+        // ช่องถูกล้างเฉพาะตอนที่เหรียญเข้าไปจริง — คำที่ถูกปฏิเสธ (ซ้ำ หรือเต็มแล้ว)
+        // ต้องยังอยู่ให้ผู้ใช้เห็นว่าเขาพิมพ์อะไรไป พร้อมเหตุผลในบรรทัดสถานะ
+        guard crypto.add(coinField.stringValue) else { return }
+        coinField.stringValue = ""
+        emitCrypto()
+    }
+
+    @objc private func removeCoin(_ sender: NSButton) {
+        crypto.remove(sender.tag)
+        emitCrypto()
+    }
+
+    @objc private func moveCoinUp(_ sender: NSButton) { moveCoin(sender, by: -1) }
+    @objc private func moveCoinDown(_ sender: NSButton) { moveCoin(sender, by: 1) }
+
+    private func moveCoin(_ sender: NSButton, by step: Int) {
+        crypto.move(sender.tag, by: step)
+        emitCrypto()
+    }
+
+    /// วาดรายการใหม่ทันทีแล้วค่อยบอกออกไป — สถานะที่เหลือ (firmware รู้จักหน้านี้ไหม
+    /// หน้านี้เปิดอยู่ไหม ดึงข้อมูลสำเร็จไหม) ไม่ใช่ของหน้าต่างนี้ `MenuBarApp` จะป้อน
+    /// กลับมาเองผ่าน `showCrypto` เหมือนทุกอย่างที่นี่
+    private func emitCrypto() {
+        rebuildCoinList()
+        onCrypto?(crypto)
     }
 
     @objc private func setSessionKey() { onSetSessionKey?() }

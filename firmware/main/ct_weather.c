@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "cJSON.h"
+#include "ct_age.h"
 #include "layout.h"
 
 bool ct_weather_parse(const char *json, int len, ct_weather_t *out)
@@ -54,5 +55,5 @@ void ct_weather_tick(ct_weather_t *w, int secs)
 
 bool ct_weather_is_stale(const ct_weather_t *w)
 {
-    return w->age > CT_WEATHER_REFRESH_S * CT_WEATHER_STALE_FACTOR;
+    return ct_age_is_stale(w->age, CT_WEATHER_REFRESH_S);
 }

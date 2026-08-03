@@ -1,7 +1,6 @@
 #include "ct_weather_ui.h"
 
-#include <stdio.h>
-
+#include "ct_age.h"
 #include "ct_color.h"
 #include "ct_fonts.h"
 #include "ct_mascot.h"
@@ -191,8 +190,7 @@ void ct_weather_ui_init(lv_obj_t *parent, const ct_weather_t *frame, const bool 
     _Static_assert(CT_WEATHER_TEMP_FONT == 48, "layout.toml and the font here must agree");
     s_hilo = label(parent, ct_font_text_14(), CT_COL_TEXT_DIM, CT_WEATHER_HILO_X,
                    CT_WEATHER_HILO_Y);
-    s_age = label(parent, ct_font_text_12(), CT_COL_TEXT_DIM, CT_WEATHER_AGE_X,
-                  CT_WEATHER_AGE_Y);
+    s_age = ct_age_label(parent);
 
     s_empty = label(parent, ct_font_text_14(), CT_COL_TEXT, CT_WEATHER_TEMP_X,
                     CT_WEATHER_EMPTY_Y);
@@ -221,21 +219,6 @@ void ct_weather_ui_init(lv_obj_t *parent, const ct_weather_t *frame, const bool 
 
     paint_connected();
     ct_weather_ui_redraw();
-}
-
-// อายุข้อมูล -> ข้อความสั้นที่สุดที่ยังบอกได้ว่าควรเชื่อแค่ไหน
-// ต้องตรงกับ age_text() ใน tools/gen/weather.py
-static void age_text(char *out, size_t cap, int secs)
-{
-    if (secs < 60) {
-        snprintf(out, cap, "updated just now");
-    } else if (secs < 3600) {
-        snprintf(out, cap, "updated %dm ago", secs / 60);
-    } else if (secs < 86400) {
-        snprintf(out, cap, "updated %dh %02dm ago", secs / 3600, (secs % 3600) / 60);
-    } else {
-        snprintf(out, cap, "updated %dd ago", secs / 86400);
-    }
 }
 
 void ct_weather_ui_redraw(void)
@@ -272,19 +255,7 @@ void ct_weather_ui_redraw_age(void)
         return;
     }
     lv_obj_remove_flag(s_age, LV_OBJ_FLAG_HIDDEN);
-    char text[40];
-    age_text(text, sizeof(text), s_frame->age);
-    bool stale = ct_weather_is_stale(s_frame);
-    if (stale) {
-        // คำว่า stale เขียนตรงๆ ข้างเวลา ไม่ใช่แทนที่มัน — คนเหลือบจอเห็นคำ ส่วนคนที่
-        // สงสัยว่าเก่าแค่ไหนยังอ่านตัวเลขได้
-        char loud[56];
-        snprintf(loud, sizeof(loud), "STALE - %s", text);
-        lv_label_set_text(s_age, loud);
-    } else {
-        lv_label_set_text(s_age, text);
-    }
-    lv_obj_set_style_text_color(s_age, ct_color(stale ? CT_COL_ALERT : CT_COL_TEXT_DIM), 0);
+    ct_age_show(s_age, s_frame->age, CT_WEATHER_REFRESH_S);
 }
 
 // สีของเลขอุณหภูมิถูก *ผลัก* ลงป้าย ไม่ได้ถูกอ่านตอนวาดเหมือนสีในหน้ามาสคอต การตั้งค่า

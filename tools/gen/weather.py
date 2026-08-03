@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from PIL import Image, ImageDraw
 
-from . import mascot, screen
+from . import age, mascot, screen
 from .config import L, PAL
 from .props import BOX_X0, BOX_X1, BOX_Y1
 from .rects import Rect, RectList, scaled
@@ -84,24 +84,6 @@ def icon(code: int, connected: bool = True) -> RectList:
     ]
 
 
-def age_text(secs: int) -> str:
-    """อายุข้อมูล -> ข้อความสั้นที่สุดที่ยังบอกได้ว่าควรเชื่อแค่ไหน
-
-    ต้องตรงกับ age_text() ใน ct_weather_ui.c
-    """
-    if secs < 60:
-        return "updated just now"
-    if secs < 3600:
-        return f"updated {secs // 60}m ago"
-    if secs < 86400:
-        return f"updated {secs // 3600}h {(secs % 3600) // 60:02d}m ago"
-    return f"updated {secs // 86400}d ago"
-
-
-def is_stale(secs: int) -> bool:
-    return secs > L.weather.refresh_s * L.weather.stale_factor
-
-
 @dataclass(slots=True)
 class Weather:
     """หน้าอากาศหนึ่งใบ — `place` ว่างและ `has_frame=False` คือยังไม่เคยได้ข้อมูลเลย"""
@@ -171,9 +153,5 @@ def render(w: Weather, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     screen.line(draw, (L.weather.hilo_x, L.weather.hilo_y + 7),
                  f"H {w.high}   L {w.low}", pil=12, board=14, fill=PAL.text_dim, anchor="lm")
 
-    stale = is_stale(w.age)
-    text = age_text(w.age)
-    screen.line(draw, (L.weather.age_x, L.weather.age_y + 6),
-                 f"STALE - {text}" if stale else text, pil=10, board=12,
-                 fill=PAL.alert if stale else PAL.text_dim, anchor="lm")
+    age.draw_age(draw, w.age, L.weather.refresh_s)
     return img

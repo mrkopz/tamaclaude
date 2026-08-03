@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-PAGES = ("mascot", "weather")
+PAGES = ("mascot", "weather", "crypto")
 
 
 def kind(name: str) -> int:

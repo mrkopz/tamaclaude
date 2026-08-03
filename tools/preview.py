@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gen import mascot, screen, weather  # noqa: E402
+from gen import crypto, mascot, screen, weather  # noqa: E402
 from gen.config import L, PAL, REPO_DIR  # noqa: E402
 from gen.props import BOX_X0, BOX_X1, BOX_Y0, BOX_Y1  # noqa: E402
 from gen.render import quantize565, render_rects  # noqa: E402
@@ -219,6 +219,38 @@ WEATHER_SCENES: dict[str, weather.Weather] = {
 }
 
 
+# หน้าคริปโต — ใบแรกที่มี watchlist หน้าหุ้นจะยืมโครงนี้ไปใช้ต่อ
+# ฉากถูกเลือกให้ครบสิ่งที่ต้องตัดสินด้วยตา: ราคาที่ยาวไม่เท่ากันเรียงหลักตรงกัน · ขึ้น ลง
+# และนิ่งในจอเดียว · watchlist ที่ไม่เต็มห้าตัว · หน้าที่ยังไม่เคยได้ข้อมูล · ลิงก์หลุด
+CRYPTO_SCENES: dict[str, crypto.Crypto] = {
+    "full": crypto.Crypto(coins=[
+        crypto.Coin("BTC", "64230", -21),
+        crypto.Coin("ETH", "3125", 11),
+        crypto.Coin("SOL", "172.05", 30),
+        crypto.Coin("DOGE", "0.1423", -5),
+        crypto.Coin("PEPE", "0.000008", 140),
+    ]),
+    # สามตัวต้องดูเหมือน watchlist สามตัว ไม่ใช่ห้าตัวที่หายไปสอง
+    "short": crypto.Crypto(coins=[
+        crypto.Coin("BTC", "64230", 0),
+        crypto.Coin("ETH", "3125", -152),
+        crypto.Coin("XRP", "2.41", 3),
+    ], age=8),
+    # เก่าเกิน 10 เท่าของรอบดึง — ราคายังอ่านได้ แต่ต้องไม่มีใครเข้าใจว่ามันสด
+    "stale": crypto.Crypto(coins=[
+        crypto.Coin("BTC", "64230", -21),
+        crypto.Coin("ETH", "3125", 11),
+    ], age=3 * 3600),
+    # ยังไม่เคยได้เฟรมของหน้านี้เลย — ห้ามเป็นจอเปล่าหรือโครงว่าง (ADR-0002)
+    "empty": crypto.Crypto(has_frame=False),
+    # Mac หายไป: ตัวเลขค้างอยู่แต่ไม่มีใครรับรองแล้ว ลูกศรยังบอกทิศได้โดยไม่ต้องมีสี
+    "offline": crypto.Crypto(coins=[
+        crypto.Coin("BTC", "64230", -21),
+        crypto.Coin("ETH", "3125", 11),
+    ], age=45 * 60, connected=False),
+}
+
+
 # ฉากตรวจท้องฟ้า — ไม่มี session เลย ซึ่งเป็นสภาพที่จอเป็นเกือบตลอดเวลา
 # และเป็นตอนที่ฟ้าโล่งที่สุด ส่วนตอนถูกมาสคอตบังดูได้จาก screen_busy/waiting
 SKY_CLOCKS = {"dawn": "05:40", "day": "12:00", "dusk": "18:10", "night": "02:14"}
@@ -285,6 +317,14 @@ def main() -> None:
         frames[0].save(OUT / f"weather_{name}.gif", save_all=True,
                        append_images=frames[1:], duration=90, loop=0)
     print(f"weather_*.png/gif     {len(WEATHER_SCENES)} ฉาก  (320x240)")
+
+    for name, c in CRYPTO_SCENES.items():
+        img = crypto.render(c)
+        img.save(OUT / f"crypto_{name}.png")
+        big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
+        big.save(OUT / f"crypto_{name}@{args.scale}x.png")
+    # ไม่มี GIF: หน้านี้ไม่มีอะไรขยับเลย (ไม่มีมาสคอตจิ๋ว) นอกจากบรรทัดอายุที่เดินทีละวินาที
+    print(f"crypto_*.png          {len(CRYPTO_SCENES)} ฉาก  (320x240)")
 
     for name, clock in SKY_CLOCKS.items():
         sc = sky_scene(clock)

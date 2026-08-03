@@ -4,6 +4,8 @@
 
 #include "cJSON.h"
 #include "ct_color.h"
+#include "ct_crypto.h"
+#include "ct_crypto_ui.h"
 #include "ct_fonts.h"
 #include "ct_ui.h"
 #include "ct_weather.h"
@@ -28,6 +30,7 @@ static ct_page_plan_t s_plan;
 // page frame ของหน้ามาสคอต — `Snapshot` เดิมทั้งดุ้น ไม่ได้ถูกแตะเพราะมีหลายหน้า
 static ct_snapshot_t s_mascot;
 static ct_weather_t s_weather;
+static ct_crypto_t s_crypto;
 
 // เศษเวลาที่ยังไม่ครบวินาที — นาฬิกาของหน้าเดินด้วยเวลาจริง ไม่ใช่ด้วยจำนวนเฟรม
 static int s_since_second;
@@ -86,6 +89,8 @@ void ct_pages_init(void)
 
     ct_weather_ui_init(s_pages[CT_PAGE_WEATHER].root, &s_weather,
                        &s_pages[CT_PAGE_WEATHER].has_frame, &s_mascot);
+    ct_crypto_ui_init(s_pages[CT_PAGE_CRYPTO].root, &s_crypto,
+                      &s_pages[CT_PAGE_CRYPTO].has_frame);
 
     // หน้าที่แสดงอยู่คือหน้าเดียวที่ไม่ถูกซ่อน — การเปลี่ยนหน้าคือการย้ายธงใบนี้
     lv_obj_remove_flag(s_pages[s_active].root, LV_OBJ_FLAG_HIDDEN);
@@ -110,6 +115,11 @@ bool ct_pages_set_frame(ct_page_kind_t kind, const char *json, int len)
             s_pages[CT_PAGE_WEATHER].has_frame = true;
             if (s_active == CT_PAGE_WEATHER) ct_weather_ui_redraw();
             return true;
+        case CT_PAGE_CRYPTO:
+            if (!ct_crypto_parse(json, len, &s_crypto)) return false;
+            s_pages[CT_PAGE_CRYPTO].has_frame = true;
+            if (s_active == CT_PAGE_CRYPTO) ct_crypto_ui_redraw();
+            return true;
         default:
             // หน้ามาสคอตไม่เดินทางมาทางนี้ (เฟรมของมันไม่มีคีย์ `g`) และชนิดที่ firmware
             // ยังไม่รู้จักคือ daemon ที่ใหม่กว่า — ทิ้งเฟรมไป ไม่ใช่วาดมั่ว
@@ -125,6 +135,9 @@ void ct_pages_forget(ct_page_kind_t kind)
         ct_weather_t empty = {0};
         empty.unit = 'C';
         s_weather = empty;
+    } else if (kind == CT_PAGE_CRYPTO) {
+        ct_crypto_t empty = {0};
+        s_crypto = empty;
     }
     // หน้าที่เพิ่งถูกถอนออกจากรอบอาจเป็นหน้าที่กำลังแสดงอยู่ — กลับไปหน้ามาสคอตทันที
     // ดีกว่าค้างอยู่บนหน้าที่เพิ่งกลายเป็น "ยังไม่เคยได้ข้อมูล"
@@ -159,6 +172,7 @@ void ct_pages_set_connected(bool connected)
 {
     ct_ui_set_connected(connected);
     ct_weather_ui_set_connected(connected);
+    ct_crypto_ui_set_connected(connected);
 }
 
 void ct_pages_set_link(bool ble, bool wifi, const char *ip)
@@ -203,6 +217,8 @@ static void switch_to(ct_page_kind_t kind)
         ct_ui_redraw();
     } else if (s_active == CT_PAGE_WEATHER) {
         ct_weather_ui_redraw();
+    } else if (s_active == CT_PAGE_CRYPTO) {
+        ct_crypto_ui_redraw();
     }
 }
 
@@ -316,6 +332,10 @@ void ct_pages_tick(int elapsed_ms)
     if (second_passed && s_pages[CT_PAGE_WEATHER].has_frame) {
         ct_weather_tick(&s_weather, 1);
         if (s_active == CT_PAGE_WEATHER) ct_weather_ui_redraw_age();
+    }
+    if (second_passed && s_pages[CT_PAGE_CRYPTO].has_frame) {
+        ct_crypto_tick(&s_crypto, 1);
+        if (s_active == CT_PAGE_CRYPTO) ct_crypto_ui_redraw_age();
     }
 
     // อนิเมชันเดินเฉพาะหน้าที่แสดงอยู่ และเดินด้วยเวลาก้อนเดียวกับนาฬิกาข้างบน

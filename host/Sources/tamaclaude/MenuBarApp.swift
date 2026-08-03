@@ -42,6 +42,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var poller: UsagePoller!
     private var starter: SessionStarter!
     private var weather: WeatherService!
+    private var crypto: CryptoService!
     /// หน้าที่บอร์ดประกาศว่ารู้จัก — ว่างคือ firmware ที่ยังไม่รู้จักการประกาศ
     private var boardPages: [PageKind] = []
     /// พฤติกรรมของจอที่ผู้ใช้ตั้งไว้ — อ่านจาก `UserDefaults` ครั้งเดียวตอนเปิดแอป
@@ -167,6 +168,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         weather.onFrame = { [weak self] frame, observedAt in
             self?.daemon.submit(frame, observedAt: observedAt)
         }
+        crypto = CryptoService(
+            settings: CryptoSettings.load(), fetch: CryptoFetch.urlSession())
+        crypto.onFrame = { [weak self] frame, observedAt in
+            self?.daemon.submit(frame, observedAt: observedAt)
+        }
         pages = PageSettings.load()
         applyPages()
 
@@ -195,6 +201,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.refreshLink()
             self.poller.tick()
             if self.pages.isOn(.weather) { self.weather.tick() }
+            if self.pages.isOn(.crypto) { self.crypto.tick() }
             // แถวโควตาที่ daemon อ่านไว้แล้ว ไม่ใช่การอ่านไฟล์รอบที่สองทุกวินาที
             self.starter.tick(usage: self.usage)
         }
@@ -249,6 +256,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.onBoardHost = { [weak self] host in self?.chooseBoardHost(host) }
         window.onWeather = { [weak self] settings in self?.chooseWeather(settings) }
         window.onPages = { [weak self] settings in self?.choosePages(settings) }
+        window.onCrypto = { [weak self] settings in self?.chooseCrypto(settings) }
         return window
     }
 
@@ -260,19 +268,32 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         showWeather()
     }
 
+    /// ผู้ใช้แก้ watchlist ของหน้าคริปโต — เก็บลง `UserDefaults` แล้วให้ตัวที่ดึงข้อมูลรู้ทันที
+    private func chooseCrypto(_ settings: CryptoSettings) {
+        settings.save()
+        crypto.update(settings)
+        if pages.isOn(.crypto) { crypto.tick() }
+        showCrypto()
+    }
+
     /// ผู้ใช้เปลี่ยนพฤติกรรมของจอ — บอร์ดต้องเห็นผลเดี๋ยวนี้ ไม่ใช่ตอนเปิดแอปรอบหน้า
     private func choosePages(_ settings: PageSettings) {
-        let wasOn = pages.isOn(.weather)
+        let wasOn = Set(PageKind.allCases.filter(pages.isOn))
         pages = settings
         settings.save()
         applyPages()
         // เพิ่งเปิดกลับมา = บอร์ดถูกสั่งลืมเฟรมของหน้านี้ไปแล้ว ต้องดึงใหม่เดี๋ยวนี้
-        // ไม่ใช่รอรอบถัดไปซึ่งอาจอีก 15 นาที
-        if !wasOn && pages.isOn(.weather) {
+        // ไม่ใช่รอรอบถัดไป ซึ่งอาจอีก 15 นาทีสำหรับหน้าอากาศ
+        if !wasOn.contains(.weather) && pages.isOn(.weather) {
             weather.restart()
             weather.tick()
         }
+        if !wasOn.contains(.crypto) && pages.isOn(.crypto) {
+            crypto.restart()
+            crypto.tick()
+        }
         showWeather()
+        showCrypto()
     }
 
     /// ส่งกติกาไปให้บอร์ด แล้วสั่งลืมหน้าที่ถูกปิด
@@ -290,6 +311,13 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             weather.settings, status: weather.status,
             supported: boardPages.isEmpty || boardPages.contains(.weather),
             on: pages.isOn(.weather))
+    }
+
+    private func showCrypto() {
+        prefs.showCrypto(
+            crypto.settings, status: crypto.status,
+            supported: boardPages.isEmpty || boardPages.contains(.crypto),
+            on: pages.isOn(.crypto))
     }
 
     private func chooseBoardHost(_ host: String) {
@@ -316,6 +344,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         prefs.showKey(keyState)
         prefs.showPages(pages)
         showWeather()
+        showCrypto()
         prefs.show()
         // ถามสถานะซ้ำเสมอ: บอร์ดรายงานตอนมันเปลี่ยน ซึ่งอาจเป็นก่อนที่หน้าต่างนี้จะมีตัวตน
         ble.sendConfig(WiFiCommand.status.payload)
@@ -344,6 +373,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             UserDefaults.standard.set(kinds.map(\.rawValue), forKey: Self.capabilityKey)
             daemon.announce(kinds)
             showWeather()
+            showCrypto()
             return
         }
         guard case .wifi(let status) = event else { return }
