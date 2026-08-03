@@ -2167,7 +2167,7 @@ func runAllTests() {
                     + #""daily":{"temperature_2m_max":[33.8],"temperature_2m_min":[25.2]}}"#).utf8)),
         ]
         let service = WeatherService(
-            settings: WeatherSettings(enabled: true, place: "Bangkok", unit: .celsius),
+            settings: WeatherSettings(place: "Bangkok", unit: .celsius),
             interval: 900
         ) { url, done in
             asked.append(url.host ?? "")
@@ -2190,24 +2190,131 @@ func runAllTests() {
             "a city does not move — the point is looked up once and kept")
 
         // ผู้ใช้พิมพ์เมืองใหม่: ของที่ถืออยู่ตอบคำถามคนละข้อแล้ว
-        service.update(WeatherSettings(enabled: true, place: "Chiang Mai", unit: .fahrenheit))
+        service.update(WeatherSettings(place: "Chiang Mai", unit: .fahrenheit))
         service.tick(now: t0 + 901)
         equal(asked.count, 5, "a new city is looked up again straight away")
 
         replies["api.open-meteo.com"] = .success(Data("{}".utf8))
-        service.update(WeatherSettings(enabled: true, place: "Chiang Mai", unit: .celsius))
+        service.update(WeatherSettings(place: "Chiang Mai", unit: .celsius))
         service.tick(now: t0 + 902)
         equal(frames.count, 3, "a reply we cannot read leaves the last good frame standing")
         expect(service.status != nil, "and the settings window has something to say about it")
 
-        let off = WeatherService(
-            settings: WeatherSettings(enabled: false, place: "Bangkok"), interval: 900
-        ) { _, _ in expect(false, "a page that is off never asks anyone anything") }
-        off.tick(now: t0)
+        // "หน้านี้เปิดอยู่ไหม" เป็นคำถามของ `PageSettings` ไม่ใช่ของที่นี่ — สิ่งที่ตัวนี้
+        // ตอบได้เองคือยังไม่มีเมืองให้ถามถึง
         let blank = WeatherService(
-            settings: WeatherSettings(enabled: true, place: "  "), interval: 900
-        ) { _, _ in expect(false, "neither does one with no city typed in yet") }
+            settings: WeatherSettings(place: "  "), interval: 900
+        ) { _, _ in expect(false, "a page with no city typed in yet asks nobody anything") }
         blank.tick(now: t0)
+    }
+
+    suite("what the user turns off leaves the rotation, and what they arrange stays arranged") {
+        var settings = PageSettings()
+        equal(settings.order, PageKind.allCases, "a user who arranged nothing gets enum order")
+        equal(settings.rotation, 20, "the turn is 20 seconds until someone says otherwise")
+        equal(settings.hold, 300, "and a swipe holds a page for five minutes")
+        equal(settings.attentionJump, true, "the jump is on — it is the reason for the desk toy")
+
+        settings.setOn(.mascot, false)
+        equal(settings.isOn(.mascot), true, "the mascot page cannot be turned off")
+        settings.setOn(.weather, false)
+        equal(settings.plan.order, [.mascot], "a page that is off is not in the plan at all")
+        settings.setOn(.weather, true)
+        equal(settings.plan.order, [.mascot, .weather], "and comes back where it was")
+
+        settings.move(.weather, by: -1)
+        equal(settings.order, [.weather, .mascot], "arranging moves one step, not to the end")
+        settings.move(.weather, by: -1)
+        equal(settings.order, [.weather, .mascot], "and stops at the edge instead of wrapping")
+
+        // ค่าที่บีบแล้วต้องบีบตั้งแต่ตอนสร้าง ไม่ใช่ตอนส่ง — หน้าต่างแสดงค่าที่เก็บจริง
+        equal(PageSettings(rotation: 1, hold: 99_999).rotation, 5, "a turn too fast to read is clamped")
+        equal(PageSettings(rotation: 1, hold: 99_999).hold, 3600, "so is a hold that never ends")
+        equal(
+            PageSettings(order: [.weather, .weather]).order, [.weather, .mascot],
+            "a stored order that lost a page or repeated one is repaired, not obeyed")
+
+        let store = UserDefaults(suiteName: "tamatest.pages")!
+        store.removePersistentDomain(forName: "tamatest.pages")
+        settings.rotation = 45
+        settings.hold = 60
+        settings.attentionJump = false
+        settings.save(to: store)
+        equal(PageSettings.load(store), settings, "every value survives a round trip on disk")
+
+        // ผู้ใช้ที่มาจากรอบก่อนเคยปิดหน้าอากาศจากสวิตช์ของหน้านั้นเอง
+        store.removePersistentDomain(forName: "tamatest.pages")
+        store.set(false, forKey: WeatherSettings.Key.legacyEnabled)
+        equal(
+            PageSettings.load(store).isOn(.weather), false,
+            "the old weather switch still means the page is off")
+        store.set(true, forKey: WeatherSettings.Key.legacyEnabled)
+        equal(
+            PageSettings.load(store).isOn(.weather), true,
+            "and the user who had it on keeps it on")
+        store.removePersistentDomain(forName: "tamatest.pages")
+    }
+
+    suite("the board is told the rules once, and again after it comes back") {
+        let hub = PageHub()
+        let plan = PageSettings(rotation: 30, hold: 600, attentionJump: false).plan
+        hub.submit(plan)
+        equal(
+            hub.drain(now: t0).count, 0,
+            "a board that never announced reads this channel as a mascot snapshot")
+
+        hub.announce([.mascot, .weather])
+        let first = hub.drain(now: t0)
+        equal(first.count, 1, "once it says it knows about pages, the rules are sent")
+        equal(
+            String(decoding: first[0], as: UTF8.self),
+            #"{"h":600,"j":0,"pl":[0,1],"r":30}"#,
+            "keys are sorted and the marker is 'pl', so a snapshot is still a snapshot")
+        equal(hub.drain(now: t0 + 1).count, 0, "and not repeated every second afterwards")
+
+        // ค่าตั้งต้องไปถึงก่อนเนื้อหาเสมอ ไม่งั้นหน้าที่เพิ่งถูกปิดจะโผล่หนึ่งรอบก่อนหาย
+        var settings = PageSettings()
+        settings.setOn(.weather, false)
+        hub.submit(settings.plan)
+        let reading = WeatherReading(temp: 30, high: 33, low: 25, code: 0, unit: .celsius)
+        hub.submit(WeatherFrame(place: "Bangkok", reading: reading), observedAt: t0)
+        let both = hub.drain(now: t0 + 2)
+        equal(both.count, 2, "new rules and a new frame travel in the same round")
+        equal(
+            String(decoding: both[0], as: UTF8.self), #"{"h":300,"j":1,"pl":[0],"r":20}"#,
+            "the rules go first, and a page the user turned off is simply not in them")
+
+        hub.forgetSent()
+        let again = hub.drain(now: t0 + 3)
+        equal(again.count, 2, "a board that came back is told the rules again, not just the pages")
+
+        // ทุกเฟรมต้องพอดีหนึ่ง MTU โดยลำพัง (ADR-0003) — เฟรมนี้สั้นจนไม่มีอะไรให้บีบ
+        // ซึ่งจะจริงต่อไปก็ต่อเมื่อมีคนเฝ้าไว้
+        let full = PageSettings().plan
+        expect(
+            try full.encoded().count <= Wire.maxPayload,
+            "the rules travel alone, like every other frame")
+    }
+
+    // ค่าตั้งต้นมีสองฝั่ง: บอร์ดใช้ค่าจาก layout.toml ก่อนได้ยินจาก Mac ส่วนแอปใช้ค่าของ
+    // ตัวเองจนกว่าผู้ใช้จะแก้ ถ้าสองค่านี้ต่างกัน จอจะเปลี่ยนจังหวะเองตอนแอปเปิดขึ้นมา
+    suite("the screen turns at the same pace before and after the mac says hello") {
+        let header = try String(contentsOf: repoFile("firmware/main/layout.h"), encoding: .utf8)
+        func macro(_ name: String) -> Int? {
+            for line in header.split(whereSeparator: \.isNewline) {
+                let text = line.trimmingCharacters(in: .whitespaces)
+                guard text.hasPrefix("#define \(name) ") else { continue }
+                return Int(text.dropFirst("#define \(name)".count)
+                    .trimmingCharacters(in: .whitespaces))
+            }
+            return nil
+        }
+        equal(
+            macro("CT_ROTATION_SECONDS"), PageSettings.defaultRotation,
+            "the board and the app start out turning pages at the same rate")
+        equal(
+            macro("CT_ROTATION_HOLD_SECONDS"), PageSettings.defaultHold,
+            "and holding a swiped page for the same time")
     }
 }
 

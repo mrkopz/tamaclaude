@@ -44,6 +44,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var weather: WeatherService!
     /// หน้าที่บอร์ดประกาศว่ารู้จัก — ว่างคือ firmware ที่ยังไม่รู้จักการประกาศ
     private var boardPages: [PageKind] = []
+    /// พฤติกรรมของจอที่ผู้ใช้ตั้งไว้ — อ่านจาก `UserDefaults` ครั้งเดียวตอนเปิดแอป
+    private var pages = PageSettings()
     /// แถวโควตาชุดล่าสุดที่ daemon ประกาศออกมา — ตัวเดียวกับที่แบดจ์กิน
     private var usage: [UsageSnap]?
 
@@ -165,7 +167,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         weather.onFrame = { [weak self] frame, observedAt in
             self?.daemon.submit(frame, observedAt: observedAt)
         }
-        if !weather.settings.enabled { daemon.drop(.weather) }
+        pages = PageSettings.load()
+        applyPages()
 
         poller = UsagePoller(
             interval: PollInterval.stored(
@@ -191,7 +194,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             guard let self else { return }
             self.refreshLink()
             self.poller.tick()
-            self.weather.tick()
+            if self.pages.isOn(.weather) { self.weather.tick() }
             // แถวโควตาที่ daemon อ่านไว้แล้ว ไม่ใช่การอ่านไฟล์รอบที่สองทุกวินาที
             self.starter.tick(usage: self.usage)
         }
@@ -245,28 +248,48 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         window.onBoardHost = { [weak self] host in self?.chooseBoardHost(host) }
         window.onWeather = { [weak self] settings in self?.chooseWeather(settings) }
+        window.onPages = { [weak self] settings in self?.choosePages(settings) }
         return window
     }
 
     /// ผู้ใช้เปลี่ยนค่าหน้าอากาศ — เก็บลง `UserDefaults` แล้วให้ตัวที่ดึงข้อมูลรู้ทันที
-    ///
-    /// ปิดหน้านี้ = สั่งบอร์ดให้ลืมมัน ไม่ใช่แค่หยุดส่งของใหม่ (บอร์ดเก็บทุกหน้าไว้ใน RAM
-    /// หน้าที่ถูกลืมส่งจะยังหมุนมาให้เห็นพร้อมตัวเลขของเมื่อวานตลอดไป)
     private func chooseWeather(_ settings: WeatherSettings) {
         settings.save()
         weather.update(settings)
-        if settings.enabled {
+        if pages.isOn(.weather) { weather.tick() }
+        showWeather()
+    }
+
+    /// ผู้ใช้เปลี่ยนพฤติกรรมของจอ — บอร์ดต้องเห็นผลเดี๋ยวนี้ ไม่ใช่ตอนเปิดแอปรอบหน้า
+    private func choosePages(_ settings: PageSettings) {
+        let wasOn = pages.isOn(.weather)
+        pages = settings
+        settings.save()
+        applyPages()
+        // เพิ่งเปิดกลับมา = บอร์ดถูกสั่งลืมเฟรมของหน้านี้ไปแล้ว ต้องดึงใหม่เดี๋ยวนี้
+        // ไม่ใช่รอรอบถัดไปซึ่งอาจอีก 15 นาที
+        if !wasOn && pages.isOn(.weather) {
+            weather.restart()
             weather.tick()
-        } else {
-            daemon.drop(.weather)
         }
         showWeather()
+    }
+
+    /// ส่งกติกาไปให้บอร์ด แล้วสั่งลืมหน้าที่ถูกปิด
+    ///
+    /// สองอย่างนี้ต้องไปด้วยกันเสมอ: กติกาถอนหน้าออกจากรอบ ส่วนคำสั่งลืมทิ้งเนื้อหาที่
+    /// บอร์ดถืออยู่ (ADR-0002) หน้าที่ถูกถอนจากรอบอย่างเดียวจะกลับมาพร้อมตัวเลขของ
+    /// เมื่อวานทันทีที่ผู้ใช้เปิดมันอีกครั้ง ก่อนที่รอบดึงข้อมูลรอบใหม่จะทันมาถึง
+    private func applyPages() {
+        daemon.submit(pages.plan)
+        for kind in PageKind.allCases where !pages.isOn(kind) { daemon.drop(kind) }
     }
 
     private func showWeather() {
         prefs.showWeather(
             weather.settings, status: weather.status,
-            supported: boardPages.isEmpty || boardPages.contains(.weather))
+            supported: boardPages.isEmpty || boardPages.contains(.weather),
+            on: pages.isOn(.weather))
     }
 
     private func chooseBoardHost(_ host: String) {
@@ -291,6 +314,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         prefs.showBoardHost(UserDefaults.standard.string(forKey: Self.boardHostKey) ?? "")
         prefs.showRoute(route, detail: lanStatus)
         prefs.showKey(keyState)
+        prefs.showPages(pages)
         showWeather()
         prefs.show()
         // ถามสถานะซ้ำเสมอ: บอร์ดรายงานตอนมันเปลี่ยน ซึ่งอาจเป็นก่อนที่หน้าต่างนี้จะมีตัวตน

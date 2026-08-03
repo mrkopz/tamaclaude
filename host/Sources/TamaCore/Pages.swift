@@ -8,6 +8,15 @@ import Foundation
 public enum PageKind: Int, Codable, CaseIterable, Sendable {
     case mascot = 0
     case weather = 1
+
+    /// ชื่อที่ผู้ใช้เห็นในรายการหน้า — อยู่ที่นี่เพราะหน้าตั้งค่าไม่ควรมีตารางแปลชื่อของตัวเอง
+    /// ที่ต้องไล่แก้ทุกครั้งที่เพิ่มหน้าใหม่
+    public var title: String {
+        switch self {
+        case .mascot: return "Mascot"
+        case .weather: return "Weather"
+        }
+    }
 }
 
 /// ข้อมูลของหนึ่ง page ที่เดินทางเป็นก้อนของตัวเอง (ADR-0003)
@@ -53,6 +62,10 @@ public final class PageHub {
     /// การประกาศเลย ซึ่งแปลว่ามีแต่หน้ามาสคอต ไม่ใช่ "ยังไม่รู้ ลองส่งไปก่อน"
     public private(set) var capability: Set<PageKind> = []
 
+    /// ค่าตั้งล่าสุดที่ผู้ใช้เลือก — ยังไม่เคยตั้งคือยังไม่มีอะไรให้บอกบอร์ด
+    private var plan: PagePlan?
+    private var sentPlan: Data?
+
     private var frames: [PageKind: any PageFrame] = [:]
     private var observed: [PageKind: Date] = [:]
     /// ก้อนที่ส่งไปแล้ว โดยตั้ง age เป็นศูนย์ — ตัวเทียบว่าเนื้อหาเปลี่ยนจริงไหม
@@ -69,6 +82,12 @@ public final class PageHub {
         // บอร์ดคนละตัว (หรือตัวเดิมที่เพิ่งถูกแฟลช) ไม่ได้ถือเฟรมเก่าของเราไว้
         sentBody.removeAll()
         sentObserved.removeAll()
+        sentPlan = nil
+    }
+
+    /// ผู้ใช้เปลี่ยนค่าตั้งของจอ — ตัวจับเวลายังอยู่บนบอร์ด นี่คือกติกาที่มันใช้จับ
+    public func submit(_ plan: PagePlan) {
+        self.plan = plan
     }
 
     /// หน้านี้ส่งได้ไหม — หน้ามาสคอตส่งได้เสมอ มันไม่เคยเป็นของใหม่สำหรับบอร์ดตัวไหน
@@ -96,11 +115,23 @@ public final class PageHub {
     public func forgetSent() {
         sentBody.removeAll()
         sentObserved.removeAll()
+        sentPlan = nil
     }
 
     /// เฟรมที่ควรส่งเดี๋ยวนี้ เรียงตาม `PageKind` เพื่อให้ผลซ้ำได้ในเทสต์
     public func drain(now: Date, maxBytes: Int = Wire.maxPayload) -> [Data] {
         var out: [Data] = []
+
+        // ค่าตั้งไปก่อนเนื้อหาเสมอ: บอร์ดที่ได้เฟรมของหน้าหนึ่งก่อนรู้ว่าหน้านั้นถูกปิดอยู่
+        // จะแสดงมันหนึ่งรอบก่อนหายไป ซึ่งผู้ใช้อ่านว่าสวิตช์ไม่ทำงาน
+        //
+        // ส่งเฉพาะบอร์ดที่ประกาศตัวแล้ว — firmware รุ่นก่อนหน้าอ่านทุกอย่างบนช่องนี้เป็น
+        // snapshot ของหน้ามาสคอต ค่าตั้งที่ส่งไปให้มันจึงเป็นแค่ log ว่า "json ใช้ไม่ได้"
+        if let plan, !capability.isEmpty, let data = try? plan.encoded(), data != sentPlan {
+            sentPlan = data
+            out.append(data)
+        }
+
         for kind in PageKind.allCases.sorted(by: { $0.rawValue < $1.rawValue }) {
             guard var frame = frames[kind], allows(kind) else { continue }
             frame.age = 0

@@ -85,6 +85,7 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 };
 
 #define CT_ROTATION_SECONDS          20
+#define CT_ROTATION_HOLD_SECONDS     300
 
 #define CT_WEATHER_PLACE_X           12
 #define CT_WEATHER_PLACE_Y           30

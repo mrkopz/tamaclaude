@@ -44,6 +44,9 @@ static int s_pending_page_len;
 static int s_pending_page_kind = -1;
 // หน้าที่ Mac สั่งให้ลืม (ผู้ใช้ปิดมัน) — คนละอย่างกับเฟรมที่ไม่มีข้อมูล
 static int s_forget_page = -1;
+// กติกาของจอที่ผู้ใช้ตั้งไว้ — แปลตรงที่รับ แล้วส่งก้อนที่แปลงแล้วเข้าลูปหลัก เหมือน snapshot
+static ct_page_plan_t s_pending_plan;
+static bool s_has_pending_plan;
 static bool s_link;
 static bool s_link_changed = true;
 static bool s_wifi_up;
@@ -80,6 +83,21 @@ static int frame_page(const char *json, bool *forget)
 
 static void on_state(const char *json, int len)
 {
+    // ค่าตั้งของจอเดินมาช่องเดียวกับเฟรมของหน้า เพราะมันต้องไปถึงทั้งทาง BLE และทาง LAN
+    // (ช่อง config เป็นของ BLE อย่างเดียว) ตัวแยกคือคีย์ `pl` ซึ่งไม่มีในเฟรมของใครเลย
+    if (strstr(json, "\"pl\":")) {
+        ct_page_plan_t plan;
+        if (!ct_pages_parse_plan(json, len, &plan)) {
+            ESP_LOGW(TAG, "page settings arrived in a shape this firmware cannot read");
+            return;
+        }
+        xSemaphoreTake(s_lock, portMAX_DELAY);
+        s_pending_plan = plan;
+        s_has_pending_plan = true;
+        xSemaphoreGive(s_lock);
+        return;
+    }
+
     bool forget = false;
     int page = frame_page(json, &forget);
 
@@ -270,11 +288,18 @@ static void apply_pending(void)
     ct_snapshot_t snap;
     char ip[sizeof(s_ip)];
     char page_json[sizeof(s_pending_page)];
+    ct_page_plan_t plan;
     int page_len = 0, page_kind = -1, forget_page = -1;
     bool got_snapshot = false, link = false, link_changed = false, wifi = false;
+    bool got_plan = false;
     int backlight = -1;
 
     xSemaphoreTake(s_lock, portMAX_DELAY);
+    if (s_has_pending_plan) {
+        plan = s_pending_plan;
+        s_has_pending_plan = false;
+        got_plan = true;
+    }
     if (s_has_pending) {
         snap = s_pending;
         s_has_pending = false;
@@ -312,11 +337,18 @@ static void apply_pending(void)
         ct_pages_set_connected(link || lan);
         ct_pages_set_link(link, wifi, ip);
     }
+    // กติกามาก่อนเนื้อหาเสมอ ทั้งบนสายและตรงนี้ — หน้าที่เพิ่งถูกปิดต้องไม่ถูกวาดอีกหนึ่งครั้ง
+    if (got_plan) ct_pages_set_plan(&plan);
     if (got_snapshot) {
         static bool had_alert = false;
         bool alert = has_alert(&snap);
         // กะพริบเฉพาะตอนการเตือน *เกิดใหม่* ไม่ใช่ทุก snapshot ที่ยังมีการเตือนค้างอยู่
-        if (alert && !had_alert) ct_led_flash();
+        // เหตุผลเดียวกันกับการกระโดดไปหน้ามาสคอต: จอที่ถูกดึงกลับมาทุก snapshot ที่ยังมี
+        // การเตือนค้างอยู่ คือจอที่ไม่มีวันแสดงหน้าอื่นเลย
+        if (alert && !had_alert) {
+            ct_led_flash();
+            ct_pages_attention();
+        }
         had_alert = alert;
         ct_pages_set_snapshot(&snap);
     }

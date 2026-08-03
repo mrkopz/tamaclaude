@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 
+#include "cJSON.h"
 #include "ct_color.h"
 #include "ct_fonts.h"
 #include "ct_ui.h"
@@ -20,6 +21,10 @@ typedef struct {
 static ct_page_t s_pages[CT_PAGE_KIND_COUNT];
 static ct_page_kind_t s_active = CT_PAGE_MASCOT;
 
+// กติกาที่ใช้อยู่ — ค่าตั้งต้นคือทุกหน้าตามลำดับ enum และรอบจาก layout.toml
+// บอร์ดที่ยังไม่เคยคุยกับ Mac (หรือคุยกับแอปรุ่นเก่า) ก็ต้องหมุนหน้าเป็นเหมือนเดิม
+static ct_page_plan_t s_plan;
+
 // page frame ของหน้ามาสคอต — `Snapshot` เดิมทั้งดุ้น ไม่ได้ถูกแตะเพราะมีหลายหน้า
 static ct_snapshot_t s_mascot;
 static ct_weather_t s_weather;
@@ -29,6 +34,11 @@ static int s_since_second;
 // นาฬิกาของ page rotation อยู่บนบอร์ด ไม่ใช่บน Mac — ถ้า Mac เป็นคนสั่งเปลี่ยนหน้า
 // Mac ที่หลับก็เท่ากับจอค้างหน้าเดียวทั้งคืน
 static int s_since_turn;
+// เวลาที่เหลือของการยึดหน้าที่ผู้ใช้เลือกเอง — ระหว่างนี้รอบหมุนหยุดสนิท ไม่ใช่แค่ช้าลง
+static int s_hold_left;
+
+// ประกาศล่วงหน้า — การเปลี่ยนหน้าอยู่ใกล้ตรรกะของรอบหมุนท้ายไฟล์ ส่วนคนเรียกมีตั้งแต่ต้น
+static void switch_to(ct_page_kind_t kind);
 
 // ผืนเต็มจอไร้ style: พิกัดของลูกจึงเท่ากับพิกัดบนจอ และการเปลี่ยนหน้าไม่ต้องแตะ widget ใด
 static lv_obj_t *make_root(lv_obj_t *scr)
@@ -42,8 +52,19 @@ static lv_obj_t *make_root(lv_obj_t *scr)
     return root;
 }
 
+static void default_plan(ct_page_plan_t *plan)
+{
+    for (int i = 0; i < CT_PAGE_KIND_COUNT; i++) plan->order[i] = (ct_page_kind_t)i;
+    plan->count = CT_PAGE_KIND_COUNT;
+    plan->rotation_ms = CT_ROTATION_SECONDS * 1000;
+    plan->hold_ms = CT_ROTATION_HOLD_SECONDS * 1000;
+    plan->attention_jump = true;
+}
+
 void ct_pages_init(void)
 {
+    default_plan(&s_plan);
+
     lv_obj_t *scr = lv_screen_active();
     lv_obj_remove_style_all(scr);
     lv_obj_set_style_bg_color(scr, ct_color(CT_COL_BG), 0);
@@ -108,11 +129,8 @@ void ct_pages_forget(ct_page_kind_t kind)
     // หน้าที่เพิ่งถูกถอนออกจากรอบอาจเป็นหน้าที่กำลังแสดงอยู่ — กลับไปหน้ามาสคอตทันที
     // ดีกว่าค้างอยู่บนหน้าที่เพิ่งกลายเป็น "ยังไม่เคยได้ข้อมูล"
     if (s_active == kind) {
-        lv_obj_add_flag(s_pages[s_active].root, LV_OBJ_FLAG_HIDDEN);
-        s_active = CT_PAGE_MASCOT;
-        lv_obj_remove_flag(s_pages[s_active].root, LV_OBJ_FLAG_HIDDEN);
-        s_since_turn = 0;
-        ct_ui_redraw();
+        s_hold_left = 0;
+        switch_to(CT_PAGE_MASCOT);
     }
 }
 
@@ -148,30 +166,37 @@ void ct_pages_set_link(bool ble, bool wifi, const char *ip)
     ct_ui_set_link(ble, wifi, ip);
 }
 
-// หน้าที่มีสิทธิ์อยู่ในรอบ — หน้าที่ยังไม่เคยได้ข้อมูลไม่ถูกหมุนไปหา
+// ตำแหน่งของหน้าในแผน หรือ -1 ถ้าไม่อยู่ในนั้น
 //
-// หน้ามาสคอตอยู่ในรอบเสมอแม้ยังไม่เคยได้ snapshot: มันมีสภาพ "ยังไม่ได้คุยกับ Mac"
+// รับแผนมาเป็นพารามิเตอร์ ไม่ใช่อ่าน `s_plan` เอง — ตอนแปลงเฟรม แผนที่กำลังประกอบอยู่
+// ยังไม่ใช่แผนที่ใช้งานอยู่ ตัวที่อ่านผิดก้อนจะกันหน้าซ้ำโดยเทียบกับแผนของเมื่อครู่
+static int index_in(const ct_page_plan_t *plan, ct_page_kind_t kind)
+{
+    for (int i = 0; i < plan->count; i++) {
+        if (plan->order[i] == kind) return i;
+    }
+    return -1;
+}
+
+static bool in_plan(ct_page_kind_t kind) { return index_in(&s_plan, kind) >= 0; }
+
+// หน้าที่มีสิทธิ์อยู่ในรอบ — ต้องทั้งอยู่ในแผนของผู้ใช้และมีอะไรให้ดู
+//
+// หน้าที่ยังไม่เคยได้เฟรมไม่ถูกหมุนไปหา ยกเว้นหน้ามาสคอตซึ่งมีสภาพ "ยังไม่ได้คุยกับ Mac"
 // เป็นของตัวเอง (นาฬิกาตั้งโต๊ะสีเทา) ซึ่งเป็นสิ่งที่ผู้ใช้ต้องเห็น ไม่ใช่สิ่งที่ต้องซ่อน
 static bool in_rotation(ct_page_kind_t kind)
 {
+    if (!in_plan(kind)) return false;
     return kind == CT_PAGE_MASCOT || s_pages[kind].has_frame;
 }
 
-static void turn_page(void)
+static void switch_to(ct_page_kind_t kind)
 {
-    ct_page_kind_t next = s_active;
-    for (int i = 1; i < CT_PAGE_KIND_COUNT; i++) {
-        ct_page_kind_t candidate = (ct_page_kind_t)((s_active + i) % CT_PAGE_KIND_COUNT);
-        if (in_rotation(candidate)) {
-            next = candidate;
-            break;
-        }
-    }
-    if (next == s_active) return;  // มีหน้าเดียวที่พร้อมแสดง = ไม่มีอะไรให้หมุน
-
+    if (kind == s_active) return;
     lv_obj_add_flag(s_pages[s_active].root, LV_OBJ_FLAG_HIDDEN);
-    s_active = next;
+    s_active = kind;
     lv_obj_remove_flag(s_pages[s_active].root, LV_OBJ_FLAG_HIDDEN);
+    s_since_turn = 0;
 
     // หน้าที่เพิ่งขึ้นมาถือของที่อาจเก่ากว่าตอนที่มันถูกซ่อนไป — วาดใหม่ทั้งใบก่อนเสมอ
     if (s_active == CT_PAGE_MASCOT) {
@@ -179,6 +204,87 @@ static void turn_page(void)
     } else if (s_active == CT_PAGE_WEATHER) {
         ct_weather_ui_redraw();
     }
+}
+
+// หน้าถัดไปตาม *ลำดับที่ผู้ใช้จัด* ไม่ใช่ลำดับของ enum
+static void turn_page(void)
+{
+    // หน้าที่แสดงอยู่อาจไม่อยู่ในแผนแล้ว — เริ่มนับจากหัวแผน ไม่ใช่จากตำแหน่งที่ไม่มีอยู่จริง
+    int at = index_in(&s_plan, s_active);
+    if (at < 0) at = 0;
+    for (int i = 1; i <= s_plan.count; i++) {
+        ct_page_kind_t candidate = s_plan.order[(at + i) % s_plan.count];
+        if (in_rotation(candidate)) {
+            switch_to(candidate);
+            return;
+        }
+    }
+    // มีหน้าเดียวที่พร้อมแสดง = ไม่มีอะไรให้หมุน
+}
+
+void ct_pages_set_plan(const ct_page_plan_t *plan)
+{
+    s_plan = *plan;
+    s_since_turn = 0;
+
+    // หน้าที่แสดงอยู่อาจเพิ่งถูกผู้ใช้ปิด — ผลของสวิตช์ต้องเห็นเดี๋ยวนี้ ไม่ใช่เมื่อครบรอบ
+    // (คำสั่งลืมเฟรมมาเป็นอีกเฟรมหนึ่ง ซึ่งอาจมาถึงก่อนหรือหลังก็ได้)
+    if (!in_plan(s_active)) {
+        s_hold_left = 0;
+        switch_to(s_plan.count > 0 ? s_plan.order[0] : CT_PAGE_MASCOT);
+    }
+}
+
+bool ct_pages_parse_plan(const char *json, int len, ct_page_plan_t *out)
+{
+    cJSON *root = cJSON_ParseWithLength(json, len);
+    if (!root) return false;
+    const cJSON *order = cJSON_GetObjectItem(root, "pl");
+    bool ok = cJSON_IsArray(order);
+    if (ok) {
+        default_plan(out);
+        out->count = 0;
+        const cJSON *item = NULL;
+        cJSON_ArrayForEach(item, order) {
+            if (!cJSON_IsNumber(item)) continue;
+            int kind = item->valueint;
+            // หน้าที่ firmware นี้ไม่รู้จักคือ Mac ที่ใหม่กว่า — ข้ามไป ไม่ใช่ทิ้งทั้งแผน
+            // ส่วนหน้าซ้ำจะทำให้รอบหมุนวนมาหามันสองครั้ง ซึ่งไม่ใช่สิ่งที่ผู้ใช้จัดไว้
+            if (kind < 0 || kind >= CT_PAGE_KIND_COUNT) continue;
+            if (index_in(out, (ct_page_kind_t)kind) >= 0) continue;
+            out->order[out->count++] = (ct_page_kind_t)kind;
+        }
+        // แผนว่างเปล่าไม่มีความหมาย และเป็นตัวหารของรอบหมุน — หน้ามาสคอตปิดไม่ได้อยู่แล้ว
+        // ที่ฝั่ง Mac ตรงนี้จึงเป็นการกันตัวหารเป็นศูนย์ ไม่ใช่การเดาแทนผู้ใช้
+        if (out->count == 0) {
+            out->order[0] = CT_PAGE_MASCOT;
+            out->count = 1;
+        }
+        const cJSON *r = cJSON_GetObjectItem(root, "r");
+        const cJSON *h = cJSON_GetObjectItem(root, "h");
+        const cJSON *j = cJSON_GetObjectItem(root, "j");
+        // ค่าที่ผิดรูปคือค่าตั้งต้น ไม่ใช่ 0 — รอบหมุน 0 วินาทีคือจอที่กระพริบทั้งวัน
+        if (cJSON_IsNumber(r) && r->valueint > 0) out->rotation_ms = r->valueint * 1000;
+        if (cJSON_IsNumber(h) && h->valueint >= 0) out->hold_ms = h->valueint * 1000;
+        if (cJSON_IsNumber(j)) out->attention_jump = j->valueint != 0;
+    }
+    cJSON_Delete(root);
+    return ok;
+}
+
+void ct_pages_show(ct_page_kind_t kind)
+{
+    if (kind < 0 || kind >= CT_PAGE_KIND_COUNT) return;
+    if (!in_rotation(kind)) return;  // หน้าที่ถูกปิดไม่มีทางถูกเรียกขึ้นมา แม้ด้วยมือ
+    switch_to(kind);
+    s_hold_left = s_plan.hold_ms;
+}
+
+void ct_pages_attention(void)
+{
+    if (!s_plan.attention_jump) return;
+    if (!in_plan(CT_PAGE_MASCOT)) return;  // ปิดหน้ามาสคอตไม่ได้ แต่ไม่เดาแทนแผนที่ได้มา
+    switch_to(CT_PAGE_MASCOT);
 }
 
 void ct_pages_tick(int elapsed_ms)
@@ -211,8 +317,16 @@ void ct_pages_tick(int elapsed_ms)
         ct_weather_ui_tick(elapsed_ms);
     }
 
+    // หน้าที่ผู้ใช้เลือกเองชนะรอบหมุนจนกว่าจะครบระยะยึด — คนที่ปัดมาดูหน้าหนึ่งกำลังอ่านมัน
+    // อยู่ ตัวจับเวลาที่เดินต่อระหว่างนั้นแปลว่าหน้าถูกกระชากไปทันทีที่ครบรอบพอดี
+    if (s_hold_left > 0) {
+        s_hold_left -= elapsed_ms;
+        s_since_turn = 0;
+        return;
+    }
+
     s_since_turn += elapsed_ms;
-    if (s_since_turn >= CT_ROTATION_SECONDS * 1000) {
+    if (s_since_turn >= s_plan.rotation_ms) {
         s_since_turn = 0;
         turn_page();
     }

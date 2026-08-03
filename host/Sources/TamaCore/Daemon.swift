@@ -114,6 +114,15 @@ public final class Daemon {
         work.async { [weak self] in self?.pages.drop(kind) }
     }
 
+    /// ผู้ใช้เปลี่ยนค่าตั้งของจอ — มีผลทันที ไม่ต้องรีสตาร์ตอะไร
+    public func submit(_ plan: PagePlan) {
+        work.async { [weak self] in
+            guard let self else { return }
+            self.pages.submit(plan)
+            self.publishPages(now: Date())
+        }
+    }
+
     /// ส่งเฉพาะหน้าที่บอร์ดรู้จักและเนื้อหาเปลี่ยนจริง — data age ที่ขยับทุกวินาที
     /// ไม่นับว่าเปลี่ยน เพราะบอร์ดนับต่อเองอยู่แล้ว
     private func publishPages(now: Date) {

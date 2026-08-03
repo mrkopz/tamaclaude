@@ -28,6 +28,36 @@ bool ct_pages_set_frame(ct_page_kind_t kind, const char *json, int len);
 // (หน้าที่ปิดต้องหายไปจริง ไม่ใช่ swipe ไปเจอหน้าที่เขียนว่า "ปิดอยู่")
 void ct_pages_forget(ct_page_kind_t kind);
 
+// กติกาของจอที่ผู้ใช้ตั้งไว้บน Mac — นาฬิกายังเป็นของบอร์ด นี่คือค่าที่มันใช้จับเวลา
+//
+// `order` คือหน้าที่เปิดอยู่ *เรียงตามที่ผู้ใช้จัด* หน้าที่ไม่อยู่ในลิสต์นี้ไม่อยู่ในรอบเลย
+// บอร์ดที่ยังไม่เคยได้แผนใช้ทุกหน้าตามลำดับ enum กับค่าจาก layout.toml
+typedef struct {
+    ct_page_kind_t order[CT_PAGE_KIND_COUNT];
+    int count;
+    int rotation_ms;
+    int hold_ms;
+    bool attention_jump;
+} ct_page_plan_t;
+
+// แปลงเฟรมค่าตั้ง (คีย์ `pl`) เป็นแผน — คืน false เมื่อ JSON ไม่ใช่รูปร่างที่รับได้
+//
+// แยกจากการ *ใช้* แผนเพราะเฟรมมาถึงคนละเธรดกับ LVGL: ตัวเรียกแปลงตรงที่รับ แล้วค่อย
+// ส่งก้อนที่แปลงแล้วเข้าลูปหลัก เหมือนที่ snapshot ทำ
+bool ct_pages_parse_plan(const char *json, int len, ct_page_plan_t *out);
+
+void ct_pages_set_plan(const ct_page_plan_t *plan);
+
+// ผู้ใช้เลือกหน้านั้นเอง — แสดงทันทีแล้วยึดไว้ตามระยะ hold ก่อนกลับเข้ารอบ
+// (ใบ swipe เป็นคนเรียก — ที่นี่มีไว้ให้ระยะ hold มีความหมาย)
+void ct_pages_show(ct_page_kind_t kind);
+
+// มีเรื่องด่วนบนหน้ามาสคอต — กระโดดไปหามันถ้าผู้ใช้เปิดสวิตช์นี้ไว้
+//
+// เป็นคำสั่งจากเหตุการณ์ ไม่ใช่จากผู้ใช้ จึงไม่ยึดหน้าไว้เหมือน `ct_pages_show`:
+// การเตือนที่ผ่านไปแล้วต้องไม่ค้างจอไว้อีกห้านาที
+void ct_pages_attention(void);
+
 // รายการ PageKind ที่บอร์ดตัวนี้รู้จัก เป็น JSON พร้อมส่งกลับไปให้ Mac (ADR-0006)
 // เขียนลง `out` แล้วคืนความยาว
 int ct_pages_capability_json(char *out, int size);

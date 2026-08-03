@@ -4,39 +4,41 @@ import Foundation
 ///
 /// ไม่มีไฟล์ให้แก้มือแบบ `~/.tamaclaude/tools.json` ตรงนี้ตั้งใจ: ค่าเหล่านี้มี GUI เต็ม
 /// รูปแบบ การมีสองแหล่งจะทำให้หน้าต่างโชว์เมืองหนึ่งขณะที่จอแสดงอีกเมืองหนึ่ง
+///
+/// "เปิด/ปิดหน้านี้" **ไม่ได้อยู่ที่นี่** — มันเป็นข้อเดียวกับที่ถามทุกหน้า จึงอยู่ใน
+/// `PageSettings` ที่เดียว ไม่งั้นจะมีสองที่ที่ตอบว่าหน้าอากาศเปิดอยู่ไหม
 public struct WeatherSettings: Equatable, Sendable {
-    public var enabled: Bool
     /// ชื่อเมืองที่ผู้ใช้พิมพ์ — ไม่ใช้ CoreLocation เพื่อเลี่ยง TCC อีกใบ และของตั้งโต๊ะ
     /// ไม่ได้ย้ายที่
     public var place: String
     public var unit: TempUnit
 
-    public init(enabled: Bool = false, place: String = "", unit: TempUnit = .celsius) {
-        self.enabled = enabled
+    public init(place: String = "", unit: TempUnit = .celsius) {
         self.place = place
         self.unit = unit
     }
 
-    /// เปิดอยู่แต่ยังไม่ได้พิมพ์ชื่อเมือง = ยังไม่มีอะไรให้ดึง
+    /// ยังไม่ได้พิมพ์ชื่อเมือง = ยังไม่มีอะไรให้ดึง (หน้านี้เปิดอยู่ไหมเป็นคำถามคนละข้อ
+    /// และเป็นของผู้เรียก — `PageSettings` เป็นคนตอบ)
     public var isUsable: Bool {
-        enabled && !place.trimmingCharacters(in: .whitespaces).isEmpty
+        !place.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     public enum Key {
-        public static let enabled = "weatherPage"
+        /// สวิตช์เก่าของรอบก่อนหน้า — ไม่ถูกเขียนอีกแล้ว เหลือไว้ให้ `PageSettings`
+        /// อ่านครั้งเดียวตอนย้ายค่าของผู้ใช้เดิมเข้ารายการหน้า
+        public static let legacyEnabled = "weatherPage"
         public static let place = "weatherPlace"
         public static let unit = "weatherUnit"
     }
 
     public static func load(_ defaults: UserDefaults = .standard) -> WeatherSettings {
         WeatherSettings(
-            enabled: defaults.bool(forKey: Key.enabled),
             place: defaults.string(forKey: Key.place) ?? "",
             unit: TempUnit(rawValue: defaults.string(forKey: Key.unit) ?? "") ?? .celsius)
     }
 
     public func save(to defaults: UserDefaults = .standard) {
-        defaults.set(enabled, forKey: Key.enabled)
         defaults.set(place, forKey: Key.place)
         defaults.set(unit.rawValue, forKey: Key.unit)
     }
@@ -126,6 +128,13 @@ public final class WeatherService {
     }
 
     public var isRunning: Bool { schedule.running }
+
+    /// หน้านี้เพิ่งถูกเปิดกลับมา — เฟรมที่เคยมีถูกบอร์ดลืมไปตอนปิด (ADR-0002) การรอ
+    /// รอบถัดไปตามปกติแปลว่าผู้ใช้เห็นหน้าเปล่าได้นานถึง 15 นาทีหลังกดสวิตช์
+    public func restart() {
+        status = nil
+        schedule.invalidate()
+    }
 
     public func tick(now: Date = Date()) {
         guard settings.isUsable else { return }

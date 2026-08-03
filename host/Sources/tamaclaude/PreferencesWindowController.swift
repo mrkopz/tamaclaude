@@ -29,6 +29,8 @@ final class PreferencesWindowController: NSWindowController {
     var onBoardHost: ((String) -> Void)?
     /// ค่าตั้งของหน้าอากาศเปลี่ยน — หน้าต่างไม่รู้จัก UserDefaults เหมือนทุกอย่างที่นี่
     var onWeather: ((WeatherSettings) -> Void)?
+    /// พฤติกรรมของจอเปลี่ยน (หน้าไหนเปิด ลำดับ รอบหมุน) — ทางเดียวกับทุกอย่างที่นี่
+    var onPages: ((PageSettings) -> Void)?
 
     // --- General ------------------------------------------------------------
     private let boardPopup = NSPopUpButton()
@@ -44,8 +46,15 @@ final class PreferencesWindowController: NSWindowController {
     private let keyLabel = NSTextField(labelWithString: "")
 
     // --- Pages --------------------------------------------------------------
-    private let weatherBox = NSButton(checkboxWithTitle: "Show a weather page",
-                                      target: nil, action: nil)
+    /// รายการหน้าถูกสร้างใหม่ทั้งแถบทุกครั้งที่ค่าเปลี่ยน — ไม่กี่แถวและลำดับก็ขยับได้
+    /// การมี view ต่อหน้าที่ต้องคอยย้ายที่เองแลกไม่คุ้มกับความซับซ้อนที่ตามมา
+    private let pageList = NSStackView()
+    private let rotationField = NSTextField()
+    private let holdField = NSTextField()
+    private let jumpBox = NSButton(checkboxWithTitle: "Jump to the mascot when it needs a hand",
+                                   target: nil, action: nil)
+    /// ค่าที่หน้าต่างกำลังแสดงอยู่ — ปุ่มลูกศรกับติ๊กถูกแก้ *ของก้อนนี้* แล้วส่งออกทั้งก้อน
+    private var pages = PageSettings()
     private let placeField = NSTextField()
     private let unitPopup = NSPopUpButton()
     private let weatherStatus = NSTextField(labelWithString: "")
@@ -70,7 +79,7 @@ final class PreferencesWindowController: NSWindowController {
 
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 520),
             styleMask: [.titled, .closable], backing: .buffered, defer: false)
         window.title = "TamaClaude Settings"
         super.init(window: window)
@@ -99,10 +108,10 @@ final class PreferencesWindowController: NSWindowController {
         general.view = pad(buildGeneral())
         tabs.addTabViewItem(general)
 
-        let pages = NSTabViewItem(identifier: "pages")
-        pages.label = "Pages"
-        pages.view = pad(buildPages())
-        tabs.addTabViewItem(pages)
+        let pagesTab = NSTabViewItem(identifier: "pages")
+        pagesTab.label = "Pages"
+        pagesTab.view = pad(buildPages())
+        tabs.addTabViewItem(pagesTab)
 
         let wifi = NSTabViewItem(identifier: "wifi")
         wifi.label = "Wi-Fi"
@@ -202,13 +211,26 @@ final class PreferencesWindowController: NSWindowController {
         return stack
     }
 
-    /// หน้าอากาศ — ทุกค่าที่นี่ไปจบที่ `UserDefaults` และแอปเป็นบรรณาธิการเดียว
+    /// หน้าบนจอ — ทุกค่าที่นี่ไปจบที่ `UserDefaults` และแอปเป็นบรรณาธิการเดียว
     ///
     /// เมืองเป็นชื่อที่พิมพ์เอง ไม่ใช่ CoreLocation: เลี่ยง TCC อีกใบ และของตั้งโต๊ะไม่ได้
-    /// ย้ายที่ · ปิดหน้านี้แล้วบอร์ดถูกสั่งให้ลืมมันจริงๆ ไม่ใช่แค่หยุดส่งของใหม่
+    /// ย้ายที่ · ปิดหน้าไหนแล้วบอร์ดถูกสั่งให้ลืมมันจริงๆ ไม่ใช่แค่หยุดส่งของใหม่
     private func buildPages() -> NSView {
-        weatherBox.target = self
-        weatherBox.action = #selector(weatherChanged)
+        pageList.orientation = .vertical
+        pageList.alignment = .leading
+        pageList.spacing = 4
+
+        for field in [rotationField, holdField] {
+            field.target = self
+            field.action = #selector(pagesChanged)
+            field.alignment = .right
+            field.widthAnchor.constraint(equalToConstant: 60).isActive = true
+            let numbers = NumberFormatter()
+            numbers.allowsFloats = false
+            field.formatter = numbers
+        }
+        jumpBox.target = self
+        jumpBox.action = #selector(pagesChanged)
 
         placeField.placeholderString = "City (e.g. Bangkok)"
         placeField.target = self
@@ -225,14 +247,18 @@ final class PreferencesWindowController: NSWindowController {
         weatherStatus.textColor = .secondaryLabelColor
 
         let hint = NSTextField(wrappingLabelWithString:
-            "Figures come from Open-Meteo, fetched by this Mac every 15 minutes — the board "
-            + "never goes online itself. The screen turns between pages on its own and always "
-            + "says how old the figures are.")
+            "The board keeps its own clock, so the screen keeps turning while this Mac sleeps. "
+            + "Weather figures come from Open-Meteo, fetched here every 15 minutes — the board "
+            + "never goes online itself, and the page always says how old the figures are.")
         hint.font = .systemFont(ofSize: 11)
         hint.textColor = .secondaryLabelColor
 
         let stack = NSStackView(views: [
-            row("", weatherBox),
+            pageList,
+            row("Turn every", measure(rotationField, "seconds")),
+            row("Hold a swipe for", measure(holdField, "minutes")),
+            row("", jumpBox),
+            separator(),
             row("City", placeField),
             row("Units", unitPopup),
             row("", weatherStatus),
@@ -245,6 +271,49 @@ final class PreferencesWindowController: NSWindowController {
         placeField.widthAnchor.constraint(equalToConstant: 220).isActive = true
         hint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
         return stack
+    }
+
+    /// ช่องตัวเลขกับหน่วยของมัน — หน่วยอยู่ *หลัง* ช่อง ไม่ใช่ในป้ายซ้าย ผู้ใช้ที่พิมพ์ทับ
+    /// ต้องเห็นว่ากำลังพิมพ์วินาทีหรือนาที ตอนที่สายตาอยู่ที่ช่อง ไม่ใช่ตอนอ่านหัวแถว
+    private func measure(_ field: NSTextField, _ unit: String) -> NSView {
+        let label = NSTextField(labelWithString: unit)
+        label.font = .systemFont(ofSize: 11)
+        label.textColor = .secondaryLabelColor
+        let stack = NSStackView(views: [field, label])
+        stack.orientation = .horizontal
+        stack.spacing = 6
+        return stack
+    }
+
+    /// วาดรายการหน้าใหม่ทั้งแถบจากค่าที่ถืออยู่
+    ///
+    /// หน้ามาสคอตมีติ๊กที่กดไม่ได้ ไม่ใช่ไม่มีติ๊ก — แถวที่ไม่มีติ๊กอ่านว่า "ยังไม่รองรับ"
+    /// ส่วนติ๊กที่ติดค้างและกดไม่ลงบอกตรงๆ ว่ามันปิดไม่ได้
+    private func rebuildPageList() {
+        for view in pageList.arrangedSubviews { view.removeFromSuperview() }
+        for (index, kind) in pages.order.enumerated() {
+            let box = NSButton(checkboxWithTitle: kind.title, target: self,
+                               action: #selector(pageToggled))
+            box.state = pages.isOn(kind) ? .on : .off
+            box.tag = kind.rawValue
+            box.isEnabled = kind != .mascot
+            box.widthAnchor.constraint(equalToConstant: 140).isActive = true
+
+            let up = NSButton(title: "▲", target: self, action: #selector(movePageUp))
+            let down = NSButton(title: "▼", target: self, action: #selector(movePageDown))
+            for button in [up, down] {
+                button.bezelStyle = .rounded
+                button.tag = kind.rawValue
+                button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+            }
+            up.isEnabled = index > 0
+            down.isEnabled = index < pages.order.count - 1
+
+            let row = NSStackView(views: [box, up, down])
+            row.orientation = .horizontal
+            row.spacing = 4
+            pageList.addArrangedSubview(row)
+        }
     }
 
     private func buildWiFi() -> NSView {
@@ -353,12 +422,23 @@ final class PreferencesWindowController: NSWindowController {
 
     func showBoardHost(_ host: String) { hostField.stringValue = host }
 
-    func showWeather(_ settings: WeatherSettings, status: String?, supported: Bool) {
-        weatherBox.state = settings.enabled ? .on : .off
+    /// นาทีเข้า วินาทีออก — ค่าบนสายเป็นวินาทีเสมอ ส่วนช่องนี้ถามเป็นนาทีเพราะ
+    /// ค่าตั้งต้นคือ 5 นาที และไม่มีใครอยากอ่านหรือพิมพ์เลข 300
+    private static let holdStep = 60
+
+    func showPages(_ settings: PageSettings) {
+        pages = settings
+        rebuildPageList()
+        rotationField.integerValue = settings.rotation
+        holdField.integerValue = settings.hold / Self.holdStep
+        jumpBox.state = settings.attentionJump ? .on : .off
+    }
+
+    func showWeather(_ settings: WeatherSettings, status: String?, supported: Bool, on: Bool) {
         placeField.stringValue = settings.place
         unitPopup.selectItem(at: TempUnit.allCases.firstIndex(of: settings.unit) ?? 0)
-        placeField.isEnabled = settings.enabled
-        unitPopup.isEnabled = settings.enabled
+        placeField.isEnabled = on
+        unitPopup.isEnabled = on
 
         // เหตุผลที่หน้านี้ยังไม่ขึ้นจอมีได้สามอย่าง และผู้ใช้แก้ได้คนละแบบ: firmware เก่า
         // (ต้องแฟลช) · ยังไม่พิมพ์ชื่อเมือง (พิมพ์) · ดึงไม่สำเร็จ (รอ หรือแก้ชื่อเมือง)
@@ -367,7 +447,7 @@ final class PreferencesWindowController: NSWindowController {
                 "The board's firmware does not know this page yet — flash it to use it."
         } else if let status {
             weatherStatus.stringValue = status
-        } else if settings.enabled && !settings.isUsable {
+        } else if on && !settings.isUsable {
             weatherStatus.stringValue = "Type a city to start."
         } else {
             weatherStatus.stringValue = ""
@@ -459,9 +539,43 @@ final class PreferencesWindowController: NSWindowController {
         let raw = unitPopup.selectedItem?.representedObject as? String
         onWeather?(
             WeatherSettings(
-                enabled: weatherBox.state == .on,
                 place: placeField.stringValue.trimmingCharacters(in: .whitespaces),
                 unit: TempUnit(rawValue: raw ?? "") ?? .celsius))
+    }
+
+    /// รอบหมุนกับ hold ถูกอ่านจากช่องทุกครั้งที่มีอะไรในแท็บนี้เปลี่ยน — ผู้ใช้ที่พิมพ์เลข
+    /// แล้วกดติ๊กต่อโดยไม่กด Enter ต้องได้ทั้งสองอย่าง ไม่ใช่ได้ติ๊กแล้วเลขหาย
+    @objc private func pagesChanged() {
+        pages.rotation = rotationField.integerValue
+        pages.hold = holdField.integerValue * Self.holdStep
+        pages.attentionJump = jumpBox.state == .on
+        emitPages()
+    }
+
+    @objc private func pageToggled(_ sender: NSButton) {
+        guard let kind = PageKind(rawValue: sender.tag) else { return }
+        pages.setOn(kind, sender.state == .on)
+        pagesChanged()
+    }
+
+    // ชื่อ `pageUp`/`pageDown` ใช้ไม่ได้ — `NSResponder` มีเมธอดชื่อนั้นอยู่แล้ว
+    @objc private func movePageUp(_ sender: NSButton) { movePage(sender, by: -1) }
+    @objc private func movePageDown(_ sender: NSButton) { movePage(sender, by: 1) }
+
+    private func movePage(_ sender: NSButton, by step: Int) {
+        guard let kind = PageKind(rawValue: sender.tag) else { return }
+        pages.move(kind, by: step)
+        pagesChanged()
+    }
+
+    /// ค่าที่ส่งออกถูกบีบเข้าช่วงที่ยอมรับได้ระหว่างทาง — แสดงกลับเสมอ ไม่ใช่เฉพาะตอนเปิด
+    /// หน้าต่าง ไม่งั้นช่องจะค้างเลข 9999 ที่ไม่มีใครใช้ทั้งที่จอหมุนตาม 600
+    private func emitPages() {
+        let settled = PageSettings(
+            order: pages.order, off: pages.off, rotation: pages.rotation, hold: pages.hold,
+            attentionJump: pages.attentionJump)
+        onPages?(settled)
+        showPages(settled)
     }
 
     @objc private func setSessionKey() { onSetSessionKey?() }
