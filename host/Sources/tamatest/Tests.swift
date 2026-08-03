@@ -2296,6 +2296,44 @@ func runAllTests() {
             "the rules travel alone, like every other frame")
     }
 
+    // สิ่งที่บอร์ดใช้ตัดสินว่าจะเด้งกลับหน้ามาสคอตไหม คือเลขนี้ ไม่ใช่สถานะที่ยังค้างอยู่ —
+    // ระหว่างที่ Claude รออนุญาตสิบนาที ทุก snapshot ยังบอกว่ามีคนรออยู่เหมือนเดิม
+    suite("what needs a human is counted once, when it happens") {
+        let s = store()
+        s.apply(event("UserPromptSubmit"), now: t0)
+        equal(s.snapshot(now: t0).attention, 0, "work in progress asks nothing of anyone")
+
+        s.apply(event("Notification", message: "allow Bash?"), now: t0 + 1)
+        equal(s.snapshot(now: t0 + 1).attention, 1, "a permission prompt is one event")
+        equal(
+            s.snapshot(now: t0 + 30).attention, 1,
+            "and stays one for as long as it goes unanswered")
+
+        // ตอบคำขอแล้วเหตุการณ์นั้นตาย — คำขอถัดไปจึงเด้งได้อีกตามปกติ
+        s.apply(event("PreToolUse", tool: "Bash"), now: t0 + 40)
+        equal(s.snapshot(now: t0 + 40).attention, 1, "answering it raises nothing by itself")
+        s.apply(event("Notification", message: "allow Bash?"), now: t0 + 60)
+        equal(s.snapshot(now: t0 + 60).attention, 2, "the next prompt is a new event")
+
+        // session ที่สองที่ต้องการคนระหว่างที่ตัวแรกยังรออยู่: จากตาของสถานะรวมไม่มีอะไร
+        // เปลี่ยน (ยังมีคนรออยู่เหมือนเดิม) แต่เป็นคนละเรื่อง จอต้องกลับมาให้เห็น
+        s.apply(event("StopFailure", "s2"), now: t0 + 61)
+        equal(s.snapshot(now: t0 + 61).attention, 3, "a second session is a second event")
+
+        expect(
+            String(decoding: try s.snapshot(now: t0 + 61).encoded(), as: UTF8.self)
+                .contains(#""a":3"#),
+            "the count travels with the snapshot, so the board dedups by event")
+    }
+
+    suite("the turn coming back to you is an event too") {
+        let s = store()
+        s.apply(event("Stop"), now: t0)
+        equal(s.snapshot(now: t0 + 1).attention, 0, "a turn that just ended is not a summons")
+        equal(s.snapshot(now: t0 + 50).attention, 1, "silence past the threshold is one")
+        equal(s.snapshot(now: t0 + 400).attention, 1, "and dozing off afterwards raises nothing")
+    }
+
     // ค่าตั้งต้นมีสองฝั่ง: บอร์ดใช้ค่าจาก layout.toml ก่อนได้ยินจาก Mac ส่วนแอปใช้ค่าของ
     // ตัวเองจนกว่าผู้ใช้จะแก้ ถ้าสองค่านี้ต่างกัน จอจะเปลี่ยนจังหวะเองตอนแอปเปิดขึ้นมา
     suite("the screen turns at the same pace before and after the mac says hello") {

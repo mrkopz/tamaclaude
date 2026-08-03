@@ -99,6 +99,17 @@ public enum VisualState: String, Codable, Equatable, Sendable, CaseIterable {
         case .sleeping: return 0
         }
     }
+
+    /// เดินต่อเองไม่ได้ถ้าไม่มีมือคน — เกณฑ์เดียวที่ตัดสินว่าจอควรถูกดึงกลับมาหามาสคอต
+    ///
+    /// `celebrate`/`idle` ไม่อยู่ในนี้ทั้งที่เทิร์นจบแล้ว: งานที่จบเรียบร้อยไม่ได้ขออะไร
+    /// ส่วน `waiting` ครอบทั้งการขออนุญาตและเทิร์นที่เงียบเกินเกณฑ์ ซึ่งรอคนอยู่จริงทั้งคู่
+    public var needsHuman: Bool {
+        switch self {
+        case .waiting, .alert, .error: return true
+        default: return false
+        }
+    }
 }
 
 // MARK: - snapshot ที่ส่งข้ามสาย
@@ -192,6 +203,12 @@ public struct Snapshot: Codable, Equatable, Sendable {
     /// `[session, weekly]` เสมอเมื่อมี — `nil` แปลว่าไม่เคยได้ข้อมูลเลย
     /// ซึ่งบอร์ดตีความว่า "ถอยไปเป็นนาฬิกาตั้งโต๊ะ" ไม่ใช่ "วาดโครงเปล่า"
     public var usage: [UsageSnap]?
+    /// จำนวนครั้งที่มี session *เข้าสู่* สถานะที่ต้องการคน นับตั้งแต่ daemon เริ่มทำงาน
+    ///
+    /// เป็น id ของเหตุการณ์ ไม่ใช่สถานะ: บอร์ดเด้งกลับหน้ามาสคอตเมื่อเลขนี้โตขึ้นเท่านั้น
+    /// ถ้าดูจากสถานะแทน จอจะถูกกระชากกลับทุก snapshot ตลอดสิบนาทีที่คำขออนุญาตค้างอยู่
+    /// และเรื่องใหม่ของ session ที่สอง (ซึ่งไม่เปลี่ยนสถานะรวมเลย) จะไม่ได้เด้งสักครั้ง
+    public var attention: Int
 
     enum CodingKeys: String, CodingKey {
         case clock = "c"
@@ -201,6 +218,7 @@ public struct Snapshot: Codable, Equatable, Sendable {
         case cards = "n"
         case cardOverflow = "m"
         case usage = "u"
+        case attention = "a"
     }
 
     public init(
@@ -210,7 +228,8 @@ public struct Snapshot: Codable, Equatable, Sendable {
         sessions: [SessionSnap] = [],
         cards: [CardSnap] = [],
         cardOverflow: Int = 0,
-        usage: [UsageSnap]? = nil
+        usage: [UsageSnap]? = nil,
+        attention: Int = 0
     ) {
         self.clock = clock
         self.date = date
@@ -219,6 +238,7 @@ public struct Snapshot: Codable, Equatable, Sendable {
         self.cards = cards
         self.cardOverflow = cardOverflow
         self.usage = usage
+        self.attention = attention
     }
 }
 

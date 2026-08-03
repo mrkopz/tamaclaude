@@ -128,6 +128,11 @@ bool ct_model_parse(const char *json, int len, ct_snapshot_t *out)
     const cJSON *card_over = cJSON_GetObjectItem(root, "m");
     if (cJSON_IsNumber(card_over)) tmp.card_overflow = card_over->valueint;
 
+    // ไม่มีคีย์นี้ = daemon รุ่นก่อนที่ยังไม่นับเหตุการณ์ให้ ซึ่งอ่านได้เป็นศูนย์ตลอด แปลว่า
+    // ไม่มีอะไรใหม่ให้เด้ง ไม่ใช่ว่ามีเรื่องใหม่ทุกเฟรม
+    const cJSON *attention = cJSON_GetObjectItem(root, "a");
+    if (cJSON_IsNumber(attention)) tmp.attention = attention->valueint;
+
     // "u" เป็น array ของคู่ [percent, วินาทีที่เหลือ] ไม่ใช่ object — คีย์กินไบต์บนสาย
     // ไม่มีคีย์นี้เลย = ยังไม่เคยมีข้อมูลโควตา ซึ่งไม่เหมือนกับ "มีแต่ไม่รู้ค่า"
     const cJSON *usage = cJSON_GetObjectItem(root, "u");

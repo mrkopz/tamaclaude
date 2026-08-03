@@ -193,6 +193,11 @@ look at `out/`. It proves the *design*, not the C renderer.
   mascot `Snapshot` exactly when it has **no** `g` key — that is what keeps old firmware
   working. `{"g":N,"x":1}` retires a page the user turned off; simply not sending it leaves
   yesterday's figures rotating on the board forever (ADR-0002).
+- **The screen jumps back to the mascot on an event *id*, not on a state.** `Snapshot.attention`
+  (`"a"`) counts sessions *entering* a needs-human state; the board jumps only when that number
+  goes up. Deciding from the state itself yanks the screen back every snapshot for as long as a
+  permission prompt sits unanswered, and never jumps for the second session that asks while the
+  first is still waiting.
 - **Page frames carry a data *age*, not a timestamp**, and the board counts on from there.
   A re-read with identical figures is still sent (the age is the difference); an age that is
   merely ticking is not a change.

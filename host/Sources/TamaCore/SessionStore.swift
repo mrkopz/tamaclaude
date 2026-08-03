@@ -51,6 +51,8 @@ struct Session {
     /// ท่าที่อยู่บนจอตอนนี้ และเวลาที่มันขึ้นจอ — ใช้บังคับเวลาขั้นต่ำต่อท่า
     var posed: VisualState?
     var posedAt: Date = .distantPast
+    /// ตอนนี้ยกมือขออยู่ไหม — ตัวที่ทำให้ "ยังรออยู่" ต่างจาก "เพิ่งเริ่มรอ"
+    var raisedHand = false
 
     /// ท่าที่ "ควรจะเป็น" ตามสถานะจริง ณ วินาทีนี้ — ยังไม่ผ่านการหน่วง
     func visualState(now: Date, t: Timings) -> VisualState {
@@ -123,6 +125,9 @@ public final class SessionStore {
     private var order: [String] = []  // ลำดับซ้าย->ขวา ต้องนิ่ง = ลำดับที่ session เกิด
     private var sessions: [String: Session] = [:]
     private var cards: [StoredCard] = []
+    /// เลขเหตุการณ์ที่ต้องการคน — ขึ้นทีละหนึ่งตอนมีคน *เริ่ม* รอ ไม่ใช่ตลอดเวลาที่ยังรออยู่
+    /// (ดู `Snapshot.attention` ว่าทำไมต้องเป็นเลขนับ ไม่ใช่ธงบอกสถานะ)
+    private var attention = 0
 
     public init(toolMap: ToolMap = .default, timings: Timings = Timings(), slotCount: Int = 3) {
         self.toolMap = toolMap
@@ -310,6 +315,11 @@ public final class SessionStore {
         for id in order {
             guard var s = sessions[id] else { continue }
             let state = s.displayState(now: now, t: timings)
+            // นับตอนขอบขาขึ้นของ *แต่ละ session* ไม่ใช่ของทั้งจอ: ตัวที่สองที่ขอความช่วยเหลือ
+            // ระหว่างที่ตัวแรกยังรออยู่ ไม่ได้เปลี่ยนภาพรวมเลย แต่เป็นเรื่องใหม่ที่ต้องได้เด้ง
+            let needs = state.needsHuman
+            if needs && !s.raisedHand { attention += 1 }
+            s.raisedHand = needs
             sessions[id] = s
             live.append((s.project, state, s.lastActivity))
         }
@@ -360,7 +370,8 @@ public final class SessionStore {
                     kind: $0.kind
                 )
             },
-            cardOverflow: max(0, cards.count - 2)
+            cardOverflow: max(0, cards.count - 2),
+            attention: attention
         )
     }
 
