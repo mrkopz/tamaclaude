@@ -338,7 +338,13 @@ static void apply_pending(void)
         ct_pages_set_link(link, wifi, ip);
     }
     // กติกามาก่อนเนื้อหาเสมอ ทั้งบนสายและตรงนี้ — หน้าที่เพิ่งถูกปิดต้องไม่ถูกวาดอีกหนึ่งครั้ง
-    if (got_plan) ct_pages_set_plan(&plan);
+    if (got_plan) {
+        // พูดออกมาแบบเดียวกับ snapshot: ค่าตั้งที่ไม่มีอาการให้เห็นทันที (เช่นรอบหมุน)
+        // แยกไม่ออกจากค่าตั้งที่ไม่เคยมาถึง ถ้าไม่มีบรรทัดนี้
+        ESP_LOGI(TAG, "pages: %d in rotation, turn %d ms, hold %d ms, jump %d", plan.count,
+                 plan.rotation_ms, plan.hold_ms, plan.attention_jump);
+        ct_pages_set_plan(&plan);
+    }
     if (got_snapshot) {
         static bool had_alert = false;
         bool alert = has_alert(&snap);
