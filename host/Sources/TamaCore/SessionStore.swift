@@ -466,7 +466,8 @@ public final class SessionStore {
         }
         // ชื่อถูกตัดก่อน ประโยคได้ที่ที่เหลือทั้งหมด — ไม่ใช่ตัดทั้งบรรทัดรวดเดียว ซึ่งทำให้
         // ชื่อโปรเจกต์ยาวๆ ตัวเดียวกินบรรทัดจนไม่เหลือคำบอกว่าเกิดอะไรขึ้นเลย
-        let name = Text.fit(c.title, to: Text.Limit.cardName)
+        // · `head` ไม่ใช่ `fit`: ชื่อตรงนี้ชี้ไปที่ป้ายใต้มาสคอต ไม่ได้เป็นเนื้อหาของตัวเอง
+        let name = Text.head(c.title, to: Text.Limit.cardName)
         let said = Text.fit(c.body, to: Text.Limit.cardTitle, reserving: "\(name): ")
         return CardSnap(title: "\(name): \(said)", body: "", kind: c.kind)
     }

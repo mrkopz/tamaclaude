@@ -102,6 +102,22 @@ public enum Text {
         return clip(clean, to: ceiling - displayWidth(suffix))
     }
 
+    /// ส่วนหน้าของชื่อเท่าที่ใส่ได้ — **ไม่มี "..." ต่อท้าย** ต่างจาก `fit`
+    ///
+    /// มีไว้ทางเดียว: ชื่อโปรเจกต์ที่ไปนั่งเป็นคำนำหน้าบนบรรทัดของการ์ด ซึ่งไม่ใช่ *เนื้อหา*
+    /// แต่เป็นตัวชี้ไปที่ป้ายใต้มาสคอตที่อยู่เหนือมันขึ้นไปไม่ถึงร้อยพิกเซล · ผู้อ่านไม่ได้
+    /// ต้องการรู้ว่าชื่อถูกตัด เขารู้อยู่แล้วว่าชื่อเต็มอยู่บนป้าย เขาต้องการตัวอักษรมากพอ
+    /// จะจับคู่กับป้ายนั้น · "..." กิน 3 ช่องไปบอกสิ่งที่รู้อยู่แล้ว แล้วเอาช่องที่ควรเป็น
+    /// ตัวอักษรจริงไปทิ้ง — `an-extrem...` ชี้เป้าได้แย่กว่า `an-extremely` ล้วนๆ
+    ///
+    /// ห้ามใช้กับ *ประโยค*: ที่นั่นการตัดคือการหายไปของข้อมูล ซึ่งต้องเห็น
+    public static func head(_ s: String, to limit: Limit.Cells) -> String {
+        let clean = sanitize(s)
+        let thai = clean.unicodeScalars.contains { Thai.inBlock($0.value) }
+        let ceiling = thai ? limit.thai : limit.ascii
+        return Thai.clusters(clean).prefix(max(0, ceiling)).joined()
+    }
+
     /// ความยาวที่ตาเห็น หน่วยเป็นช่อง — ตัวเดียวกับที่ `clip` ใช้ตัดสิน
     public static func displayWidth(_ s: String) -> Int {
         Thai.displayWidth(s)

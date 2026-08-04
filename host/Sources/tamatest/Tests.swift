@@ -387,7 +387,8 @@ func runAllTests() {
                 message: "needs permission to write layout.h"), now: t0)
         long.apply(event("SessionStart", "b", cwd: "/tmp/web"), now: t0)
         let clipped = long.snapshot(now: t0).cards.first?.title ?? ""
-        expect(clipped.hasPrefix("an-extrem..."), "the name gives way first")
+        // ไม่มี "..." ท้ายชื่อ — 3 ช่องนั้นเป็นตัวอักษรจริงที่ใช้จับคู่กับป้ายได้ดีกว่า
+        expect(clipped.hasPrefix("an-extremely: "), "the name gives way first, letters intact")
         expect(clipped.contains("needs permissio"), "so the sentence still says something")
         equal(
             Text.displayWidth(clipped), Text.Limit.cardTitle.ascii,
