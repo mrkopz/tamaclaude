@@ -123,8 +123,9 @@ look at `out/`. It proves the *design*, not the C renderer.
 - **`tools/gen/*.py` ↔ `firmware/main/ct_*.c`** — deliberate parallel ports, file for file:
   `props.py`↔`ct_props.c`, `mascot.py`↔`ct_mascot.c`, `rects.py`↔`ct_rects.c`,
   `screen.py`↔`ct_ui.c`, `weather.py`↔`ct_weather_ui.c`, `crypto.py`↔`ct_crypto_ui.c`,
-  `stocks.py`↔`ct_stocks_ui.c`, `trend.py`↔`ct_trend.c`, `age.py`↔`ct_age.c`,
-  `sky.py` folds into `ct_ui.c`.
+  `stocks.py`↔`ct_stocks_ui.c`, `calendar.py`↔`ct_calendar_ui.c`,
+  `trend.py`↔`ct_trend.c`, `age.py`↔`ct_age.c`,
+  `mini.py`↔`ct_mini.c`, `sky.py` folds into `ct_ui.c`.
   `pages.py` is the odd one out: it feeds `export_layout.py`, which generates `ct_page_kind_t`. A visual change means editing both
   sides; the Python side is where you iterate, the C side is the port.
 - **Assets are rect lists**, `{x, y, w, h, color}` in mascot-relative *unit* coordinates —

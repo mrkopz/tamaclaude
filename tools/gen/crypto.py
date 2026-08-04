@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw
 
-from . import age, screen, trend
+from . import age, mini, screen, trend
 from .config import L, PAL
 from .render import draw_rects, quantize565
 
@@ -44,11 +44,17 @@ class Crypto:
     connected: bool = True
     # เคยได้ page frame ของหน้านี้แล้วหรือยัง (ADR-0002)
     has_frame: bool = True
+    # ท่าของมาสคอตจิ๋วมุมจอ — None = ไม่มี session เลย ซึ่งคือท่าหลับ
+    mascot_state: str | None = None
 
 
-def render(c: Crypto) -> Image.Image:
+def render(c: Crypto, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     img = Image.new("RGB", (L.screen.width, L.screen.height), quantize565(PAL.bg))
     draw = ImageDraw.Draw(img)
+
+    # มาสคอตอยู่แถบบนของทุกหน้า รวมหน้าที่ยังไม่เคยได้ข้อมูล — สถานะ session ไม่ได้ขึ้นกับ
+    # ว่าหน้านี้มีตัวเลขให้ดูหรือยัง
+    mini.draw_mini(draw, c.mascot_state, c.connected, phase, cycle)
 
     coins = c.coins[: L.crypto.rows] if c.has_frame else []
     if not coins:

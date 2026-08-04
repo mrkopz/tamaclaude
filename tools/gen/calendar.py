@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw
 
-from . import age, screen
+from . import age, mini, screen
 from .config import L, PAL
 from .render import quantize565
 
@@ -57,11 +57,17 @@ class Calendar:
     connected: bool = True
     # เคยได้ page frame ของหน้านี้แล้วหรือยัง (ADR-0002)
     has_frame: bool = True
+    # ท่าของมาสคอตจิ๋วมุมจอ — None = ไม่มี session เลย ซึ่งคือท่าหลับ
+    mascot_state: str | None = None
 
 
-def render(c: Calendar) -> Image.Image:
+def render(c: Calendar, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     img = Image.new("RGB", (L.screen.width, L.screen.height), quantize565(PAL.bg))
     draw = ImageDraw.Draw(img)
+
+    # มาสคอตอยู่แถบบนของทุกหน้า รวมสภาพที่ไม่มีนัดให้แสดง — สถานะ session ไม่ได้ขึ้นกับ
+    # ว่าหน้านี้อ่านปฏิทินได้หรือไม่
+    mini.draw_mini(draw, c.mascot_state, c.connected, phase, cycle)
 
     events = c.events[: L.calendar.rows] if c.has_frame and c.state == OK else []
     if not events:

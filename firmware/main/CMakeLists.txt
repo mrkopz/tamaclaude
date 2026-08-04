@@ -11,6 +11,7 @@ idf_component_register(
         "ct_fonts.c"
         "ct_ui.c"
         "ct_age.c"
+        "ct_mini.c"
         "ct_weather.c"
         "ct_weather_ui.c"
         "ct_crypto.c"

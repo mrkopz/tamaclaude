@@ -10,10 +10,9 @@ from dataclasses import dataclass
 
 from PIL import Image, ImageDraw
 
-from . import age, mascot, screen
+from . import age, mini, screen
 from .config import L, PAL
-from .props import BOX_X0, BOX_X1, BOX_Y1
-from .rects import Rect, RectList, scaled
+from .rects import Rect, RectList
 from .render import draw_rects, quantize565
 
 def bucket(code: int) -> str:
@@ -103,27 +102,6 @@ class Weather:
     mascot_state: str | None = None
 
 
-def _mini_mascot(draw: ImageDraw.ImageDraw, w: Weather, phase: float, cycle: int) -> None:
-    """rect list ชุดเดิมที่ย่อลง ไม่มีอาร์ตใหม่ ไม่มีท้องฟ้า ไม่มี prop ที่ต้องเว้นที่ให้
-
-    อายุขั้นต่ำของ pose ถูกบังคับที่ daemon อยู่แล้ว (Timings.minPose) ที่นี่จึงวาดสิ่งที่
-    snapshot บอกตรงๆ และได้กติกาเดียวกันมาฟรี
-    """
-    # ไม่มี Mac = ไม่มีมาสคอต ซึ่งต่างจากมาสคอตที่หลับ (= ไม่มี session)
-    if not w.connected:
-        return
-    px = L.slots.unit_px
-    scale = L.weather.mini_unit_px / px
-    rects = scaled(mascot.build_centered(w.mascot_state or "sleeping", phase, True, cycle),
-                   scale, scale)
-    # ปัดเป็นจำนวนเต็มแบบเดียวกับฝั่งบอร์ด (lv_obj_set_size กินพิกเซลเต็มเท่านั้น)
-    # ปล่อยให้ที่นี่เป็นทศนิยมแล้วมาสคอตจะเยื้องจากบนจอจริงหนึ่งพิกเซล
-    mini_w = int((BOX_X1 - BOX_X0) * L.weather.mini_unit_px) + 1
-    ox = L.screen.width - L.weather.mini_right - mini_w - BOX_X0 * scale * px
-    oy = L.weather.mini_bottom_y - BOX_Y1 * scale * px
-    draw_rects(draw, rects, px, ox, oy)
-
-
 def render(w: Weather, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     img = Image.new("RGB", (L.screen.width, L.screen.height), quantize565(PAL.bg))
     draw = ImageDraw.Draw(img)
@@ -131,7 +109,7 @@ def render(w: Weather, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     icon_x, icon_y = L.weather.icon_x, L.weather.icon_y
     draw_rects(draw, icon(w.code if w.has_frame else 3, w.has_frame and w.connected),
                L.weather.icon_px, icon_x, icon_y)
-    _mini_mascot(draw, w, phase, cycle)
+    mini.draw_mini(draw, w.mascot_state, w.connected, phase, cycle)
 
     if not w.has_frame:
         # ยังไม่เคยได้ข้อมูลของหน้านี้ ต้องมีหน้าตาของตัวเอง ห้ามเป็นจอเปล่า (ADR-0002)

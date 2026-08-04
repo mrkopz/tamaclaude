@@ -9,6 +9,7 @@
 #include "ct_crypto.h"
 #include "ct_crypto_ui.h"
 #include "ct_fonts.h"
+#include "ct_mini.h"
 #include "ct_stocks.h"
 #include "ct_stocks_ui.h"
 #include "ct_ui.h"
@@ -93,8 +94,12 @@ void ct_pages_init(void)
     ct_model_clear(&s_mascot);
     ct_ui_init(s_pages[CT_PAGE_MASCOT].root, &s_mascot);
 
+    // มาสคอตจิ๋วอ่าน pose จาก snapshot ใบเดียวกับหน้ามาสคอต และต้องผูกก่อนหน้าแรกจะ
+    // attach ผืนของมัน
+    ct_mini_init(&s_mascot);
+
     ct_weather_ui_init(s_pages[CT_PAGE_WEATHER].root, &s_weather,
-                       &s_pages[CT_PAGE_WEATHER].has_frame, &s_mascot);
+                       &s_pages[CT_PAGE_WEATHER].has_frame);
     ct_crypto_ui_init(s_pages[CT_PAGE_CRYPTO].root, &s_crypto,
                       &s_pages[CT_PAGE_CRYPTO].has_frame);
     ct_calendar_ui_init(s_pages[CT_PAGE_CALENDAR].root, &s_calendar,
@@ -197,6 +202,8 @@ int ct_pages_capability_json(char *out, int size)
 void ct_pages_set_connected(bool connected)
 {
     ct_ui_set_connected(connected);
+    // มาสคอตจิ๋วเป็นของทุกหน้า จึงถูกบอกครั้งเดียว ไม่ใช่หน้าละครั้ง
+    ct_mini_set_connected(connected);
     ct_weather_ui_set_connected(connected);
     ct_crypto_ui_set_connected(connected);
     ct_calendar_ui_set_connected(connected);
@@ -386,10 +393,11 @@ void ct_pages_tick(int elapsed_ms)
     }
 
     // อนิเมชันเดินเฉพาะหน้าที่แสดงอยู่ และเดินด้วยเวลาก้อนเดียวกับนาฬิกาข้างบน
+    // ทุกหน้าที่ไม่ใช่มาสคอตมีมาสคอตจิ๋วเหมือนกันหมด จึงเดินด้วยนาฬิกาเรือนเดียวที่ `ct_mini`
     if (s_active == CT_PAGE_MASCOT) {
         ct_ui_tick(elapsed_ms);
-    } else if (s_active == CT_PAGE_WEATHER) {
-        ct_weather_ui_tick(elapsed_ms);
+    } else {
+        ct_mini_tick(elapsed_ms);
     }
 
     // หน้าที่ผู้ใช้เลือกเองชนะรอบหมุนจนกว่าจะครบระยะยึด — คนที่ปัดมาดูหน้าหนึ่งกำลังอ่านมัน

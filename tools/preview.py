@@ -229,13 +229,14 @@ CRYPTO_SCENES: dict[str, crypto.Crypto] = {
         crypto.Coin("SOL", "172.05", 30),
         crypto.Coin("DOGE", "0.1423", -5),
         crypto.Coin("PEPE", "0.000008", 140),
-    ]),
+    ], mascot_state="writing"),
     # สามตัวต้องดูเหมือน watchlist สามตัว ไม่ใช่ห้าตัวที่หายไปสอง
+    # แถวเต็มความกว้างที่สุดของหน้านี้อยู่ใต้มาสคอตพอดี — ฉากนี้พิสูจน์ว่ามันไม่ทับกัน
     "short": crypto.Crypto(coins=[
         crypto.Coin("BTC", "64230", 0),
         crypto.Coin("ETH", "3125", -152),
         crypto.Coin("XRP", "2.41", 3),
-    ], age=8),
+    ], age=8, mascot_state="waiting"),
     # เก่าเกิน 10 เท่าของรอบดึง — ราคายังอ่านได้ แต่ต้องไม่มีใครเข้าใจว่ามันสด
     "stale": crypto.Crypto(coins=[
         crypto.Coin("BTC", "64230", -21),
@@ -261,7 +262,7 @@ STOCK_SCENES: dict[str, stocks.Stocks] = {
         stocks.Stock("NVDA", "1204.55", 30),
         stocks.Stock("TSLA", "177.02", -152),
         stocks.Stock("BRK.B", "412.10", 0),
-    ], age=25),
+    ], age=25, mascot_state="thinking"),
     # สองตัวต้องดูเหมือน watchlist สองตัว ไม่ใช่ห้าตัวที่หายไปสาม
     "short": stocks.Stocks(rows=[
         stocks.Stock("AAPL", "189.44", 3),
@@ -272,7 +273,7 @@ STOCK_SCENES: dict[str, stocks.Stocks] = {
         stocks.Stock("AAPL", "189.44", -21),
         stocks.Stock("MSFT", "412.90", 11),
         stocks.Stock("NVDA", "1204.55", 30),
-    ], age=11 * 3600, market_closed=True),
+    ], age=11 * 3600, market_closed=True, mascot_state="sleeping"),
     # เฟรมที่ถูกบีบจนต้องทิ้งคอลัมน์เปอร์เซ็นต์ — ราคายังครบ ทิศทางหายไปทั้งหน้า
     "no_pct": stocks.Stocks(rows=[
         stocks.Stock("AAPL", "189.44", None),
@@ -298,7 +299,7 @@ CALENDAR_SCENES: dict[str, calendar.Calendar] = {
         calendar.Appointment("Today", "14:00", "1:1 with Ann"),
         calendar.Appointment("Tomorrow", "all day", "กตัญญู ฝั่งโน้น ฐู ฟ้า ปี"),
         calendar.Appointment("Fri", "08:15", "Flight BKK -> CNX"),
-    ], age=95),
+    ], age=95, mascot_state="alert"),
     # นัดเดียวต้องดูเหมือนนัดเดียว ไม่ใช่สี่นัดที่หายไปสาม
     "one": calendar.Calendar(events=[
         calendar.Appointment("Tomorrow", "10:00", "หมอฟัน"),
@@ -310,7 +311,8 @@ CALENDAR_SCENES: dict[str, calendar.Calendar] = {
     # สัปดาห์ที่ว่างจริงๆ — ต้องบอกว่าไม่มีนัด ไม่ใช่หน้าว่าง
     "empty": calendar.Calendar(state=calendar.EMPTY, age=60),
     # ถูกปฏิเสธสิทธิ์ TCC ไปแล้ว — ทางแก้อยู่ที่ System Settings เท่านั้น
-    "denied": calendar.Calendar(state=calendar.NEEDS_ACCESS, age=20),
+    # สิทธิ์ปฏิทินไม่เกี่ยวกับสถานะ session — มาสคอตยังต้องอยู่บนหน้าที่บอกว่าอ่านไม่ได้
+    "denied": calendar.Calendar(state=calendar.NEEDS_ACCESS, age=20, mascot_state="writing"),
     # ยังไม่เคยถูกถามเลย — ก้าวถัดไปคือปุ่มในแอป ไม่ใช่ System Settings ที่ยังไม่มีแถวให้กด
     "unasked": calendar.Calendar(state=calendar.NOT_ASKED, age=20),
     # ได้สิทธิ์แล้วแต่ยังไม่ได้ติ๊กปฏิทินสักใบ (จอนี้วางให้คนอื่นเห็นได้)
@@ -390,29 +392,46 @@ def main() -> None:
                        append_images=frames[1:], duration=90, loop=0)
     print(f"weather_*.png/gif     {len(WEATHER_SCENES)} ฉาก  (320x240)")
 
+    # GIF ของหน้าที่เรียงเป็นแถวมีไว้ดูมาสคอตจิ๋วอย่างเดียว — แถวเองไม่ขยับ แต่ท่าที่
+    # กระโดดออกนอกกรอบจะไปทับแถวแรก ซึ่งเป็นสิ่งเดียวบนหน้านี้ที่ภาพนิ่งพิสูจน์ไม่ได้
     for name, c in CRYPTO_SCENES.items():
-        img = crypto.render(c)
+        img = crypto.render(c, 0.25)
         img.save(OUT / f"crypto_{name}.png")
         big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
         big.save(OUT / f"crypto_{name}@{args.scale}x.png")
-    # ไม่มี GIF: หน้านี้ไม่มีอะไรขยับเลย (ไม่มีมาสคอตจิ๋ว) นอกจากบรรทัดอายุที่เดินทีละวินาที
-    print(f"crypto_*.png          {len(CRYPTO_SCENES)} ฉาก  (320x240)")
+        frames = [
+            crypto.render(c, (f % FRAMES) / FRAMES, f // FRAMES)
+            for f in range(FRAMES * LOOPS)
+        ]
+        frames[0].save(OUT / f"crypto_{name}.gif", save_all=True,
+                       append_images=frames[1:], duration=90, loop=0)
+    print(f"crypto_*.png/gif      {len(CRYPTO_SCENES)} ฉาก  (320x240)")
 
     for name, s_ in STOCK_SCENES.items():
-        img = stocks.render(s_)
+        img = stocks.render(s_, 0.25)
         img.save(OUT / f"stocks_{name}.png")
         big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
         big.save(OUT / f"stocks_{name}@{args.scale}x.png")
-    # ไม่มี GIF ด้วยเหตุผลเดียวกับหน้าคริปโต — ไม่มีอะไรบนหน้านี้ขยับนอกจากบรรทัดอายุ
-    print(f"stocks_*.png          {len(STOCK_SCENES)} ฉาก  (320x240)")
+        frames = [
+            stocks.render(s_, (f % FRAMES) / FRAMES, f // FRAMES)
+            for f in range(FRAMES * LOOPS)
+        ]
+        frames[0].save(OUT / f"stocks_{name}.gif", save_all=True,
+                       append_images=frames[1:], duration=90, loop=0)
+    print(f"stocks_*.png/gif      {len(STOCK_SCENES)} ฉาก  (320x240)")
 
     for name, c in CALENDAR_SCENES.items():
-        img = calendar.render(c)
+        img = calendar.render(c, 0.25)
         img.save(OUT / f"calendar_{name}.png")
         big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
         big.save(OUT / f"calendar_{name}@{args.scale}x.png")
-    # ไม่มี GIF ด้วยเหตุผลเดียวกับหน้าคริปโต — ไม่มีอะไรบนหน้านี้ขยับนอกจากบรรทัดอายุ
-    print(f"calendar_*.png        {len(CALENDAR_SCENES)} ฉาก  (320x240)")
+        frames = [
+            calendar.render(c, (f % FRAMES) / FRAMES, f // FRAMES)
+            for f in range(FRAMES * LOOPS)
+        ]
+        frames[0].save(OUT / f"calendar_{name}.gif", save_all=True,
+                       append_images=frames[1:], duration=90, loop=0)
+    print(f"calendar_*.png/gif    {len(CALENDAR_SCENES)} ฉาก  (320x240)")
 
     for name, clock in SKY_CLOCKS.items():
         sc = sky_scene(clock)

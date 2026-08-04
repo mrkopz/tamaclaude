@@ -3,6 +3,7 @@
 #include "ct_age.h"
 #include "ct_color.h"
 #include "ct_fonts.h"
+#include "ct_mini.h"
 #include "layout.h"
 
 static const ct_calendar_t *s_frame;
@@ -83,6 +84,8 @@ void ct_calendar_ui_init(lv_obj_t *parent, const ct_calendar_t *frame, const boo
         // ตาข่ายรับ ไม่ใช่ตัวตัดหลัก ฟอนต์ที่กว้างกว่าที่วัดไว้ต้องไม่ล้นไปทับแถวอื่น
         lv_label_set_long_mode(row->title, LV_LABEL_LONG_DOT);
     }
+
+    ct_mini_attach(parent);
 
     s_age = ct_age_label(parent);
     s_empty = label(parent, ct_font_text_14(), CT_COL_TEXT, CT_CALENDAR_TIME_X,

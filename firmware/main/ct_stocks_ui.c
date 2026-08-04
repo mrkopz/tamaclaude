@@ -3,6 +3,7 @@
 #include "ct_age.h"
 #include "ct_color.h"
 #include "ct_fonts.h"
+#include "ct_mini.h"
 #include "ct_paint.h"
 #include "ct_rects.h"
 #include "ct_trend.h"
@@ -94,6 +95,8 @@ void ct_stocks_ui_init(lv_obj_t *parent, const ct_stocks_t *frame, const bool *h
         lv_obj_add_event_cb(row->arrow, arrow_draw_cb, LV_EVENT_DRAW_MAIN,
                             (void *)(intptr_t)i);
     }
+
+    ct_mini_attach(parent);
 
     s_age = ct_age_label(parent);
     s_empty = label(parent, ct_font_text_14(), CT_COL_TEXT, CT_STOCKS_SYM_X, CT_STOCKS_EMPTY_Y);

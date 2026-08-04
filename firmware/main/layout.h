@@ -99,6 +99,9 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_PAGE_AGE_X                12
 #define CT_PAGE_AGE_Y                214
 #define CT_PAGE_STALE_FACTOR         10
+#define CT_PAGE_MINI_UNIT_PX         1.5f
+#define CT_PAGE_MINI_RIGHT           10
+#define CT_PAGE_MINI_BOTTOM_Y        29
 
 #define CT_WEATHER_PLACE_X           12
 #define CT_WEATHER_PLACE_Y           30
@@ -115,9 +118,6 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_WEATHER_EMPTY_Y           80
 #define CT_WEATHER_EMPTY_SUB_Y       104
 #define CT_WEATHER_REFRESH_S         900
-#define CT_WEATHER_MINI_UNIT_PX      1.5f
-#define CT_WEATHER_MINI_RIGHT        10
-#define CT_WEATHER_MINI_BOTTOM_Y     44
 
 #define CT_CRYPTO_ROWS               5
 #define CT_CRYPTO_ROW_Y              30

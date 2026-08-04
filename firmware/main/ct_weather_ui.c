@@ -3,17 +3,13 @@
 #include "ct_age.h"
 #include "ct_color.h"
 #include "ct_fonts.h"
-#include "ct_mascot.h"
+#include "ct_mini.h"
 #include "ct_paint.h"
 #include "ct_rects.h"
 #include "layout.h"
 
-// หนึ่งลูปอนิเมชันยาวเท่าไร (ms) — ค่าเดียวกับหน้ามาสคอต
-#define LOOP_MS 1000
-
 static const ct_weather_t *s_frame;
 static const bool *s_has_frame;
-static const ct_snapshot_t *s_mascot;
 static bool s_connected;
 
 static lv_obj_t *s_place;
@@ -23,10 +19,6 @@ static lv_obj_t *s_age;
 static lv_obj_t *s_empty;      // บรรทัดของสภาพ "ยังไม่เคยได้ข้อมูล"
 static lv_obj_t *s_empty_sub;
 static lv_obj_t *s_icon;   // ผืนวาดสัญลักษณ์อากาศ
-static lv_obj_t *s_mini;   // ผืนวาดมาสคอตจิ๋ว
-
-static float s_phase;
-static int s_cycle;
 
 static void paint_connected(void);
 
@@ -129,37 +121,6 @@ static void icon_draw_cb(lv_event_t *e)
     ct_paint_rects(layer, &rects, coords.x1, coords.y1, CT_WEATHER_ICON_PX);
 }
 
-// --- มาสคอตจิ๋ว ----------------------------------------------------------------
-// rect list ชุดเดิมที่ย่อลงผ่าน ct_rects_scale_from() ไม่มีอาร์ตใหม่ ไม่มีท้องฟ้า
-// ไม่มี prop ที่ต้องเว้นที่ให้
-//
-// ท่าของแต่ละ session ถูกหน่วงด้วย Timings.minPose ที่ daemon มาแล้ว ที่นี่จึงไม่หน่วงซ้ำ
-// สิ่งที่กระโดดได้ทันทีคือตอน session *คนละตัว* ขึ้นมาเป็นตัวนำ ซึ่งเป็นข้อยกเว้นเดียวกับ
-// ที่ daemon มีอยู่แล้ว (priority สูงกว่าแทรกได้ทันที) — การรออนุญาตที่รอห้าวินาทีก่อน
-// จะขึ้นจอคือการเตือนที่มาช้าโดยไม่มีเหตุผล
-static void mini_draw_cb(lv_event_t *e)
-{
-    // ไม่มี Mac = ไม่มีมาสคอต ซึ่งต่างจากมาสคอตที่หลับ (= ไม่มี session)
-    // สองสถานะนี้ต้องแยกออกจากกัน ไม่งั้นจอเงียบสองแบบดูเหมือนกัน
-    if (!s_connected) return;
-
-    lv_obj_t *obj = lv_event_get_target_obj(e);
-    lv_layer_t *layer = lv_event_get_layer(e);
-    lv_area_t coords;
-    lv_obj_get_coords(obj, &coords);
-
-    ct_rects_t rects;
-    ct_mascot_build_centered(&rects, ct_model_lead_state(s_mascot), s_phase, true, s_cycle);
-    const float scale = CT_WEATHER_MINI_UNIT_PX / CT_SLOTS_UNIT_PX;
-    ct_rects_scale_from(&rects, 0, scale, scale, 0.0f, 0.0f);
-
-    // ฝ่าเท้าเกาะขอบล่างของผืน ไม่ใช่ขอบบน — ตัวที่กระโดดต้องกระโดดขึ้น
-    float px = CT_SLOTS_UNIT_PX;
-    float oy = coords.y2 + 1 - CT_BOX_Y1 * scale * px;
-    float ox = coords.x1 - CT_BOX_X0 * scale * px;
-    ct_paint_rects(layer, &rects, ox, oy, px);
-}
-
 // --- ตัวช่วยสร้าง widget --------------------------------------------------------
 static lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font, uint16_t color, int x, int y)
 {
@@ -171,12 +132,10 @@ static lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font, uint16_t color, 
     return l;
 }
 
-void ct_weather_ui_init(lv_obj_t *parent, const ct_weather_t *frame, const bool *has_frame,
-                        const ct_snapshot_t *mascot)
+void ct_weather_ui_init(lv_obj_t *parent, const ct_weather_t *frame, const bool *has_frame)
 {
     s_frame = frame;
     s_has_frame = has_frame;
-    s_mascot = mascot;
 
     s_place = label(parent, ct_font_text_14(), CT_COL_TEXT, CT_WEATHER_PLACE_X,
                     CT_WEATHER_PLACE_Y);
@@ -207,15 +166,7 @@ void ct_weather_ui_init(lv_obj_t *parent, const ct_weather_t *frame, const bool 
     lv_obj_remove_flag(s_icon, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(s_icon, icon_draw_cb, LV_EVENT_DRAW_MAIN, NULL);
 
-    int mini_w = (int)((CT_BOX_X1 - CT_BOX_X0) * CT_WEATHER_MINI_UNIT_PX) + 1;
-    int mini_h = (int)((CT_BOX_Y1 - CT_BOX_Y0) * CT_WEATHER_MINI_UNIT_PX) + 1;
-    s_mini = lv_obj_create(parent);
-    lv_obj_remove_style_all(s_mini);
-    lv_obj_set_size(s_mini, mini_w, mini_h);
-    lv_obj_set_pos(s_mini, CT_SCREEN_WIDTH - CT_WEATHER_MINI_RIGHT - mini_w,
-                   CT_WEATHER_MINI_BOTTOM_Y - mini_h);
-    lv_obj_remove_flag(s_mini, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_event_cb(s_mini, mini_draw_cb, LV_EVENT_DRAW_MAIN, NULL);
+    ct_mini_attach(parent);
 
     paint_connected();
     ct_weather_ui_redraw();
@@ -272,15 +223,4 @@ void ct_weather_ui_set_connected(bool connected)
     s_connected = connected;
     paint_connected();
     lv_obj_invalidate(s_icon);
-    lv_obj_invalidate(s_mini);
-}
-
-void ct_weather_ui_tick(int elapsed_ms)
-{
-    s_phase += (float)elapsed_ms / (float)LOOP_MS;
-    while (s_phase >= 1.0f) {
-        s_phase -= 1.0f;
-        s_cycle++;
-    }
-    lv_obj_invalidate(s_mini);
 }
