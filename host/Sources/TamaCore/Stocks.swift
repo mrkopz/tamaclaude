@@ -233,7 +233,7 @@ public enum MarketHours {
 /// ทุกอย่างที่นี่เป็นฟังก์ชันบริสุทธิ์ที่รับ bytes — เทสต์ป้อน fixture เข้าไปได้ตรงๆ
 /// และไม่มีบรรทัดไหนใน `swift run tamatest` ที่แตะเครือข่ายจริง
 public enum StocksSource {
-    /// รอบดึงของหน้าหุ้น — 60 วินาที *เฉพาะตอนตลาดเปิด* (DESIGN.md "หลายหน้าบนจอเดียว")
+    /// รอบดึงของหน้าหุ้น — 60 วินาที *เฉพาะตอนตลาดเปิด*
     public static let interval: TimeInterval = 60
 
     /// key เดินทางเป็น query parameter เพราะนั่นคือสิ่งที่ Finnhub รับ — URL ก้อนนี้จึง

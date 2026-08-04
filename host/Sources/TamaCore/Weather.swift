@@ -168,7 +168,7 @@ public enum WeatherError: Error, Equatable, Sendable {
 /// ทุกอย่างที่นี่เป็นฟังก์ชันบริสุทธิ์ที่รับ bytes — เทสต์ป้อน fixture เข้าไปได้ตรงๆ
 /// และไม่มีบรรทัดไหนใน `swift run tamatest` ที่แตะเครือข่ายจริง
 public enum WeatherSource {
-    /// รอบดึงของหน้าอากาศ — 15 นาที (DESIGN.md "หลายหน้าบนจอเดียว")
+    /// รอบดึงของหน้าอากาศ — 15 นาที
     /// อากาศเปลี่ยนช้ากว่านั้นมาก และบริการนี้ให้ใช้ฟรีบนพื้นฐานว่าไม่ยิงถี่
     public static let interval: TimeInterval = 15 * 60
 

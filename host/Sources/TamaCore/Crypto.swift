@@ -174,7 +174,7 @@ public enum CryptoError: Error, Equatable, Sendable {
 /// ทุกอย่างที่นี่เป็นฟังก์ชันบริสุทธิ์ที่รับ bytes — เทสต์ป้อน fixture เข้าไปได้ตรงๆ
 /// และไม่มีบรรทัดไหนใน `swift run tamatest` ที่แตะเครือข่ายจริง
 public enum CryptoSource {
-    /// รอบดึงของหน้าคริปโต — 60 วินาที ตลอดเวลา (DESIGN.md "หลายหน้าบนจอเดียว")
+    /// รอบดึงของหน้าคริปโต — 60 วินาที ตลอดเวลา
     /// ตลาดคริปโตไม่มีเวลาปิด จึงไม่มีหน้าต่างเวลาทำการให้หยุดยิงเหมือนหน้าหุ้น
     public static let interval: TimeInterval = 60
 

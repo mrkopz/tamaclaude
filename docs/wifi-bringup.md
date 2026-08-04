@@ -74,7 +74,7 @@ cd host && ./Scripts/make-app.sh --install     # Bluetooth ใช้ได้เ
 ## ที่ที่มักพังก่อนใคร
 
 - **ลิงก์ไม่ผ่านตอนบิลด์** (`iram0_0_seg overflowed`) — สวิตช์ IRAM ใน `sdkconfig.defaults`
-  หายไป ดู DESIGN.md หัวข้อ "WiFi"
+  หายไป ดู `ct_wifi.c` และ `WiFiProvisioning.swift`
 - **สปินเนอร์หมุนค้าง** — notification หายเพราะไม่ได้ subscribe (`s_event_subscribed`)
   หรือยิงรัวเกินจน NimBLE ทิ้ง ดูหน่วง 20 ms ใน `emit_scan_results`
 - **`heap_caps_malloc` คืน NULL ตอนบูต** — WiFi กินก้อนใหญ่ก่อน LVGL ได้บัฟเฟอร์ DMA

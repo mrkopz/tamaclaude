@@ -10,13 +10,28 @@ user swipes between or lets rotate on their own.
 Hardware: ESP32-2432S028R ("Cheap Yellow Display"), ILI9341 320x240 landscape, XPT2046 touch
 (horizontal swipes only), BLE first with a sealed LAN path behind it.
 
-`DESIGN.md` (Thai) records the **current** design and the reasons that are not visible from
-the code — not a changelog. **Read the relevant section before changing visuals, protocol,
-or layout.** Write to it only when a previous decision is *reversed*, or when you hit a
-constraint the code cannot state on its own (a measured hardware value, a framework quirk, a
-rule that must hold in two places at once). Ordinary fixes need no entry — git history is
-the log. When an entry stops being true, rewrite it in place; do not append the correction
-below it.
+## Where a reason goes
+
+Every "why" has exactly **one** home. Walk this in order and stop at the first match — there
+is no fifth bucket, and a reason that fits none of them is a reason nobody needed written down:
+
+1. **Can it sit beside the code it governs?** → a Thai comment there. If it can, it **must** —
+   and it must **not** be restated in any document. A document that retells the code is a copy
+   that ages without anyone noticing. This is where nearly everything lands: a colour, a rect,
+   a threshold, a framework quirk, a rejected alternative.
+2. **Must it hold in two files at once that cannot reference each other at runtime?** → the
+   invariants list below, plus a comment on each side naming its counterpart
+   (`gen/calendar.py` ↔ `ct_calendar_ui.c` show the shape).
+3. **Is it a decision that is hard to undo, with alternatives worth recording?** → a new
+   `docs/adr/`. ADRs are dated records, not live rules: never edit one when the world changes,
+   write the next one and say which it reverses.
+4. **Is it a term?** → `CONTEXT.md`. **A value measured off the real board?** →
+   `docs/hardware.md`.
+
+**Read the code you are about to change** — the reasons are in it, at the density the
+surrounding file already uses. Ordinary fixes need no entry anywhere; git history is the log.
+`DESIGN.md` was retired for failing all of this: it had no definition, so it only ever grew.
+Do not recreate it under any name.
 
 ## Data flow
 
@@ -41,7 +56,7 @@ menu bar timer --> tamaclaude --usage-poll --> claude.ai --'                |
 The quota panel has **two** sources, not one. The statusline pipe needs no credential but is
 event-driven, so it goes quiet exactly when the desk display is left alone; the poll pipe uses
 the user's `sessionKey` and keeps the number moving with Claude Code closed. Neither replaces
-the other and they are separate switches — see the reversal note in `DESIGN.md`.
+the other and they are separate switches: setting a key never uninstalls the statusline.
 
 The daemon owns every decision about *content*: it knows the two fixed enums the firmware
 draws (`VisualState`, `PageKind`) and sends one frame per page. What the board owns is
@@ -89,7 +104,7 @@ idf.py -p /dev/cu.usbserial-XX flash monitor
 ```
 
 `firmware/probe/` is a separate throwaway IDF project that interrogates the real panel
-(MADCTL, colour order, inversion). Its findings are recorded in `DESIGN.md`; the firmware
+(MADCTL, colour order, inversion). Its findings are recorded in `docs/hardware.md`; the firmware
 uses those constants, not a chip model number.
 
 ### Graphics / preview (Python + Pillow)
@@ -133,7 +148,8 @@ look at `out/`. It proves the *design*, not the C renderer.
   no bitmaps, no sprite pipeline. The preview and the board both come from `gen/mascot.py`.
   The **app icon is half an exception** — `.icns` carries per-size art, so ≥128 px is a
   hand-drawn PNG (`docs/images/tamaclaude-logo.png`) and ≤64 px is drawn from the same rect
-  list. See the reversal note in `DESIGN.md`.
+  list — a rect list can only draw a flat silhouette, which is right for a 320x240 panel and
+  wrong beside Dock icons that carry material and light. See `tools/make_icon.py`.
 
 ### Host layout (`host/Sources/`)
 
@@ -215,9 +231,8 @@ look at `out/`. It proves the *design*, not the C renderer.
   `tools/gen/pages.py`. The raw values travel on the wire, so reordering one side silently
   changes what every frame means. `tamatest` reads the real header to check.
 - **One frame per page, and each must fit `Wire.maxPayload` alone** (ADR-0003). A frame is a
-  mascot `Snapshot` exactly when it has **no** `g` key — that is what keeps old firmware
-  working. `{"g":N,"x":1}` retires a page the user turned off; simply not sending it leaves
-  yesterday's figures rotating on the board forever (ADR-0002).
+  mascot `Snapshot` exactly when it has **no** `g` key; a frame with `pl` is page settings.
+  `{"g":N,"x":1}` retires a page the user turned off — not sending it is not enough (ADR-0002).
 - **The screen jumps back to the mascot on an event *id*, not on a state.** `Snapshot.attention`
   (`"a"`) counts sessions *entering* a needs-human state; the board jumps only when that number
   goes up. Deciding from the state itself yanks the screen back every snapshot for as long as a
@@ -248,9 +263,8 @@ event    ...0004   board -> host: Wi-Fi scan results and link status (`BoardEven
 When BLE has been quiet for 10 s the daemon opens a TCP connection to the board on
 port 7333 and sends the same snapshot, sealed with AES-256-GCM under a key it pushed
 over the config characteristic. The board finds nothing on its own and **never talks to
-claude.ai** — the `sessionKey` stays on the Mac. Details and the reasons are in
-`DESIGN.md` under "WiFi ▸ ทางเดินที่สอง"; the frame layout must match `ct_lan.c` byte
-for byte.
+claude.ai** — the `sessionKey` stays on the Mac. The reasons are in `LanFrame.swift`,
+`LanTransport.swift` and `ct_lan.c`; the frame layout must match `ct_lan.c` byte for byte.
 
 ```
 [4B len BE][12B nonce][ciphertext][16B tag]     nonce = 4 zero bytes + 8B BE counter

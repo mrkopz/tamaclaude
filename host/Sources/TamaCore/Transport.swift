@@ -1,7 +1,7 @@
 import Foundation
 
 /// ทางออกของ snapshot — v1 มี BLE เป็นตัวจริง และ stdout ไว้ใช้ตอนพัฒนา
-/// แยกเป็น protocol ตั้งแต่ต้นเพราะข้อตกลงว่าจะเติม WiFi ทีหลังได้ (DESIGN.md)
+/// แยกเป็น protocol ตั้งแต่ต้นเพราะข้อตกลงว่าจะเติม WiFi ทีหลังได้
 public protocol Transport: AnyObject {
     var name: String { get }
     var isConnected: Bool { get }

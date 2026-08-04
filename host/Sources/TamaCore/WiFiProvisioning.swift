@@ -7,7 +7,7 @@ import Foundation
 /// (`...0004`) เป็น JSON บรรทัดเดียวต่อหนึ่ง notification
 ///
 /// **บอร์ดไม่เคยได้ `sessionKey`** — WiFi มีไว้ให้บอร์ดคุยกับ Mac ผ่าน LAN เมื่อ BLE
-/// ไกลเกินไป ไม่ใช่ให้บอร์ดยิง claude.ai เอง (DESIGN.md)
+/// ไกลเกินไป ไม่ใช่ให้บอร์ดยิง claude.ai เอง
 public enum WiFiCommand: Equatable, Sendable {
     /// สแกนแล้วรายงานผลกลับมาทีละตัว
     case scan

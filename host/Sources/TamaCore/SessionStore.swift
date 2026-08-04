@@ -2,7 +2,7 @@ import Foundation
 
 /// ค่าเวลาทั้งหมดของตรรกะสถานะ รวมไว้ที่เดียวเพื่อให้เทสต์ตั้งค่าได้
 public struct Timings: Sendable {
-    /// Stop แล้วเงียบเกินเท่านี้ = ถือว่าต้องเตือนผู้ใช้ (เกณฑ์ใน DESIGN.md)
+    /// Stop แล้วเงียบเกินเท่านี้ = ถือว่าต้องเตือนผู้ใช้
     public var stopAlert: TimeInterval = 45
     /// ท่าดีใจหลังงานจบ ก่อนกลับไป idle — อย่าตั้งต่ำกว่า `minPose` เพราะ minPose จะยืดให้เองอยู่ดี
     public var celebrate: TimeInterval = 5
@@ -376,7 +376,7 @@ public final class SessionStore {
         }
 
         // เลือกตัวที่ได้ slot ตามความสำคัญ แต่ *วาด* ตามลำดับเกิดเสมอ
-        // สิ่งที่ต้องนิ่งคือลำดับซ้าย->ขวา ไม่ใช่พิกัด (DESIGN.md)
+        // สิ่งที่ต้องนิ่งคือลำดับซ้าย->ขวา ไม่ใช่พิกัด
         let chosen: [SlotGroup]
         if groups.count <= slotCount {
             chosen = groups

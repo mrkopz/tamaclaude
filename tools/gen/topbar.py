@@ -72,7 +72,7 @@ def draw(draw_: ImageDraw.ImageDraw, bar: Bar, *, page: str, connected: bool,
 
     ชื่อหน้าอยู่ตรงที่เดิมกับที่เคยเป็นชื่ออุปกรณ์/IP: ผู้ใช้ที่เห็นจอหมุนเองต้องรู้ว่ากำลังดู
     อะไรอยู่โดยไม่ต้องตีความจากเนื้อหา ส่วน IP ย้ายไปอยู่ที่หน้าตั้งค่าบน Mac ที่เดียว
-    (ดูหมายเหตุที่กลับคำใน DESIGN.md) — มันมีค่าตอน setup ซึ่งคือตอนที่นั่งอยู่หน้า Mac พอดี
+    — มันมีค่าตอน setup ซึ่งคือตอนที่นั่งอยู่หน้า Mac พอดี
     """
     h = L.topbar.height
     draw_.rectangle([0, 0, L.screen.width - 1, h - 1], fill=quantize565(PAL.bg_slot))

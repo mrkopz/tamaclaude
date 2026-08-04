@@ -28,7 +28,7 @@ public enum PanelText {
     ///
     /// ไม่มี scheme เพราะ `https://` ไม่ได้บอกอะไรที่ปลายทางอื่นไม่มีเหมือนกัน — ส่วนที่
     /// ต่างกันคือส่วนที่เหลือ · อยู่ใน `PanelText` แม้จะเป็นรายการในเมนู เพราะเมนูเฟือง
-    /// เป็นส่วนหนึ่งของแผง (ดู `DESIGN.md`: ของที่ต้องมองอยู่บนแผง ของที่ต้องกดอยู่หลังเฟือง)
+    /// เป็นส่วนหนึ่งของแผง — ของที่ต้อง *มอง* อยู่บนแผง ของที่ต้อง *กด* อยู่หลังเฟือง
     public static let projectLink = "github.com/thaitop/tamaclaude"
 
     public static var projectURL: URL? { URL(string: "https://" + projectLink) }
