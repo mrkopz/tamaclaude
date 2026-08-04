@@ -1,4 +1,4 @@
-# factory app ก้อนเดียว ไม่มี OTA ใน v1 (DESIGN.md) — app จึงได้พื้นที่ ~3MB
+# factory app ก้อนเดียว ไม่มี OTA ใน v1 — app จึงได้พื้นที่ ~3MB (มี OTA จะเหลือ slot ละ ~1.7MB)
 # ถ้าใส่ OTA จะเหลือ slot ละ ~1.7MB ซึ่งไม่คุ้มเพราะแฟลชผ่าน USB อยู่แล้ว
 # Name,   Type, SubType, Offset,   Size
 nvs,      data, nvs,     0x9000,   24K

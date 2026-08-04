@@ -8,5 +8,5 @@ __pycache__/
 *.pyc
 .claude
 # snapshot ของรอบ review — งอกไฟล์ลงวันที่ทุกครั้งที่รัน และสิ่งที่ได้จากมันถูกย้ายไป
-# อยู่ใน DESIGN.md กับ git log แล้ว
+# อยู่ในคอมเมนต์ข้างโค้ดกับ git log แล้ว
 .impeccable/
