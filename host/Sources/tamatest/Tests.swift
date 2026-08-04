@@ -288,8 +288,10 @@ func runAllTests() {
             s2.apply(event("SessionStart", "s\(i)", cwd: "/tmp/p\(i)"), now: t0)
         }
         s2.apply(event("Notification", "s1", cwd: "/tmp/p1", message: "hey"), now: t0 + 1)
+        // บรรทัดไหนแบกประโยคเป็นเรื่องของ `card(from:onScreen:)` ซึ่งมี suite ของตัวเอง —
+        // ที่นี่ถามแค่ว่าประโยคเดินทางมาถึงจอไหม
         expect(
-            s2.snapshot(now: t0 + 1).cards.contains { $0.title == "hey" },
+            s2.snapshot(now: t0 + 1).cards.contains { $0.title == "hey" || $0.body == "hey" },
             "an alert from an overflowed session still reaches the user")
     }
 
@@ -359,6 +361,19 @@ func runAllTests() {
         expect(!snap.sessions.contains { $0.project == "asker" }, "asker lost its slot")
         equal(snap.cards.first?.title, "asker", "so the card says who is asking")
         equal(snap.cards.first?.body, "may I?", "with the sentence back on the second line")
+
+        // สองโปรเจกต์ยืนอยู่พร้อมกัน = ชื่อไม่ใช่ของซ้ำอีกต่อไป มันคือตัวชี้เป้าตัวเดียวที่มี
+        // ลำดับการ์ดเรียงตามใหม่สุด ไม่ใช่ตามลำดับ slot และท่า `alert`/`done` เป็น waiting
+        // ทั้งคู่ — ตัดชื่อทิ้งตอนนี้แล้วไม่มีอะไรบอกได้ว่าใบไหนของใคร
+        let two = store()
+        two.apply(event("Notification", "a", cwd: "/tmp/api", message: "may I push?"), now: t0)
+        two.apply(event("Notification", "b", cwd: "/tmp/web", message: "may I pull?"), now: t0 + 1)
+        let both = two.snapshot(now: t0 + 1)
+        equal(both.sessions.map(\.project), ["api", "web"], "both are standing there")
+        equal(both.cards.map(\.title), ["web", "api"], "so both cards keep their name")
+        equal(
+            both.cards.map(\.body), ["may I pull?", "may I push?"],
+            "and the sentence goes back to the second line")
     }
 
     suite("a thai project name survives the label") {
