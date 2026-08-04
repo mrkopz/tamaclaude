@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "host/ble_hs.h"
 #include "host/util/util.h"
 // ประกาศเอง: `store/config/ble_store_config.h` ไม่มีบรรทัดนี้ แม้ตัวฟังก์ชันจะอยู่ใน
@@ -40,7 +41,10 @@ static uint16_t s_conn_handle = BLE_HS_CONN_HANDLE_NONE;
 // ทุกครั้ง ซึ่งจะกลบ log จริงตอนสแกน WiFi ที่ยิงยี่สิบข้อความรวด
 static bool s_event_subscribed;
 
+static esp_timer_handle_t s_adv_retry;
+
 static void advertise(void);
+static void adv_retry(void *arg);
 
 static int chr_access(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
                       void *arg)
@@ -130,14 +134,19 @@ static int gap_event(struct ble_gap_event *event, void *arg)
 
         case BLE_GAP_EVENT_SUBSCRIBE:
             if (event->subscribe.attr_handle == s_event_handle) {
-                bool was = s_event_subscribed;
                 s_event_subscribed = event->subscribe.cur_notify;
                 // เครื่องที่จับคู่ไว้แล้วไม่ได้เขียน CCCD ใหม่ — NimBLE คืนค่าจาก bond store
                 // ให้เอง (reason=RESTORE) และส่ง event ใบนี้มา *ก่อน* BLE_GAP_EVENT_CONNECT
                 // ราวร้อยมิลลิวินาที ถ้ารอ handle จากใบนั้น notify ใบแรกจะตกที่ guard ของ
                 // ct_ble_notify เงียบๆ ซึ่งแปลว่า Mac ไม่เคยได้ยินรายการหน้าเลยหลังจับคู่ครั้งแรก
                 if (s_event_subscribed) s_conn_handle = event->subscribe.conn_handle;
-                if (!was && s_event_subscribed && s_cbs.on_ready) s_cbs.on_ready();
+                // ประกาศ *ทุกใบ* ที่บอกว่ามีคนฟังอยู่ ไม่ใช่เฉพาะขอบขาขึ้น: ใบ RESTORE มาถึง
+                // ตอน Mac ยังไม่ได้ discover characteristic ด้วยซ้ำ คำประกาศใบนั้นจึงหายไปกับ
+                // ลม แล้วใบที่ Mac เขียน CCCD เองทีหลังจะถูกกันด้วยขอบที่ RESTORE ใช้ไปแล้ว
+                // ผลคือเครื่องที่เคยจับคู่ไม่เคยได้ยินรายการหน้าอีกเลย และหน้าใหม่ทุกหน้าถูก
+                // กันไว้ที่ฝั่ง Mac ตลอดไป · ประกาศซ้ำไม่มีราคาที่ต้องจ่าย: มันคือรายการทั้งชุด
+                // ที่เขียนทับของเดิม ไม่ใช่ส่วนต่าง
+                if (s_event_subscribed && s_cbs.on_ready) s_cbs.on_ready();
             }
             return 0;
 
@@ -193,11 +202,27 @@ static void advertise(void)
         .disc_mode = BLE_GAP_DISC_MODE_GEN,
     };
     rc = ble_gap_adv_start(s_addr_type, NULL, BLE_HS_FOREVER, &params, gap_event, NULL);
-    if (rc != 0) ESP_LOGE(TAG, "adv start failed: %d", rc);
+    if (rc == 0 || rc == BLE_HS_EALREADY) return;
+
+    // การต่อที่ล้มกลางทาง (Mac ถือ LTK ที่บอร์ดไม่มีแล้ว การเข้ารหัสจึงล้ม) ส่ง
+    // BLE_GAP_EVENT_CONNECT สถานะไม่ศูนย์มา *ก่อน* NimBLE จะปล่อย connection object
+    // ทิ้ง ตอนนั้น ble_gap_adv_validate ตอบ ENOMEM เพราะยังไม่มีช่องว่าง ถ้าปล่อยไว้
+    // เฉยๆ บอร์ดจะหยุดโฆษณาถาวรจนกว่าจะถูกรีบูต — เงียบจนดูเหมือนบอร์ดพัง
+    ESP_LOGW(TAG, "adv start failed: %d, retrying", rc);
+    esp_timer_start_once(s_adv_retry, 500 * 1000);
+}
+
+static void adv_retry(void *arg)
+{
+    (void)arg;
+    advertise();
 }
 
 static void on_sync(void)
 {
+    const esp_timer_create_args_t retry = {.callback = adv_retry, .name = "ble_adv_retry"};
+    if (!s_adv_retry) ESP_ERROR_CHECK(esp_timer_create(&retry, &s_adv_retry));
+
     ble_hs_util_ensure_addr(0);
     ble_hs_id_infer_auto(0, &s_addr_type);
 
