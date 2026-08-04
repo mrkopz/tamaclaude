@@ -181,6 +181,10 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_CALENDAR_TITLE_DY         12
 #define CT_CALENDAR_EMPTY_Y          80
 #define CT_CALENDAR_EMPTY_SUB_Y      104
+#define CT_CALENDAR_DATE_Y           76
+#define CT_CALENDAR_DATE_SUB_Y       136
+#define CT_CALENDAR_DATE_FONT        48
+#define CT_CALENDAR_DATE_FONT_PIL    46
 #define CT_CALENDAR_REFRESH_S        300
 
 #define CT_MASCOT_GRID_W             16.5f

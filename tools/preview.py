@@ -312,8 +312,13 @@ CALENDAR_SCENES: dict[str, calendar.Calendar] = {
     "long": calendar.Calendar(events=[
         calendar.Appointment("Today", "16:45", "ที่ปั๊มน้ำมันกับผู้รับเหมาเรื..."),
     ], age=200),
-    # สัปดาห์ที่ว่างจริงๆ — ต้องบอกว่าไม่มีนัด ไม่ใช่หน้าว่าง
+    # สัปดาห์ที่ว่างจริงๆ — หน้านี้กลายเป็นปฏิทินตั้งโต๊ะ ไม่ใช่ประโยคบอกว่าไม่มีอะไร
     "empty": calendar.Calendar(state=calendar.EMPTY, age=60),
+    # ว่างเหมือนกันแต่ยังไม่เคยได้ snapshot เลย จึงยังไม่รู้ว่าวันนี้วันอะไร — ถอยกลับไป
+    # สองบรรทัดเดิม ห้ามโชว์ช่องว่างตัวใหญ่กลางจอ
+    "empty_nodate": calendar.Calendar(state=calendar.EMPTY, age=60, date=""),
+    # วันที่ก็ค้างเป็นเทาเหมือนนาฬิกาเมื่อ Mac หายไป ไม่ใช่หายไปทั้งบรรทัด
+    "empty_offline": calendar.Calendar(state=calendar.EMPTY, age=40 * 60, connected=False),
     # ถูกปฏิเสธสิทธิ์ TCC ไปแล้ว — ทางแก้อยู่ที่ System Settings เท่านั้น
     # สิทธิ์ปฏิทินไม่เกี่ยวกับสถานะ session — มาสคอตยังต้องอยู่บนหน้าที่บอกว่าอ่านไม่ได้
     "denied": calendar.Calendar(state=calendar.NEEDS_ACCESS, age=20, mascot_state="writing"),

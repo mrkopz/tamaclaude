@@ -26,6 +26,8 @@ NOT_ASKED = 4
 # ต้องทำอะไรต่อ หน้าที่บอกแต่ปัญหาโดยไม่บอกทางออกอ่านเหมือนอุปกรณ์พัง
 # ต้องตรงกับ empty_lines() ใน ct_calendar_ui.c
 MESSAGES = {
+    # สัปดาห์ที่ว่างใช้บรรทัดล่างเป็นคำอธิบายใต้วันที่ตัวใหญ่ ส่วนบรรทัดบนเหลือไว้สำหรับ
+    # บอร์ดที่ยังไม่รู้ว่าวันนี้วันอะไร (ยังไม่เคยได้ snapshot) — ดู `_empty`
     EMPTY: ("No events", "nothing in the next 7 days"),
     NEEDS_ACCESS: ("Calendar not allowed", "allow it in System Settings > Privacy"),
     NOT_ASKED: ("Calendar not set up", "allow it from the mac app"),
@@ -61,6 +63,40 @@ class Calendar:
     mascot_state: str | None = None
     # แถบบน — มาจาก snapshot ของหน้ามาสคอต ไม่ใช่จากเฟรมของหน้านี้ (`gen/topbar.py`)
     bar: topbar.Bar = field(default_factory=topbar.Bar)
+    # วันที่วันนี้ ("Tue 4 Aug") — มาจาก snapshot ของหน้ามาสคอตเช่นกัน ไม่ได้อยู่ในเฟรม
+    # ของหน้านี้: บอร์ดไม่มีปฏิทิน และ Mac ส่งวันที่มาอยู่แล้วทุกวินาที เพิ่มลงเฟรมปฏิทิน
+    # ก็จะเป็นสำเนาที่เก่ากว่าอีกใบ (เฟรมนี้มาทุก 5 นาที ไม่ใช่ทุกวินาที)
+    # "" = ยังไม่เคยได้ snapshot เลย
+    date: str = "Tue 4 Aug"
+
+
+def shows_big_date(c: Calendar) -> bool:
+    """หน้านี้กำลังเป็นปฏิทินตั้งโต๊ะอยู่ไหม — ต้องตรงกับ `shows_big_date` ใน ct_calendar_ui.c
+
+    เฉพาะสัปดาห์ที่ว่างจริงเท่านั้น สภาพที่ผิด (ไม่ได้สิทธิ์ · ยังไม่เลือกปฏิทิน) ต้องอ่าน
+    เป็นคำสั่งให้ไปทำอะไรต่อ วันที่ตัวใหญ่บนหน้าแบบนั้นจะกลายเป็นเครื่องประดับที่กลบคำสั่ง
+    """
+    return c.has_frame and c.state == EMPTY and bool(c.date)
+
+
+def _empty(draw: ImageDraw.ImageDraw, c: Calendar) -> None:
+    """สภาพที่ไม่มีนัดให้แสดง — ห้ามเป็นจอเปล่าไม่ว่าด้วยเหตุใด (ADR-0002)"""
+    if shows_big_date(c):
+        # หลุดลิงก์แล้วเป็นเทาเหมือนนาฬิกา ไม่ใช่หายไป: วันที่ที่ค้างยังถูกเกือบตลอด
+        # และรู้ทันทีที่มันผิด ต่างจากเปอร์เซ็นต์โควตา
+        draw.text((L.screen.width // 2, L.calendar.date_y + 24), c.date,
+                  font=screen.font(L.calendar.date_font_pil),
+                  fill=quantize565(PAL.text if c.connected else PAL.gray), anchor="mm")
+        screen.line(draw, (L.screen.width // 2, L.calendar.date_sub_y + 6),
+                    MESSAGES[EMPTY][1], pil=10, board=12, fill=PAL.text_dim, anchor="mm")
+        return
+
+    state = c.state if c.has_frame else NO_CALENDARS
+    head, sub = MESSAGES.get(state, MESSAGES[NO_CALENDARS])
+    screen.line(draw, (L.calendar.time_x, L.calendar.empty_y + 7), head,
+                pil=12, board=14, fill=PAL.text, anchor="lm")
+    screen.line(draw, (L.calendar.time_x, L.calendar.empty_sub_y + 6), sub,
+                pil=10, board=12, fill=PAL.text_dim, anchor="lm")
 
 
 def render(c: Calendar, phase: float = 0.0, cycle: int = 0) -> Image.Image:
@@ -75,13 +111,7 @@ def render(c: Calendar, phase: float = 0.0, cycle: int = 0) -> Image.Image:
 
     events = c.events[: L.calendar.rows] if c.has_frame and c.state == OK else []
     if not events:
-        # ยังไม่เคยได้ข้อมูลของหน้านี้ ต้องมีหน้าตาของตัวเอง ห้ามเป็นจอเปล่า (ADR-0002)
-        state = c.state if c.has_frame else NO_CALENDARS
-        head, sub = MESSAGES.get(state, MESSAGES[NO_CALENDARS])
-        screen.line(draw, (L.calendar.time_x, L.calendar.empty_y + 7), head,
-                    pil=12, board=14, fill=PAL.text, anchor="lm")
-        screen.line(draw, (L.calendar.time_x, L.calendar.empty_sub_y + 6), sub,
-                    pil=10, board=12, fill=PAL.text_dim, anchor="lm")
+        _empty(draw, c)
         if c.has_frame:
             age.draw_age(draw, c.age, L.calendar.refresh_s)
         return img

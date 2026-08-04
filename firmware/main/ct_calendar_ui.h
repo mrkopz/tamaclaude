@@ -8,13 +8,19 @@
 #pragma once
 
 #include "ct_calendar.h"
+#include "ct_model.h"
 #include "lvgl.h"
 
 // สร้าง widget ทั้งหมดใต้ `parent` แล้วผูกกับสิ่งที่จะวาด
 //
 // `has_frame` คือธงของตัวโฮสต์ที่บอกว่าเคยได้ข้อมูลของหน้านี้แล้วหรือยัง — สภาพ
 // "ยังไม่เคยได้เลย" มีหน้าตาของตัวเอง ห้ามเป็นจอเปล่าหรือโครงว่าง (ADR-0002)
-void ct_calendar_ui_init(lv_obj_t *parent, const ct_calendar_t *frame, const bool *has_frame);
+//
+// `mascot` คือ snapshot ใบเดียวกับที่แถบบนอ่าน — สัปดาห์ที่ว่างวาดวันที่ตัวใหญ่ ซึ่งมาจาก
+// ที่นั่น ไม่ใช่จากเฟรมของหน้านี้: บอร์ดไม่มีปฏิทิน และวันที่ในเฟรมปฏิทิน (มาทุก 5 นาที)
+// จะเป็นสำเนาที่เก่ากว่าของสิ่งที่ snapshot ส่งมาให้อยู่แล้วทุกวินาที
+void ct_calendar_ui_init(lv_obj_t *parent, const ct_calendar_t *frame, const bool *has_frame,
+                         const ct_snapshot_t *mascot);
 
 // เฟรมที่ผูกไว้เปลี่ยนไปแล้ว — วาดใหม่ทั้งใบ
 void ct_calendar_ui_redraw(void);

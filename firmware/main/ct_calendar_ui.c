@@ -8,6 +8,7 @@
 
 static const ct_calendar_t *s_frame;
 static const bool *s_has_frame;
+static const ct_snapshot_t *s_mascot;
 static bool s_connected;
 
 typedef struct {
@@ -20,6 +21,8 @@ static ct_calendar_row_ui_t s_rows[CT_CALENDAR_ROWS];
 static lv_obj_t *s_age;
 static lv_obj_t *s_empty;
 static lv_obj_t *s_empty_sub;
+static lv_obj_t *s_date;
+static lv_obj_t *s_date_sub;
 
 // สองบรรทัดของทุกสภาพที่ไม่มีนัดให้แสดง — บรรทัดบนบอกว่าเกิดอะไร บรรทัดล่างบอกว่า
 // ต้องทำอะไรต่อ หน้าที่บอกแต่ปัญหาโดยไม่บอกทางออกอ่านเหมือนอุปกรณ์พัง
@@ -50,6 +53,17 @@ static void empty_lines(ct_calendar_state_t state, const char **head, const char
     }
 }
 
+// หน้านี้กำลังเป็นปฏิทินตั้งโต๊ะอยู่ไหม — ต้องตรงกับ `shows_big_date` ใน tools/gen/calendar.py
+//
+// เฉพาะสัปดาห์ที่ว่างจริงเท่านั้น สภาพที่ผิด (ไม่ได้สิทธิ์ · ยังไม่เลือกปฏิทิน) ต้องอ่านเป็น
+// คำสั่งให้ไปทำอะไรต่อ วันที่ตัวใหญ่บนหน้าแบบนั้นจะกลายเป็นเครื่องประดับที่กลบคำสั่ง
+// วันที่ว่างเปล่า = ยังไม่เคยได้ snapshot เลย ซึ่งต้องถอยกลับไปสองบรรทัดเดิม ไม่ใช่โชว์
+// ช่องว่างตัวใหญ่กลางจอ
+static bool shows_big_date(void)
+{
+    return *s_has_frame && s_frame->state == CT_CAL_EMPTY && s_mascot->date[0] != '\0';
+}
+
 static lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font, uint16_t color, int x, int y)
 {
     lv_obj_t *l = lv_label_create(parent);
@@ -60,12 +74,15 @@ static lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font, uint16_t color, 
     return l;
 }
 
-void ct_calendar_ui_init(lv_obj_t *parent, const ct_calendar_t *frame, const bool *has_frame)
+void ct_calendar_ui_init(lv_obj_t *parent, const ct_calendar_t *frame, const bool *has_frame,
+                         const ct_snapshot_t *mascot)
 {
     s_frame = frame;
     s_has_frame = has_frame;
+    s_mascot = mascot;
 
     _Static_assert(CT_CALENDAR_TIME_FONT == 24, "layout.toml and the font here must agree");
+    _Static_assert(CT_CALENDAR_DATE_FONT == 48, "layout.toml and the font here must agree");
 
     for (int i = 0; i < CT_CALENDAR_ROWS; i++) {
         int top = CT_CALENDAR_ROW_Y + i * CT_CALENDAR_ROW_H;
@@ -92,6 +109,21 @@ void ct_calendar_ui_init(lv_obj_t *parent, const ct_calendar_t *frame, const boo
                     CT_CALENDAR_EMPTY_Y);
     s_empty_sub = label(parent, ct_font_text_12(), CT_COL_TEXT_DIM, CT_CALENDAR_TIME_X,
                         CT_CALENDAR_EMPTY_SUB_Y);
+
+    // วันที่ตัวใหญ่กลางจอ — จัดกลางด้วย align ไม่ใช่พิกัดคงที่ เพราะความกว้างของข้อความ
+    // เปลี่ยนทุกวัน ("Tue 4 Aug" กับ "Wed 24 Sep" ไม่เท่ากัน)
+    // y ที่ตั้งไว้คือ *ขอบบน* ของบรรทัด ส่วนฝั่ง preview วัดจากกึ่งกลาง (ครึ่งหนึ่งของ
+    // ฟอนต์ = 24 กับ 6) กติกาเดียวกับนาฬิกาตั้งโต๊ะบนหน้ามาสคอต
+    s_date = lv_label_create(parent);
+    lv_obj_set_style_text_font(s_date, &lv_font_montserrat_48, 0);
+    lv_obj_set_style_text_color(s_date, ct_color(CT_COL_TEXT), 0);
+    lv_label_set_text(s_date, "");
+    lv_obj_align(s_date, LV_ALIGN_TOP_MID, 0, CT_CALENDAR_DATE_Y);
+    s_date_sub = lv_label_create(parent);
+    lv_obj_set_style_text_font(s_date_sub, ct_font_text_12(), 0);
+    lv_obj_set_style_text_color(s_date_sub, ct_color(CT_COL_TEXT_DIM), 0);
+    lv_label_set_text(s_date_sub, "");
+    lv_obj_align(s_date_sub, LV_ALIGN_TOP_MID, 0, CT_CALENDAR_DATE_SUB_Y);
 
     ct_calendar_ui_redraw();
 }
@@ -130,7 +162,8 @@ void ct_calendar_ui_redraw(void)
             row->day, ct_color(s_connected ? CT_COL_TEXT_DIM : CT_COL_GRAY), 0);
     }
 
-    if (count > 0) {
+    bool big = count == 0 && shows_big_date();
+    if (count > 0 || big) {
         lv_obj_add_flag(s_empty, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_empty_sub, LV_OBJ_FLAG_HIDDEN);
     } else {
@@ -141,6 +174,28 @@ void ct_calendar_ui_redraw(void)
         lv_label_set_text(s_empty_sub, sub);
         lv_obj_remove_flag(s_empty, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(s_empty_sub, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (big) {
+        lv_label_set_text(s_date, s_mascot->date);
+        // ตั้งข้อความแล้วต้องจัดกลางใหม่ — ความกว้างเพิ่งเปลี่ยนไปพร้อมกับวันที่
+        lv_obj_align(s_date, LV_ALIGN_TOP_MID, 0, CT_CALENDAR_DATE_Y);
+        // วันที่ที่ค้างเป็นเทาเหมือนนาฬิกา ไม่ใช่หายไป: มันเกือบถูกเสมอ และวันที่ผิด
+        // รู้ทันที ต่างจากเปอร์เซ็นต์โควตาที่แถบบนซ่อนทิ้งตอนหลุดลิงก์
+        lv_obj_set_style_text_color(s_date, ct_color(s_connected ? CT_COL_TEXT : CT_COL_GRAY),
+                                    0);
+        // บรรทัดล่างเป็นประโยคเดียวกับที่สภาพนี้เคยใช้ ไม่ใช่ข้อความใบใหม่ — เปลี่ยนคำ
+        // ที่เดียวใน empty_lines() แล้วทั้งสองรูปแบบเปลี่ยนตาม
+        const char *head = NULL;
+        const char *sub = NULL;
+        empty_lines(CT_CAL_EMPTY, &head, &sub);
+        lv_label_set_text(s_date_sub, sub);
+        lv_obj_align(s_date_sub, LV_ALIGN_TOP_MID, 0, CT_CALENDAR_DATE_SUB_Y);
+        lv_obj_remove_flag(s_date, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_date_sub, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(s_date, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_date_sub, LV_OBJ_FLAG_HIDDEN);
     }
     ct_calendar_ui_redraw_age();
 }
