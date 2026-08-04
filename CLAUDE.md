@@ -95,7 +95,7 @@ uses those constants, not a chip model number.
 ### Graphics / preview (Python + Pillow)
 
 ```bash
-python3 tools/preview.py            # render every state + whole screens (weather, crypto) to out/
+python3 tools/preview.py            # render every state + whole screens (weather, crypto, stocks, calendar) to out/
 python3 tools/preview.py --sheet    # contact sheet only
 python3 tools/export_layout.py      # tools/layout.toml -> firmware/main/layout.h
 python3 tools/export_thai.py        # tools/thai.toml -> ThaiTable.swift + gen/thai_table.py

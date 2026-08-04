@@ -16,7 +16,6 @@ public struct PageSettings: Equatable, Sendable {
     /// วินาทีต่อหนึ่งหน้าในรอบหมุน
     public var rotation: Int
     /// หลังผู้ใช้ปัดไปหน้าหนึ่งเอง จะยึดหน้านั้นไว้กี่วินาทีก่อนกลับเข้ารอบ
-    /// (ยังไม่มี swipe มาเรียกใช้ — ใบ swipe จะใช้ ค่าเดินทางถึงบอร์ดแล้ว)
     public var hold: Int
     /// มีเรื่องด่วนบนหน้ามาสคอตแล้วให้จอกระโดดไปหามันเลยไหม
     public var attentionJump: Bool
