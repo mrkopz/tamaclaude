@@ -132,6 +132,11 @@ static int gap_event(struct ble_gap_event *event, void *arg)
             if (event->subscribe.attr_handle == s_event_handle) {
                 bool was = s_event_subscribed;
                 s_event_subscribed = event->subscribe.cur_notify;
+                // เครื่องที่จับคู่ไว้แล้วไม่ได้เขียน CCCD ใหม่ — NimBLE คืนค่าจาก bond store
+                // ให้เอง (reason=RESTORE) และส่ง event ใบนี้มา *ก่อน* BLE_GAP_EVENT_CONNECT
+                // ราวร้อยมิลลิวินาที ถ้ารอ handle จากใบนั้น notify ใบแรกจะตกที่ guard ของ
+                // ct_ble_notify เงียบๆ ซึ่งแปลว่า Mac ไม่เคยได้ยินรายการหน้าเลยหลังจับคู่ครั้งแรก
+                if (s_event_subscribed) s_conn_handle = event->subscribe.conn_handle;
                 if (!was && s_event_subscribed && s_cbs.on_ready) s_cbs.on_ready();
             }
             return 0;
