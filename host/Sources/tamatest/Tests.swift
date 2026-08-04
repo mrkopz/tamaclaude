@@ -291,7 +291,9 @@ func runAllTests() {
         // บรรทัดไหนแบกประโยคเป็นเรื่องของ `card(from:onScreen:)` ซึ่งมี suite ของตัวเอง —
         // ที่นี่ถามแค่ว่าประโยคเดินทางมาถึงจอไหม
         expect(
-            s2.snapshot(now: t0 + 1).cards.contains { $0.title == "hey" || $0.body == "hey" },
+            s2.snapshot(now: t0 + 1).cards.contains {
+                $0.title.contains("hey") || $0.body.contains("hey")
+            },
             "an alert from an overflowed session still reaches the user")
     }
 
@@ -370,10 +372,26 @@ func runAllTests() {
         two.apply(event("Notification", "b", cwd: "/tmp/web", message: "may I pull?"), now: t0 + 1)
         let both = two.snapshot(now: t0 + 1)
         equal(both.sessions.map(\.project), ["api", "web"], "both are standing there")
-        equal(both.cards.map(\.title), ["web", "api"], "so both cards keep their name")
         equal(
-            both.cards.map(\.body), ["may I pull?", "may I push?"],
-            "and the sentence goes back to the second line")
+            both.cards.map(\.title), ["web: may I pull?", "api: may I push?"],
+            "so the name comes back — sharing the line with the sentence")
+        equal(
+            both.cards.map(\.body), ["", ""],
+            "still one line each, so the board draws both instead of hiding one")
+
+        // ชื่อยาวต้องยอมโดนตัดก่อน ไม่ใช่กินบรรทัดจนไม่เหลือคำบอกว่าเกิดอะไรขึ้น
+        let long = store()
+        long.apply(
+            event(
+                "Notification", "a", cwd: "/tmp/an-extremely-long-project-name",
+                message: "needs permission to write layout.h"), now: t0)
+        long.apply(event("SessionStart", "b", cwd: "/tmp/web"), now: t0)
+        let clipped = long.snapshot(now: t0).cards.first?.title ?? ""
+        expect(clipped.hasPrefix("an-extrem..."), "the name gives way first")
+        expect(clipped.contains("needs permissio"), "so the sentence still says something")
+        equal(
+            Text.displayWidth(clipped), Text.Limit.cardTitle.ascii,
+            "and the whole line lands on the ceiling the board measured, not past it")
     }
 
     suite("a thai project name survives the label") {
