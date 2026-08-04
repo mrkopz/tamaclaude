@@ -37,6 +37,11 @@ enum Activity: Equatable {
 
 struct Session {
     var id: String
+    /// ชื่อโฟลเดอร์ดิบ ยังไม่ผ่าน `Text.fit` — การตัดเกิดที่ `snapshot()` ที่เดียว
+    ///
+    /// เคยตัดตั้งแต่ตรงนี้ แต่ป้ายที่มีเลขนับต่อท้าย ("x2") ต้องรู้ว่าเหลือที่เท่าไรก่อนตัด
+    /// และ fit ซ้ำบนข้อความที่ตัดแล้วเป็นไปไม่ได้: ร่างไทยที่ประกอบแล้วอยู่ใน PUA
+    /// ซึ่ง `Text.sanitize` ทิ้งทั้งหมด ชื่อโปรเจกต์ภาษาไทยจะกลายเป็นบรรทัดว่าง
     var project: String
     var activity: Activity = .thinking
     var startedAt: Date
@@ -100,6 +105,26 @@ struct Session {
     }
 }
 
+/// หนึ่ง slot บนจอ = ทุก session ของโปรเจกต์เดียวกันรวมกัน
+struct SlotGroup {
+    /// ชื่อดิบ ใช้เทียบกับหัวการ์ด — ไม่ใช่สิ่งที่ขึ้นจอ ดู `label`
+    var project: String
+    var state: VisualState
+    var lastActivity: Date
+    var count: Int
+
+    /// ป้ายใต้มาสคอต — ชื่อโปรเจกต์ ต่อท้ายด้วยเลขนับเมื่อกลุ่มมีมากกว่าหนึ่งตัว
+    ///
+    /// เลขนับกันที่ของตัวเองไว้ก่อนแล้วชื่อจึงถูกตัดให้พอดีที่เหลือ ("x2" จึงไม่มีวันหลุด
+    /// ขอบป้าย) · ใช้ "x" ไม่ใช่ U+00D7 เพราะฟอนต์บนบอร์ดไม่มีตัวนั้น และ `Text.sanitize`
+    /// จะทิ้งมันเงียบๆ เหลือ "tamaclaude 2" ที่อ่านได้ว่าเป็นชื่อโปรเจกต์
+    var label: String {
+        guard count > 1 else { return Text.fit(project, to: Text.Limit.project) }
+        let tail = " x\(count)"
+        return Text.fit(project, to: Text.Limit.project, reserving: tail) + tail
+    }
+}
+
 struct StoredCard {
     var sessionId: String?
     var title: String
@@ -144,7 +169,7 @@ public final class SessionStore {
             // (daemon อาจเพิ่งสตาร์ททีหลัง session)
             sessions[id] = Session(
                 id: id,
-                project: Text.fit(e.project, to: Text.Limit.project),
+                project: e.project,
                 startedAt: now,
                 lastActivity: now
             )
@@ -157,7 +182,7 @@ public final class SessionStore {
         // ซึ่งได้ process ตัวใหม่แต่ id เดิม ถ้ายึดตัวแรกไว้ session ที่ฟื้นมาจะถูกฆ่าทิ้งทันที
         if let o = e.owner { s.owner = o }
         if let cwd = e.cwd, !cwd.isEmpty {
-            s.project = Text.fit(e.project, to: Text.Limit.project)
+            s.project = e.project
         }
 
         switch e.hookEventName {
@@ -324,16 +349,42 @@ public final class SessionStore {
             live.append((s.project, state, s.lastActivity))
         }
 
+        // ควบ session ที่อยู่โปรเจกต์เดียวกันให้เหลือป้ายเดียว
+        //
+        // มาสคอตสองตัวที่มีชื่อเดียวกันยืนติดกันไม่ได้บอกอะไรที่ "ชื่อ + เลขนับ" ไม่ได้บอก
+        // แต่มันกินสองในสาม slot และทำให้ชื่อเดียวถูกอ่านซ้ำในเหลือบเดียว · ท่าที่ขึ้นจอ
+        // คือท่าที่สำคัญที่สุดในกลุ่ม (เสมอกันแล้วเอาตัวที่ขยับล่าสุด) เพราะกลุ่มที่มีตัวหนึ่ง
+        // ยกมือขออนุญาตต้องอ่านออกทันทีว่ามีมือยกอยู่ ไม่ใช่ถูกกลบด้วยตัวที่กำลังไถ Read
+        var groups: [SlotGroup] = []
+        var groupOf: [String: Int] = [:]
+        for s in live {
+            guard let i = groupOf[s.project] else {
+                groupOf[s.project] = groups.count
+                groups.append(
+                    SlotGroup(
+                        project: s.project, state: s.state,
+                        lastActivity: s.lastActivity, count: 1))
+                continue
+            }
+            groups[i].count += 1
+            let better =
+                s.state.priority > groups[i].state.priority
+                || (s.state.priority == groups[i].state.priority
+                    && s.lastActivity > groups[i].lastActivity)
+            if better { groups[i].state = s.state }
+            groups[i].lastActivity = max(groups[i].lastActivity, s.lastActivity)
+        }
+
         // เลือกตัวที่ได้ slot ตามความสำคัญ แต่ *วาด* ตามลำดับเกิดเสมอ
         // สิ่งที่ต้องนิ่งคือลำดับซ้าย->ขวา ไม่ใช่พิกัด (DESIGN.md)
-        let chosen: [(project: String, state: VisualState, lastActivity: Date)]
-        if live.count <= slotCount {
-            chosen = live
+        let chosen: [SlotGroup]
+        if groups.count <= slotCount {
+            chosen = groups
         } else {
             // เรียงตาม: ความสำคัญ -> ขยับล่าสุด -> เกิดทีหลัง
             // ข้อสุดท้ายทำให้ผลนิ่ง (ไม่ขึ้นกับการเรียงที่ไม่เสถียร) และตัดตัวที่เก่าสุด
             // และเงียบสุดออกก่อน ซึ่งเป็นตัวที่ผู้ใช้น่าจะสนใจน้อยที่สุด
-            let ranked = live.enumerated().sorted { a, b in
+            let ranked = groups.enumerated().sorted { a, b in
                 let pa = a.element.state.priority
                 let pb = b.element.state.priority
                 if pa != pb { return pa > pb }
@@ -343,10 +394,14 @@ public final class SessionStore {
                 return a.offset > b.offset
             }
             let keep = Set(ranked.prefix(slotCount).map { $0.offset })
-            chosen = live.enumerated().filter { keep.contains($0.offset) }.map { $0.element }
+            chosen = groups.enumerated().filter { keep.contains($0.offset) }.map { $0.element }
         }
 
-        let snaps = chosen.map { SessionSnap(project: $0.project, state: $0.state) }
+        let snaps = chosen.map { SessionSnap(project: $0.label, state: $0.state) }
+        // ชื่อที่มีมาสคอตยืนอยู่บนจอเดียวกันแล้ว — หัวการ์ดที่ซ้ำกับป้ายพวกนี้ถูกตัดทิ้ง
+        let onScreen = Set(chosen.map(\.project))
+        // "+N" นับเป็น *session* ไม่ใช่กลุ่ม: กลุ่มที่ขึ้นจอพาสมาชิกขึ้นไปครบทุกตัวแล้ว
+        let seated = chosen.reduce(0) { $0 + $1.count }
 
         let f = DateFormatter()
         f.calendar = calendar
@@ -359,19 +414,34 @@ public final class SessionStore {
         return Snapshot(
             clock: clock,
             date: date,
-            overflow: max(0, live.count - chosen.count),
+            overflow: max(0, live.count - seated),
             sessions: snaps,
             // จอวาดได้ 2 ใบ (CT_CARD_MAX ใน tools/layout.toml) — ส่งเกินมาก็ถูกทิ้ง
             // แล้วยังกิน MTU ของสิ่งที่จอใช้จริง ที่เหลือไปโผล่เป็น "+N" แทน
-            cards: cards.prefix(2).map {
-                CardSnap(
-                    title: Text.fit($0.title, to: Text.Limit.cardTitle),
-                    body: Text.fit($0.body, to: Text.Limit.cardBody),
-                    kind: $0.kind
-                )
-            },
+            cards: cards.prefix(2).map { card(from: $0, onScreen: onScreen) },
             cardOverflow: max(0, cards.count - 2),
             attention: attention
+        )
+    }
+
+    /// การ์ดหนึ่งใบบนสาย — หัวการ์ดหายไปเมื่อชื่อนั้นมีมาสคอตยืนอยู่บนจอเดียวกันแล้ว
+    ///
+    /// การ์ดเดิมพูดชื่อโปรเจกต์ซ้ำกับป้ายที่อยู่เหนือมันขึ้นไปไม่ถึงร้อยพิกเซล การอ่านชื่อ
+    /// เดียวกันสองครั้งไม่ได้เพิ่มอะไรในเหลือบเดียว แต่มันดันประโยคที่บอกว่า *เกิดอะไรขึ้น*
+    /// ลงไปเป็นบรรทัดล่างตัวเล็กสีจาง ซึ่งเป็นบรรทัดเดียวที่ต้องอ่านออกจริงๆ
+    /// · ตัดหัวออกแล้วประโยคเลื่อนขึ้นมาเป็นบรรทัดใหญ่แทน: `body` ว่าง = การ์ดบรรทัดเดียว
+    /// (`ct_ui.c` ↔ `gen/screen.py` ต้องตรงกันตรงนี้) ราคาที่จ่ายคือประโยคถูกตัดที่เพดาน
+    /// ของหัวการ์ด (32) แทนของเนื้อ (44) — สั้นลงแต่ตัวโตขึ้น ซึ่งคือสิ่งที่จอนี้ต้องการ
+    /// · ชื่อยังอยู่เมื่อ session ของมันตกจอ ไม่งั้นการ์ดจะไม่มีทางบอกได้ว่าใครเป็นคนขอ
+    private func card(from c: StoredCard, onScreen: Set<String>) -> CardSnap {
+        if onScreen.contains(c.title) {
+            return CardSnap(
+                title: Text.fit(c.body, to: Text.Limit.cardTitle), body: "", kind: c.kind)
+        }
+        return CardSnap(
+            title: Text.fit(c.title, to: Text.Limit.cardTitle),
+            body: Text.fit(c.body, to: Text.Limit.cardBody),
+            kind: c.kind
         )
     }
 

@@ -86,6 +86,22 @@ public enum Text {
         return clip(clean, to: thai ? limit.thai : limit.ascii)
     }
 
+    /// เหมือนกัน แต่กันที่ไว้ให้ส่วนท้ายที่ผู้เรียกจะต่อเองทีหลัง
+    ///
+    /// มีไว้เพราะสิ่งที่ต้องพอดีเพดานคือ *ป้ายทั้งป้าย* ไม่ใช่ชื่อโปรเจกต์อย่างเดียว
+    /// การ fit ชื่อจนเต็มเพดานแล้วค่อยต่อ " x2" คือการล้นเพดานเงียบๆ แล้วไปขาดอีกที
+    /// บนบอร์ด ซึ่งเป็นคนละจุดกับ "..." ที่ daemon เติม · ห้าม fit ซ้ำบนข้อความที่
+    /// ผ่านทางนี้แล้ว: ร่างไทยที่ประกอบแล้วอยู่ใน PUA ซึ่ง `sanitize` ทิ้งทั้งหมด
+    ///
+    /// `suffix` ต้องวาดได้อยู่แล้ว (ผู้เรียกเป็นคนเขียนมันเอง ไม่ได้มาจากดิสก์หรือ hook)
+    /// จึงวัดดิบๆ ไม่ผ่าน `sanitize` ซึ่งจะกินช่องว่างนำหน้าทิ้งแล้วกันที่ขาดไปหนึ่งช่อง
+    public static func fit(_ s: String, to limit: Limit.Cells, reserving suffix: String) -> String {
+        let clean = sanitize(s)
+        let thai = clean.unicodeScalars.contains { Thai.inBlock($0.value) }
+        let ceiling = thai ? limit.thai : limit.ascii
+        return clip(clean, to: ceiling - displayWidth(suffix))
+    }
+
     /// ความยาวที่ตาเห็น หน่วยเป็นช่อง — ตัวเดียวกับที่ `clip` ใช้ตัดสิน
     public static func displayWidth(_ s: String) -> Int {
         Thai.displayWidth(s)

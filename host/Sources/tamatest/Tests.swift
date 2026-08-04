@@ -220,7 +220,7 @@ func runAllTests() {
         let late = s.snapshot(now: t0 + 46)
         equal(late.cards.count, 1, "silence past the threshold raises a card")
         equal(late.cards.first?.kind, .done, "a finished turn is not an alert")
-        equal(late.cards.first?.body, "your turn", "it says whose move it is")
+        equal(late.cards.first?.title, "your turn", "it says whose move it is")
         equal(late.sessions.first?.state, .waiting, "mascot asks for you")
 
         s.apply(event("UserPromptSubmit"), now: t0 + 50)
@@ -234,7 +234,9 @@ func runAllTests() {
         s.apply(event("Notification", message: "Claude needs your permission"), now: t0)
         let snap = s.snapshot(now: t0)
         equal(snap.sessions.first?.state, .waiting, "notification means waiting")
-        equal(snap.cards.first?.body, "Claude needs your permission", "message becomes the card body")
+        equal(
+            snap.cards.first?.title, "Claude needs your permission",
+            "the message is the whole card — the name is already under the mascot")
         equal(snap.cards.first?.kind, .alert, "something is genuinely stuck on you")
     }
 
@@ -287,8 +289,86 @@ func runAllTests() {
         }
         s2.apply(event("Notification", "s1", cwd: "/tmp/p1", message: "hey"), now: t0 + 1)
         expect(
-            s2.snapshot(now: t0 + 1).cards.contains { $0.body == "hey" },
+            s2.snapshot(now: t0 + 1).cards.contains { $0.title == "hey" },
             "an alert from an overflowed session still reaches the user")
+    }
+
+    suite("one label per project") {
+        // สอง session ในโปรเจกต์เดียวกันคือหนึ่งป้าย ไม่ใช่ชื่อเดียวที่ถูกอ่านสองครั้ง
+        let s = store()
+        s.apply(event("PreToolUse", "a", tool: "Read", cwd: "/tmp/tamaclaude"), now: t0)
+        s.apply(event("PreToolUse", "b", tool: "Bash", cwd: "/tmp/tamaclaude"), now: t0 + 1)
+        s.apply(event("PreToolUse", "c", tool: "Read", cwd: "/tmp/docs"), now: t0 + 2)
+
+        let snap = s.snapshot(now: t0 + 2)
+        equal(snap.sessions.map(\.project), ["tamaclaude x2", "docs"], "the count replaces the twin")
+        equal(snap.overflow, 0, "nobody is missing — both are standing in that one slot")
+        equal(snap.sessions.first?.state, .building, "the group wears the most recent pose")
+
+        // ตัวที่ยกมือชนะเสมอ ไม่ว่าตัวข้างๆ จะขยับล่าสุดแค่ไหน
+        s.apply(event("Notification", "a", cwd: "/tmp/tamaclaude", message: "may I?"), now: t0 + 3)
+        s.apply(event("PreToolUse", "b", tool: "Read", cwd: "/tmp/tamaclaude"), now: t0 + 4)
+        equal(
+            s.snapshot(now: t0 + 4).sessions.first?.state, .waiting,
+            "a raised hand is never hidden behind a busy twin")
+    }
+
+    suite("a coalesced group still counts every session it holds") {
+        // 4 โปรเจกต์ 5 session ใน 3 slot — "+N" ต้องนับหัวคน ไม่ใช่นับป้าย
+        let s = store()
+        s.apply(event("SessionStart", "a", cwd: "/tmp/one"), now: t0)
+        s.apply(event("SessionStart", "b", cwd: "/tmp/one"), now: t0)
+        s.apply(event("SessionStart", "c", cwd: "/tmp/two"), now: t0)
+        s.apply(event("SessionStart", "d", cwd: "/tmp/three"), now: t0)
+        s.apply(event("SessionStart", "e", cwd: "/tmp/four"), now: t0)
+
+        let snap = s.snapshot(now: t0 + 1)
+        equal(snap.sessions.count, 3, "three slots, three labels")
+        expect(!snap.sessions.contains { $0.project.hasPrefix("one") }, "the pair lost the draw")
+        equal(snap.overflow, 2, "and both of its sessions are counted, not one label")
+    }
+
+    suite("the count never pushes the name off the label") {
+        let s = store()
+        let long = "/tmp/an-extremely-long-project-name"
+        s.apply(event("SessionStart", "a", cwd: long), now: t0)
+        s.apply(event("SessionStart", "b", cwd: long), now: t0)
+
+        let label = s.snapshot(now: t0 + 1).sessions.first?.project ?? ""
+        expect(label.hasSuffix(" x2"), "the count survives the clip")
+        equal(
+            Text.displayWidth(label), Text.Limit.project.ascii,
+            "and the whole label still fits the width the board measured")
+    }
+
+    suite("the card drops the name the mascot already carries") {
+        let s = store()
+        s.apply(event("Notification", "a", cwd: "/tmp/here", message: "may I push?"), now: t0)
+        let near = s.snapshot(now: t0)
+        equal(near.cards.first?.title, "may I push?", "the sentence takes the big line")
+        equal(near.cards.first?.body, "", "and nothing repeats the label below it")
+
+        // session ที่ตกจอไม่มีป้าย การ์ดจึงต้องบอกชื่อเอง ไม่งั้นไม่มีใครรู้ว่าใครขอ
+        // (สามตัวที่พังกินทั้งสาม slot ตัวที่ขออนุญาตทีหลังจึงไม่มีมาสคอตให้ชี้)
+        let far = store()
+        for i in 1...3 {
+            far.apply(event("StopFailure", "e\(i)", cwd: "/tmp/broke\(i)"), now: t0 + Double(i))
+        }
+        far.apply(event("Notification", "a", cwd: "/tmp/asker", message: "may I?"), now: t0 + 9)
+        let snap = far.snapshot(now: t0 + 9)
+        expect(!snap.sessions.contains { $0.project == "asker" }, "asker lost its slot")
+        equal(snap.cards.first?.title, "asker", "so the card says who is asking")
+        equal(snap.cards.first?.body, "may I?", "with the sentence back on the second line")
+    }
+
+    suite("a thai project name survives the label") {
+        // ชื่อที่ประกอบร่างแล้วอยู่ใน PUA — fit ซ้ำจะทิ้งร่างพวกนั้นและเหลือบรรทัดว่าง
+        let s = store()
+        s.apply(event("SessionStart", "a", cwd: "/tmp/ป่าไม้"), now: t0)
+        s.apply(event("SessionStart", "b", cwd: "/tmp/ป่าไม้"), now: t0)
+        let label = s.snapshot(now: t0 + 1).sessions.first?.project ?? ""
+        expect(label.hasSuffix(" x2"), "the count is there")
+        equal(Text.displayWidth(label), 7, "and so are all four cells of the name")
     }
 
     suite("text for the board font") {

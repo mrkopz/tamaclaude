@@ -119,6 +119,13 @@ class Session:
 
 @dataclass(slots=True)
 class Card:
+    """หนึ่งการ์ด — `body` ว่างแปลว่าการ์ดบรรทัดเดียว ไม่ใช่การ์ดที่เนื้อหาหาย
+
+    daemon ตัดหัวการ์ดทิ้งเมื่อชื่อโปรเจกต์นั้นมีมาสคอตยืนอยู่บนจอเดียวกันแล้ว แล้วเลื่อน
+    ประโยคขึ้นมาเป็น `title` (ดู SessionStore.card(from:onScreen:)) ชื่อจะกลับมาก็ต่อเมื่อ
+    session ของมันตกจอ — ตอนนั้นการ์ดเป็นที่เดียวที่บอกได้ว่าใครเป็นคนขอ
+    """
+
     title: str
     body: str
     kind: str = "info"  # info | alert | done
@@ -343,6 +350,12 @@ def _card(draw: ImageDraw.ImageDraw, c: Card, y: int) -> None:
 
     tx = pad + 9
     # ขนาดฝั่งบอร์ดคือ 14/12 (montserrat กับฟอนต์ไทย) ฝั่ง PIL คือ 12/10 เพราะฟอนต์คนละตัว
+    # บรรทัดเดียวไม่ได้อยู่ที่เดิมแล้วเว้นล่างว่าง แต่ย้ายลงมากลางการ์ด — ต้องตรงกับ
+    # layout_cards() ใน firmware/main/ct_ui.c
+    if not c.body:
+        line(draw, (tx, y + CARD_H // 2), c.title, pil=12, board=14,
+             fill=PAL.text, anchor="lm", max_w=CARD_TEXT_W)
+        return
     line(draw, (tx, y + 11), c.title, pil=12, board=14,
           fill=PAL.text, anchor="lm", max_w=CARD_TEXT_W)
     line(draw, (tx, y + 25), c.body, pil=10, board=12,

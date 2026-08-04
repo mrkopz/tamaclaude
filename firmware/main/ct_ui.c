@@ -710,8 +710,19 @@ static void layout_cards(void)
             lv_obj_add_flag(cd->mark_hole, LV_OBJ_FLAG_HIDDEN);
         }
 
-        lv_label_set_text(s_cards[i].title, c->title);
-        lv_label_set_text(s_cards[i].body, c->body);
+        // body ว่าง = การ์ดบรรทัดเดียว (daemon ตัดหัวที่ซ้ำกับป้ายใต้มาสคอตทิ้ง)
+        // บรรทัดเดียวย้ายลงมากลางการ์ด ไม่ใช่ค้างอยู่บนแล้วเว้นครึ่งล่างโล่ง
+        // ต้องตรงกับ _card() ใน tools/gen/screen.py
+        bool one_line = c->body[0] == '\0';
+        lv_label_set_text(cd->title, c->title);
+        lv_label_set_text(cd->body, c->body);
+        int line_h = lv_font_get_line_height(ct_font_text_14());
+        lv_obj_set_pos(cd->title, 9, one_line ? (CARD_H - line_h) / 2 : 4);
+        if (one_line) {
+            lv_obj_add_flag(cd->body, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_remove_flag(cd->body, LV_OBJ_FLAG_HIDDEN);
+        }
     }
 
     // การ์ดที่ไม่ได้วาดต้องเหลือร่องรอย ไม่ใช่หายเงียบ — "ไม่มีอะไรค้างแล้ว" กับ

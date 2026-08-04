@@ -67,15 +67,17 @@ def state_gif(state: str, px: int = 7, connected: bool = True) -> list[Image.Ima
 
 
 SCENES: dict[str, screen.Screen] = {
+    # ฉากที่ตัดสินกฎ "พูดชื่อเดียวครั้งเดียว": สอง session ของ tamaclaude เป็นป้ายเดียว
+    # ที่มีเลขนับ · การ์ดใบบนเป็นของ tamaclaude ซึ่งมีมาสคอตยืนอยู่แล้ว หัวการ์ดจึงหายไป
+    # เหลือประโยคเดียวตัวโต · ใบล่างเป็นของโปรเจกต์ที่ไม่มีป้ายบนจอ ชื่อจึงต้องอยู่
     "busy": screen.Screen(
         sessions=[
-            screen.Session("tamaclaude", "writing", 0.0),
-            screen.Session("tamaclaude", "building", 0.3),
+            screen.Session("tamaclaude x2", "building", 0.0),
             screen.Session("sprite-gen", "reading", 0.6),
         ],
         overflow=3,
         cards=[
-            screen.Card("tamaclaude", "needs permission to run git push", "alert"),
+            screen.Card("needs permission to run git push", "", "alert"),
             screen.Card("infra-scripts", "Stopped - waiting for your reply", "info"),
             screen.Card("sprite-gen", "Build finished, 0 warnings", "done"),
         ],
@@ -134,7 +136,7 @@ SCENES: dict[str, screen.Screen] = {
             screen.Session("tamaclaude", "celebrate", 0.0),
             screen.Session("docs", "idle", 0.4),
         ],
-        cards=[screen.Card("tamaclaude", "Build finished, 0 warnings", "done")],
+        cards=[screen.Card("Build finished, 0 warnings", "", "done")],
     ),
     # มีทั้งการ์ดและตัวเลขโควตาค้างอยู่ในมือ แต่ต้องไม่ขึ้นจอสักอย่าง — หลุดลิงก์แล้ว
     # ไม่มีใครรับรองว่ายังจริง รวมถึงตัวนาฬิกาเอง กลางจอจึงเหลือระยะเวลาที่หลุด
@@ -146,7 +148,7 @@ SCENES: dict[str, screen.Screen] = {
         ],
         connected=False,
         offline_s=4 * 60,
-        cards=[screen.Card("tamaclaude", "Needs your answer", "alert")],
+        cards=[screen.Card("Needs your answer", "", "alert")],
         usage=[
             screen.Usage("Current", SESSION_WINDOW, 43, 1 * 3600 + 40 * 60),
             screen.Usage("Weekly", WEEKLY_WINDOW, 8, 5 * 86400 + 8 * 3600),
@@ -160,7 +162,7 @@ SCENES: dict[str, screen.Screen] = {
         connected=False,
         wifi=True,
         offline_s=3 * 3600 + 12 * 60,
-        cards=[screen.Card("tamaclaude", "Needs your answer", "alert")],
+        cards=[screen.Card("Needs your answer", "", "alert")],
     ),
     # เพิ่งแฟลชเสร็จ ยังไม่เคยจับคู่กับ Mac เลย — จอแรกที่ผู้ใช้ใหม่เห็น ไม่มีเวลาให้อ้างถึง
     # และตัวเลขที่เดินคือเวลาตั้งแต่เสียบไฟ ซึ่งเป็นคำตอบที่ถูกของ "รออะไรอยู่"
@@ -195,15 +197,16 @@ SCENES: dict[str, screen.Screen] = {
             screen.Usage("Weekly", WEEKLY_WINDOW, 48, 31 * 3600),
         ],
     ),
+    # ทั้งสองใบเป็นของโปรเจกต์ที่มีมาสคอตอยู่บนจอ — การ์ดจึงเป็นสองประโยคตัวโต
+    # ไม่มีชื่อโปรเจกต์โผล่ซ้ำสักตัว · ป้าย "x2" คือตัวที่ยกมือ (waiting) ชนะตัวที่กำลังค้นหา
     "waiting": screen.Screen(
         sessions=[
-            screen.Session("tamaclaude", "waiting", 0.0),
-            screen.Session("tamaclaude", "searching", 0.5),
+            screen.Session("tamaclaude x2", "waiting", 0.0),
             screen.Session("sprite-gen", "alert", 0.25),
         ],
         cards=[
-            screen.Card("sprite-gen", "Stopped: test suite failed (3 failing)", "alert"),
-            screen.Card("tamaclaude", "needs permission to write layout.h", "info"),
+            screen.Card("Stopped: test suite failed (3 failing)", "", "alert"),
+            screen.Card("needs permission to write layout.h", "", "info"),
         ],
     ),
 }
