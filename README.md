@@ -76,19 +76,33 @@ claude.ai.
 | ![usage](docs/images/screen_usage.gif) | ![usage hot](docs/images/screen_usage_hot.gif) | ![usage unknown](docs/images/screen_usage_unknown.gif) |
 | The current 5-hour window and the weekly one. | Near the limit; the tick marks your pace against the clock. | `--`, never a guess, when no number has arrived. |
 
-**The weather page**
+**The other pages**
 
-The screen holds more than one page now, and turns between them on its own every 20
-seconds. The board keeps the clock, so the pages keep turning with the Mac asleep.
+The screen holds five pages now — the mascot, weather, crypto, stocks, and your calendar.
+Swipe left or right across the glass to change page, or leave it alone and it turns on its
+own every 20 seconds; a swipe holds that page for five minutes before the rotation picks up
+where it left off. The board keeps the clock, so the pages keep turning with the Mac asleep,
+and it jumps back to the mascot on its own when a session needs your answer.
+
+Every page says how old its figures are, because a Mac that sleeps freezes every number on
+the screen. The weather page keeps a shrunken mascot in its corner as well, so you can still
+see what your sessions are doing; the crypto, stocks, and calendar pages fill that corner
+with their first row instead:
 
 | Live | Long stale | Never arrived |
 |:--|:--|:--|
 | ![weather](docs/images/weather_rain.gif) | ![stale](docs/images/weather_stale.gif) | ![no weather](docs/images/weather_empty.gif) |
 | Now, today's high and low, and how old the figures are. The mascot shrinks into the corner so you can still see what your sessions are doing. | Far past the refresh window, so it says so out loud rather than in small print. | The page says what is missing instead of showing an empty frame. |
 
-Turn it on in **Settings ▸ Pages** and type a city. Figures come from Open-Meteo — no
-account, no API key — fetched by your Mac every 15 minutes. The board still never goes
-online itself.
+Turn pages on, order them, and set the rotation in **Settings ▸ Pages**. Weather needs a city
+name and comes from Open-Meteo, crypto from CoinGecko — neither wants an account. Stocks come
+from Finnhub and need your own free API key; the free plan covers US symbols and the page only
+refreshes while the US market is open. The calendar is read from this Mac through EventKit, so
+macOS asks for calendar permission once and you tick the calendars that may appear — nothing
+about it goes over the network. Watchlists hold five symbols each.
+
+Your Mac does all the fetching, at its own pace per page. The board still never goes online
+itself, and your session key never leaves the Mac.
 
 **Over Wi-Fi**
 
@@ -321,8 +335,11 @@ Security ▸ Local Network.
 - **macOS only.** The app that talks to Claude Code is a Swift menu bar app; there is no
   Linux or Windows build.
 - **No over-the-air updates.** New firmware means plugging the USB cable back in.
-- **The touchscreen and speaker are unused.** The panel is touch-capable and the board has
-  a speaker pin; neither is wired up yet.
+- **Touch is swipes only, and the speaker is unused.** Left and right swipes change page;
+  there are no taps, no touch zones, and nothing is wired to the speaker pin.
+- **Touch constants were measured on one board.** A batch with a different panel may read
+  differently; swipes are judged by coarse distance, which absorbs some of that but has not
+  been confirmed on anyone else's board.
 - **Ad-hoc signing.** The app is not notarised, so it is built per-machine rather than
   handed around.
 

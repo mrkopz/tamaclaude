@@ -4,8 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A desk device that shows live Claude Code session status via a blocky orange Claude mascot.
-Hardware: ESP32-2432S028R ("Cheap Yellow Display"), ILI9341 320x240 landscape, BLE only.
+A desk device that shows live Claude Code session status via a blocky orange Claude mascot,
+and uses the same screen for four more pages — weather, crypto, stocks, calendar — that the
+user swipes between or lets rotate on their own.
+Hardware: ESP32-2432S028R ("Cheap Yellow Display"), ILI9341 320x240 landscape, XPT2046 touch
+(horizontal swipes only), BLE first with a sealed LAN path behind it.
 
 `DESIGN.md` (Thai) records the **current** design and the reasons that are not visible from
 the code — not a changelog. **Read the relevant section before changing visuals, protocol,
@@ -27,6 +30,7 @@ Claude Code hooks --> tamaclaude --hook --> Unix socket --> daemon --> BLE GATT 
 Open-Meteo --> WeatherService (every 15 min) --> page frame --> the same two paths
 CoinGecko  --> CryptoService  (every 60 s)  --> page frame --> the same two paths
 Finnhub    --> StocksService  (every 60 s, only while the US market is open)
+EventKit   --> CalendarService (every 5 min, this Mac only — never the network)
 
 Claude Code statusline --> ~/.tamaclaude/statusline.sh --.
                                                           >--> ~/.claude/.statusline-usage-cache
@@ -39,8 +43,11 @@ event-driven, so it goes quiet exactly when the desk display is left alone; the 
 the user's `sessionKey` and keeps the number moving with Claude Code closed. Neither replaces
 the other and they are separate switches — see the reversal note in `DESIGN.md`.
 
-The daemon owns all logic. Firmware only knows two fixed enums — `VisualState` and
-`PageKind` — and draws them.
+The daemon owns every decision about *content*: it knows the two fixed enums the firmware
+draws (`VisualState`, `PageKind`) and sends one frame per page. What the board owns is
+*which page is on screen right now* — it caches every page in RAM, runs the rotation clock,
+holds after a swipe, and jumps to the mascot on an attention event, all so a sleeping Mac
+cannot freeze the screen on one page all night.
 Tool-to-animation mapping is host-side and user-overridable at `~/.tamaclaude/tools.json`.
 
 ## Commands

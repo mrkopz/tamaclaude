@@ -73,7 +73,8 @@ _Avoid_: alert, interrupt, force switch
 _Avoid_: timestamp, last updated, freshness
 
 **Board capability**:
-รายการ PageKind ที่ board ตัวนั้นรู้จัก ประกาศจาก board ไป Mac ตอนเชื่อมต่อ ใช้แทนเลขเวอร์ชัน
+รายการ PageKind ที่ board ตัวนั้นรู้จัก ประกาศจาก board ไป Mac ตอนที่ Mac สมัครรับ event
+characteristic ใช้แทนเลขเวอร์ชัน และ Mac จำไว้ข้ามการเปิดปิดแอป
 _Avoid_: firmware version, protocol version, feature flag
 
 ## แหล่งข้อมูล
