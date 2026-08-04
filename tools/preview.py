@@ -3,6 +3,7 @@
 
     python3 tools/preview.py           สร้างทุกอย่างลง out/
     python3 tools/preview.py --sheet   เฉพาะ contact sheet
+    python3 tools/preview.py --limits  วัดว่าแต่ละป้ายรับได้กี่ช่อง (ที่มาของ Text.Limit)
 """
 
 from __future__ import annotations
@@ -342,11 +343,53 @@ def sky_scene(clock: str) -> screen.Screen:
     )
 
 
+# ป้ายที่ daemon ต้องตัดข้อความเองก่อนส่ง — (ชื่อใน Text.Limit, กว้างกี่พิกเซล, ฟอนต์บนบอร์ด)
+#
+# ความกว้างมาจากค่าที่ ct_ui.c ตั้งให้ป้ายจริง ไม่ใช่ค่าที่ preview อยากให้เป็น: ป้ายบนบอร์ด
+# ตัดด้วย LV_LABEL_LONG_DOT อยู่แล้ว เลขที่สูงเกินจึงไม่ทำให้ข้อความล้นทับอะไร แต่มันแปลว่า
+# daemon จ่ายไบต์ (ไทยตัวละ 3) ให้ตัวอักษรที่ไม่มีวันขึ้นจอ และการตัดไปอยู่ที่บอร์ดแทนที่จะ
+# อยู่ที่เดียวกับ "..." ที่ daemon เติม
+LABELS = (
+    ("project", screen.PROJECT_W, 12),
+    ("cardTitle", screen.CARD_TEXT_W, 14),
+    ("cardBody", screen.CARD_TEXT_W, 12),
+    ("Weather.placeLimit", L.weather.icon_x - L.weather.place_x - 8, 14),
+    ("Calendar.titleLimit", L.calendar.title_w, 14),
+)
+
+
+def print_limits() -> None:
+    """วัดว่าแต่ละป้ายรับได้กี่ช่อง — ที่มาของตัวเลขใน host/Sources/TamaCore/Text.swift
+
+    ฝั่งไทยวัดได้ *เป๊ะ* เพราะฟอนต์บิตแมปที่แฟลชลงบอร์ดคือไฟล์เดียวกับที่อ่านตรงนี้ และทุก
+    ช่องกว้างเท่ากันหมด (สระบนกับวรรณยุกต์กว้างศูนย์ จึงไม่กินที่ของใคร)
+    ฝั่ง ASCII เป็นค่าประมาณ เพราะบอร์ดวาดด้วย Montserrat ซึ่ง preview ไม่มีตัวจริง —
+    นั่นคือเหตุผลที่สองภาษาถือเลขคนละตัว ไม่ใช่เลขเดียวที่ประนีประนอมทั้งคู่
+    """
+    d = ImageDraw.Draw(Image.new("RGB", (1, 1)))
+    print(f"{'label':<20} {'width':>6} {'font':>5} {'thai':>5} {'ascii~':>7}")
+    for name, width, board in LABELS:
+        bf = screen.bitmapfont.font(board)
+        # ช่องไทยกว้างคงที่ วัดจากพยัญชนะตัวไหนก็ได้
+        thai_cell = bf.length("ก")
+        pil = {12: 9, 14: 12}[board]
+        f = screen.font(pil)
+        letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "
+        ascii_cell = sum(d.textlength(c, font=f) for c in letters) / len(letters)
+        print(f"{name:<20} {width:>6} {board:>5} {int(width // thai_cell):>5} "
+              f"{int(width // ascii_cell):>7}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sheet", action="store_true", help="เฉพาะ contact sheet")
+    ap.add_argument("--limits", action="store_true", help="วัดความยาวสูงสุดของแต่ละป้าย")
     ap.add_argument("--scale", type=int, default=3, help="ขยายภาพจอตอน export")
     args = ap.parse_args()
+
+    if args.limits:
+        print_limits()
+        return
 
     OUT.mkdir(exist_ok=True)
     (OUT / "anim").mkdir(exist_ok=True)

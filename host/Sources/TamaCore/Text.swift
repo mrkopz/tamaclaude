@@ -75,18 +75,45 @@ public enum Text {
         clip(sanitize(s), to: limit)
     }
 
+    /// เหมือนกัน แต่เลือกเพดานตามภาษาที่อยู่ในบรรทัดนั้นจริงๆ
+    ///
+    /// บรรทัดที่มีอักขระไทยแม้ตัวเดียวใช้เพดานของไทยทั้งบรรทัด: ช่องไทยกว้างคงที่และกว้าง
+    /// กว่าตัวอักษรอังกฤษเฉลี่ย การเดาว่าอีกกี่ช่องจะเป็นไทยแปลว่าเพดานเปลี่ยนตามเนื้อหา
+    /// ซึ่งไม่ใช่เพดาน
+    public static func fit(_ s: String, to limit: Limit.Cells) -> String {
+        let clean = sanitize(s)
+        let thai = clean.unicodeScalars.contains { Thai.inBlock($0.value) }
+        return clip(clean, to: thai ? limit.thai : limit.ascii)
+    }
+
     /// ความยาวที่ตาเห็น หน่วยเป็นช่อง — ตัวเดียวกับที่ `clip` ใช้ตัดสิน
     public static func displayWidth(_ s: String) -> Int {
         Thai.displayWidth(s)
     }
 
-    /// ความยาวสูงสุดตามพื้นที่จริงบนจอ (วัดจาก tools/gen/screen.py)
+    /// ความยาวสูงสุดตามพื้นที่จริงบนจอ — วัดด้วย `python3 tools/preview.py --limits`
     public enum Limit {
-        /// ป้ายชื่อโปรเจกต์ใต้มาสคอต — slot กว้าง 80px ฟอนต์ 9
-        public static let project = 14
-        /// หัวการ์ด — กว้าง ~293px ฟอนต์ 12
-        public static let cardTitle = 34
-        /// เนื้อการ์ด — กว้างเท่ากัน ฟอนต์ 10
-        public static let cardBody = 46
+        /// เพดานของป้ายหนึ่ง แยกตามภาษา เพราะช่องไทยกว้างกว่าตัวอักษรอังกฤษเฉลี่ยเสมอ
+        ///
+        /// เลขเดียวที่ใช้ได้ทั้งสองภาษาต้องเป็นเลขของไทย ซึ่งแปลว่าบรรทัดอังกฤษถูกตัดสั้น
+        /// กว่าที่จอรับได้จริงราวหนึ่งในสี่ ทั้งที่ไม่มีเหตุผล · ฝั่งไทยวัดได้เป๊ะเพราะฟอนต์
+        /// บิตแมปที่แฟลชลงบอร์ดคือไฟล์ที่ `--limits` อ่าน ส่วนฝั่งอังกฤษเป็นค่าที่ตั้งต่ำกว่า
+        /// ที่วัดได้อยู่แล้ว (Montserrat บนบอร์ดไม่มีตัวจริงให้ preview วัด)
+        public struct Cells: Sendable {
+            public let ascii: Int
+            public let thai: Int
+
+            public init(ascii: Int, thai: Int) {
+                self.ascii = ascii
+                self.thai = thai
+            }
+        }
+
+        /// ป้ายชื่อโปรเจกต์ใต้มาสคอต — กว้าง 102px ฟอนต์บอร์ด 12
+        public static let project = Cells(ascii: 14, thai: 12)
+        /// หัวการ์ด — กว้าง 290px ฟอนต์บอร์ด 14
+        public static let cardTitle = Cells(ascii: 34, thai: 32)
+        /// เนื้อการ์ด — กว้างเท่ากัน ฟอนต์บอร์ด 12
+        public static let cardBody = Cells(ascii: 46, thai: 36)
     }
 }

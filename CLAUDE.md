@@ -97,6 +97,7 @@ uses those constants, not a chip model number.
 ```bash
 python3 tools/preview.py            # render every state + whole screens (weather, crypto, stocks, calendar) to out/
 python3 tools/preview.py --sheet    # contact sheet only
+python3 tools/preview.py --limits   # measure how many cells each label holds (Text.Limit)
 python3 tools/export_layout.py      # tools/layout.toml -> firmware/main/layout.h
 python3 tools/export_thai.py        # tools/thai.toml -> ThaiTable.swift + gen/thai_table.py
 python3 tools/export_thai_font.py   # tools/thai.toml + Sarabun -> ct_font_thai_*.c + fonts/*.json

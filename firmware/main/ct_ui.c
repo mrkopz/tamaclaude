@@ -497,7 +497,7 @@ static void build_slots(lv_obj_t *scr)
         s_slots[i].canvas = o;
 
         lv_obj_t *l = plain_label(scr, ct_font_text_12(), CT_COL_TEXT);
-        lv_obj_set_width(l, CT_SLOTS_WIDTH - 4);
+        lv_obj_set_width(l, CT_SLOTS_WIDTH - CT_SLOTS_LABEL_INSET);
         lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
         lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
         s_slots[i].label = l;
@@ -528,12 +528,12 @@ static void build_cards(lv_obj_t *scr)
         lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
 
         lv_obj_t *title = plain_label(box, ct_font_text_14(), CT_COL_TEXT);
-        lv_obj_set_width(title, w - 18);
+        lv_obj_set_width(title, w - CT_CARD_TEXT_INSET);
         lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
         lv_obj_set_pos(title, 9, 4);
 
         lv_obj_t *body = plain_label(box, ct_font_text_12(), CT_COL_TEXT_DIM);
-        lv_obj_set_width(body, w - 18);
+        lv_obj_set_width(body, w - CT_CARD_TEXT_INSET);
         lv_label_set_long_mode(body, LV_LABEL_LONG_DOT);
         lv_obj_set_pos(body, 9, 20);
 

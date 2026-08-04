@@ -307,6 +307,80 @@ func runAllTests() {
         equal(Text.fit("ที่", to: 14), "\u{0E17}\u{0E35}\u{F70D}", "text leaves the daemon shaped")
     }
 
+    // เลขทั้งชุดวัดด้วย `python3 tools/preview.py --limits` จากฟอนต์ตัวที่แฟลชลงบอร์ดจริง
+    // ป้ายบนบอร์ดตัดด้วย LV_LABEL_LONG_DOT อยู่แล้ว เพดานที่สูงเกินจึงไม่ล้นทับอะไร แต่มัน
+    // แปลว่า daemon จ่ายไบต์ (ไทยตัวละ 3) ให้ตัวอักษรที่ไม่มีวันขึ้นจอ ทั้งที่ MTU มีจำกัด
+    suite("a label holds fewer thai cells than english ones") {
+        let body = Text.Limit.cardBody
+        expect(body.thai < body.ascii, "the thai ceiling is the lower of the two")
+
+        let english = String(repeating: "a", count: body.ascii + 5)
+        equal(
+            Text.displayWidth(Text.fit(english, to: body)), body.ascii,
+            "an english line still gets every cell the board can draw")
+
+        let thai = String(repeating: "\u{0E01}", count: body.thai + 5)
+        equal(
+            Text.displayWidth(Text.fit(thai, to: body)), body.thai,
+            "a thai line stops at the narrower ceiling")
+
+        // ภาษาอังกฤษปนไทยหนึ่งตัวก็ยังเป็นบรรทัดไทย — ช่องที่เหลืออาจเป็นไทยทั้งหมด
+        let mixed = "\u{0E01}" + String(repeating: "a", count: body.ascii)
+        equal(
+            Text.displayWidth(Text.fit(mixed, to: body)), body.thai,
+            "one thai character puts the whole line under the thai ceiling")
+
+        // ความยาวที่พอดีอยู่แล้วต้องไม่ถูกแตะ ไม่งั้น "..." จะโผล่มาโดยไม่มีอะไรหายไปจริง
+        let exact = String(repeating: "\u{0E01}", count: body.thai)
+        equal(Text.fit(exact, to: body), exact, "a line that already fits is untouched")
+    }
+
+    // เพดานฝั่งไทยไม่ใช่ค่าที่เลือกด้วยรสนิยม มันคำนวณได้จากความกว้างของป้าย (layout.h)
+    // หารด้วยความกว้างของช่องไทย (ฟอนต์ตัวเดียวกับที่แฟลชลงบอร์ด) เทสต์นี้จึงคำนวณซ้ำ
+    // แทนที่จะเชื่อเลขที่พิมพ์ไว้ — layout.toml ที่ถูกแก้แล้วไม่มีใครวัดใหม่จะแดงตรงนี้
+    suite("the thai ceilings are what the board can actually draw") {
+        let header = try String(contentsOf: repoFile("firmware/main/layout.h"), encoding: .utf8)
+        var define: [String: Int] = [:]
+        for line in header.split(whereSeparator: \.isNewline) {
+            let parts = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard parts.count >= 3, parts[0] == "#define", let v = Int(parts[2]) else { continue }
+            define[String(parts[1])] = v
+        }
+
+        struct Font: Decodable {
+            struct Glyph: Decodable { let adv: Double }
+            let glyphs: [String: Glyph]
+        }
+        // ช่องไทยทุกช่องกว้างเท่ากัน (สระบนกับวรรณยุกต์กว้างศูนย์ จึงไม่กินที่ของใคร)
+        var cell: [Int: Int] = [:]
+        for size in [12, 14] {
+            let url = repoFile("tools/fonts/thai-\(size).json")
+            let font = try JSONDecoder().decode(Font.self, from: Data(contentsOf: url))
+            cell[size] = Int(font.glyphs.values.map(\.adv).max() ?? 0)
+        }
+
+        let cardWidth = (define["CT_SCREEN_WIDTH"] ?? 0) - 2 * (define["CT_CARD_PAD"] ?? 0)
+            - (define["CT_CARD_TEXT_INSET"] ?? 0)
+        let projectWidth = (define["CT_SLOTS_WIDTH"] ?? 0) - (define["CT_SLOTS_LABEL_INSET"] ?? 0)
+        expect(
+            cardWidth > 0 && projectWidth > 0 && cell[12]! > 0 && cell[14]! > 0,
+            "the header and the font files are the real ones, not empty stubs")
+
+        // พอดีที่สุด: ช่องที่ใส่ไปแล้วยังไม่ล้น และใส่อีกช่องไม่ได้
+        func snug(_ cells: Int, _ width: Int, _ size: Int) -> Bool {
+            cells * cell[size]! <= width && (cells + 1) * cell[size]! > width
+        }
+        expect(
+            snug(Text.Limit.project.thai, projectWidth, 12),
+            "the project label ceiling is every cell that fits and no more")
+        expect(
+            snug(Text.Limit.cardTitle.thai, cardWidth, 14),
+            "the card title ceiling is every cell that fits and no more")
+        expect(
+            snug(Text.Limit.cardBody.thai, cardWidth, 12),
+            "the card body ceiling is every cell that fits and no more")
+    }
+
     // golden vectors ชุดเดียวกับที่ tools/test_thai.py อ่าน — ถ้าพอร์ตใดพอร์ตหนึ่งดริฟต์
     // ฝั่งนั้นจะแดงคนเดียว ซึ่งคือทั้งหมดที่เทสต์ชุดนี้มีไว้จับ
     suite("thai clusters agree with the python port") {

@@ -318,8 +318,11 @@ def _slot(draw: ImageDraw.ImageDraw, i: int, sess: Session | None, s: Screen,
     rects = mascot.build_centered(sess.state, p % 1.0, s.connected, cycle + int(p))
     draw_rects(draw, rects, px, ox, oy)
 
+    # ความกว้างต้องเท่ากับ `lv_obj_set_width(l, CT_SLOTS_WIDTH - 4)` ใน ct_ui.c เป๊ะ —
+    # ถ้าที่นี่แคบกว่า preview จะตัดชื่อโปรเจกต์เร็วกว่าบอร์ด แล้วเลขใน `Text.Limit`
+    # ที่วัดจากตรงนี้ก็จะเตี้ยกว่าที่จอรับได้จริง
     line(draw, (x + sw / 2, foot_px + 11), sess.project, pil=9, board=12,
-          fill=PAL.text if s.connected else PAL.text_dim, anchor="mm", max_w=sw - 8)
+          fill=PAL.text if s.connected else PAL.text_dim, anchor="mm", max_w=PROJECT_W)
 
 
 # --- มาสคอตเดินเล่นตอนไม่มี session ------------------------------------------
@@ -368,6 +371,10 @@ def _stroll(draw: ImageDraw.ImageDraw, s: Screen, phase: float, cycle: int) -> N
 CARD_H = 36
 CARD_GAP = 4
 CARD_MAX = L.card.max
+# ความกว้างที่ข้อความมีจริง — ต้องตรงกับ `lv_obj_set_width(title, w - 18)` ใน ct_ui.c
+# ทั้งสองค่านี้คือที่มาของ `Text.Limit` ฝั่ง Swift (ดู `preview.py --limits`)
+CARD_TEXT_W = L.screen.width - L.card.pad * 2 - L.card.text_inset
+PROJECT_W = L.slots.width - L.slots.label_inset
 
 
 def _card(draw: ImageDraw.ImageDraw, c: Card, y: int) -> None:
@@ -377,12 +384,11 @@ def _card(draw: ImageDraw.ImageDraw, c: Card, y: int) -> None:
     draw.rectangle([pad, y, pad + 2, y + CARD_H - 1], fill=quantize565(accent))
 
     tx = pad + 9
-    tw = w - pad - 8 - tx
     # ขนาดฝั่งบอร์ดคือ 14/12 (montserrat กับฟอนต์ไทย) ฝั่ง PIL คือ 12/10 เพราะฟอนต์คนละตัว
     line(draw, (tx, y + 11), c.title, pil=12, board=14,
-          fill=PAL.text, anchor="lm", max_w=tw)
+          fill=PAL.text, anchor="lm", max_w=CARD_TEXT_W)
     line(draw, (tx, y + 25), c.body, pil=10, board=12,
-          fill=PAL.text_dim, anchor="lm", max_w=tw)
+          fill=PAL.text_dim, anchor="lm", max_w=CARD_TEXT_W)
 
 
 def _cards(draw: ImageDraw.ImageDraw, cards: list[Card], overflow: int) -> None:
