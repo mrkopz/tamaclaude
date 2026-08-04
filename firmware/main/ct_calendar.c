@@ -70,6 +70,14 @@ bool ct_calendar_parse(const char *json, int len, ct_calendar_t *out)
     const cJSON *age = cJSON_GetObjectItem(root, "a");
     if (cJSON_IsNumber(age) && age->valueint > 0) tmp.age = age->valueint;
 
+    // นาทีจนถึงนัดแรก — ไม่มีก็ได้ (นัดทั้งวันไม่มีอะไรให้นับ) และ 0 กับค่าลบเป็นค่าจริง
+    // ทั้งคู่: "ถึงเวลาแล้ว" กับ "เฟรมนี้เก่าจนนัดเริ่มไปแล้ว"
+    const cJSON *mins = cJSON_GetObjectItem(root, "m");
+    if (cJSON_IsNumber(mins)) {
+        tmp.has_mins = true;
+        tmp.mins = mins->valueint;
+    }
+
     cJSON_Delete(root);
     *out = tmp;  // เขียนทับทีเดียวตอนท้าย — JSON พังกลางทางต้องไม่ทิ้งภาพครึ่งๆ
     return true;

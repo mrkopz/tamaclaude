@@ -10,6 +10,7 @@
 #include "ct_mascot.h"
 #include "ct_paint.h"
 #include "ct_rects.h"
+#include "ct_sky.h"
 #include "layout.h"
 #include "lvgl.h"
 
@@ -56,16 +57,8 @@ static int s_offline_s;
 
 // --- ฉากท้องฟ้า ---------------------------------------------------------------
 // ฟ้า 22..93 แล้วพื้นดินลงไปถึงก้นจอ — วาดในผืนเดียวหลังทุกอย่าง
-// ตรรกะทั้งหมดต้องตรงกับ tools/gen/sky.py
-typedef enum {
-    CT_SKY_NIGHT = 0,
-    CT_SKY_DAWN,
-    CT_SKY_DAY,
-    CT_SKY_DUSK,
-    CT_SKY_PHASE_COUNT,
-    CT_SKY_NONE,  // ไม่ต่อลิงก์ หรือยังไม่รู้เวลา -> ไม่มีฉากเลย
-} ct_sky_phase_t;
-
+// ตรรกะทั้งหมดต้องตรงกับ tools/gen/sky.py · ชื่อช่วงกับตัวอ่านเวลาอยู่ที่ ct_sky.h
+// เพราะหน้าปฏิทินใช้ชุดเดียวกันกับ *เวลาของนัด*
 static const uint16_t SKY_BG[CT_SKY_PHASE_COUNT] = {CT_COL_SKY_NIGHT, CT_COL_SKY_DAWN,
                                                     CT_COL_SKY_DAY, CT_COL_SKY_DUSK};
 static const uint16_t SKY_GROUND[CT_SKY_PHASE_COUNT] = {
@@ -106,34 +99,6 @@ static int slot_x(int i, int n)
     return (int)lroundf((CT_SCREEN_WIDTH - n * CT_SLOTS_WIDTH) / 2.0f) + i * CT_SLOTS_WIDTH;
 }
 
-// "14:32" -> 14.533 · คืนค่าติดลบเมื่ออ่านไม่ได้
-// ติดลบไม่ใช่เที่ยงคืน แต่คือ "ยังไม่รู้เวลา" — ตอนบูตก่อน sync ครั้งแรก clock เป็น "--:--"
-// ต้องตกมาทางนี้ ไม่ใช่ไปโผล่เป็นฉากกลางดึก
-static float ct_clock_hours(const char *c)
-{
-    for (int i = 0; i < 5; i++) {
-        if (c[i] == '\0') return -1.0f;
-    }
-    if (c[2] != ':') return -1.0f;
-    for (int i = 0; i < 5; i++) {
-        if (i == 2) continue;
-        if (c[i] < '0' || c[i] > '9') return -1.0f;
-    }
-    int h = (c[0] - '0') * 10 + (c[1] - '0');
-    int m = (c[3] - '0') * 10 + (c[4] - '0');
-    if (h > 23 || m > 59) return -1.0f;
-    return (float)h + (float)m / 60.0f;
-}
-
-// ชั่วโมง -> ช่วง — กระโดดที่ขอบ ไม่ผสมสีระหว่างช่วง
-static ct_sky_phase_t sky_phase_at(float t)
-{
-    if (t < CT_SKY_DAWN_HOUR || t >= CT_SKY_NIGHT_HOUR) return CT_SKY_NIGHT;
-    if (t < CT_SKY_DAY_HOUR) return CT_SKY_DAWN;
-    if (t < CT_SKY_DUSK_HOUR) return CT_SKY_DAY;
-    return CT_SKY_DUSK;
-}
-
 // สัดส่วนของเส้นทาง (0..1) -> จุดกึ่งกลางดวงบนส่วนโค้ง
 // ที่ u=0 และ u=1 ดวงอยู่บนเส้นขอบฟ้าพอดี (จมครึ่งดวง) ที่ขอบจอทั้งสองข้าง
 //
@@ -151,7 +116,7 @@ static void sky_disc(float t, float *x, float *y, uint16_t *color)
 {
     if (t >= CT_SKY_DAWN_HOUR && t < CT_SKY_NIGHT_HOUR) {
         sky_arc((t - CT_SKY_DAWN_HOUR) / (float)(CT_SKY_NIGHT_HOUR - CT_SKY_DAWN_HOUR), x, y);
-        ct_sky_phase_t p = sky_phase_at(t);
+        ct_sky_phase_t p = ct_sky_phase_at(t);
         *color = (p == CT_SKY_DAWN || p == CT_SKY_DUSK) ? CT_COL_SUN_LOW : CT_COL_SUN;
         return;
     }
@@ -479,7 +444,7 @@ static void update_sky(void)
     ct_sky_phase_t was = s_sky_phase;
     float hours = s_connected ? ct_clock_hours(s_frame->clock) : -1.0f;
     s_sky_hours = hours;
-    s_sky_phase = hours < 0.0f ? CT_SKY_NONE : sky_phase_at(hours);
+    s_sky_phase = hours < 0.0f ? CT_SKY_NONE : ct_sky_phase_at(hours);
     if (s_sky_phase != was) {
         lv_obj_invalidate(s_sky);
     } else if (s_sky_phase != CT_SKY_NONE) {

@@ -65,7 +65,7 @@ public enum CalendarState: Int, Codable, Sendable {
 /// page frame ของหน้าปฏิทิน
 ///
 /// ```
-/// {"a":42,"e":[{"d":"Today","n":"ประชุมทีม","t":"09:30"}],"g":3,"p":0}
+/// {"a":42,"e":[{"d":"Today","n":"ประชุมทีม","t":"09:30"}],"g":3,"m":42,"p":0}
 /// ```
 ///
 /// วันกับเวลามาเป็น *ข้อความที่จัดรูปแล้ว* ด้วยเหตุผลเดียวกับราคาคริปโต: บอร์ดไม่มี
@@ -77,14 +77,33 @@ public struct CalendarFrame: PageFrame, Equatable, Codable, Sendable {
     public var events: [CalendarSlot]
     public var state: CalendarState
     public var age: Int
+    /// นาทีจนถึงนัดแรก ตอนที่เฟรมนี้ถูกสร้าง — `nil` เมื่อนัดแรกเป็นนัดทั้งวัน
+    ///
+    /// บอร์ดนับถอยหลังต่อเองโดยหักอายุของเฟรมออก ไม่ได้รับเวลาสัมบูรณ์: มันไม่มี
+    /// timezone และไม่มีนาฬิกาที่ตั้งตรง (เหตุผลเดียวกับที่วันและเวลามาเป็นข้อความ)
+    public var minutesUntilFirst: Int?
 
-    /// สี่รายการ — เท่าที่แถวสูงพอให้ชื่อนัดภาษาไทยอ่านออกจะวางลงจอได้
+    /// สามรายการ — นัดถัดไปกินที่ของการ์ดใบใหญ่ไป เหลือสองแถวใต้สันเวลา
     /// (`[calendar] rows` ใน tools/layout.toml)
-    public static let maxRows = 4
-    /// ความกว้างคอลัมน์ชื่อนัดคือ 216px ที่ฟอนต์ 14 — วัดจาก `[calendar] title_w`
+    public static let maxRows = 3
+    /// ความกว้างคอลัมน์ชื่อนัดคือ 216px ที่ฟอนต์ 12 — วัดจาก `[calendar] title_w`
     /// นับเป็น *ช่อง* ไม่ใช่ scalar (`Text.fit`) ไม่งั้นชื่อไทยจะถูกตัดสั้นเกินจริง
     /// เพราะวรรณยุกต์กับสระบนกว้างศูนย์
-    public static let titleLimit = 22
+    ///
+    /// ค่านี้เอนไปทางละติน: `preview.py --limits` วัดได้ไทย 27 ช่อง ละติน ~40 (ตัวอักษร
+    /// ละตินแคบกว่าและกว้างไม่เท่ากัน) — 30 คือจุดที่ชื่ออังกฤษได้อ่านเต็มขึ้น แลกกับชื่อไทย
+    /// ยาวสุดที่ล้นคอลัมน์แล้วถูก `LV_LABEL_LONG_DOT` ฝั่งบอร์ดตัดท้ายให้ · ตาข่ายนั้นต้อง
+    /// มีจริงถึงจะตั้งค่าแบบนี้ได้ ก่อนหน้านี้ป้ายที่ล้นจะ *ขึ้นบรรทัดใหม่* ไปทับแถวถัดไป
+    public static let titleLimit = 30
+    /// ชื่อนัดบนการ์ดได้ทั้งความกว้างการ์ด (280px ที่ฟอนต์ 14) **และสองบรรทัด**
+    ///
+    /// เอนไปทางละตินด้วยเหตุผลเดียวกับ `titleLimit`: วัดได้ไทย 31 ช่องต่อบรรทัด (= 62)
+    /// ละติน ~40 (= 80) — 65 อยู่เหนือเพดานไทยขึ้นมา เพื่อให้ชื่ออังกฤษยาวๆ ได้ใช้บรรทัด
+    /// ที่สองจนเต็มจริง ส่วนชื่อไทยที่ยาวเกินก็ตกไปให้ `LV_LABEL_LONG_DOT` ตัดท้าย
+    ///
+    /// เพดานคนละตัวกับแถวล่างโดยตั้งใจ: นัดถัดไปคือชื่อที่ต้องอ่านออกที่สุดบนหน้า และ
+    /// มันเป็นบรรทัดเดียวที่ไม่ต้องแบ่งที่กับคอลัมน์เวลา
+    public static let heroTitleLimit = 65
 
     /// หนึ่งแถวอย่างที่มันอยู่บนสาย
     public struct CalendarSlot: Equatable, Codable, Sendable {
@@ -107,11 +126,15 @@ public struct CalendarFrame: PageFrame, Equatable, Codable, Sendable {
         }
     }
 
-    public init(events: [CalendarSlot], state: CalendarState = .ok, age: Int = 0) {
+    public init(
+        events: [CalendarSlot], state: CalendarState = .ok, age: Int = 0,
+        minutesUntilFirst: Int? = nil
+    ) {
         self.events = Array(events.prefix(Self.maxRows))
         // แถวที่ไม่มีอยู่กับสถานะ `ok` เข้ากันไม่ได้ — บอร์ดจะได้หน้าที่ว่างโดยไม่มีคำอธิบาย
         self.state = self.events.isEmpty && state == .ok ? .empty : state
         self.age = age
+        self.minutesUntilFirst = self.events.isEmpty ? nil : minutesUntilFirst
     }
 
     enum CodingKeys: String, CodingKey {
@@ -119,6 +142,7 @@ public struct CalendarFrame: PageFrame, Equatable, Codable, Sendable {
         case age = "a"
         case rows = "e"
         case state = "p"
+        case minutes = "m"
     }
 
     public init(from decoder: Decoder) throws {
@@ -131,6 +155,7 @@ public struct CalendarFrame: PageFrame, Equatable, Codable, Sendable {
         age = try c.decode(Int.self, forKey: .age)
         events = try c.decodeIfPresent([CalendarSlot].self, forKey: .rows) ?? []
         state = try c.decode(CalendarState.self, forKey: .state)
+        minutesUntilFirst = try c.decodeIfPresent(Int.self, forKey: .minutes)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -138,13 +163,24 @@ public struct CalendarFrame: PageFrame, Equatable, Codable, Sendable {
         try c.encode(PageKind.calendar.rawValue, forKey: .kindID)
         try c.encode(age, forKey: .age)
         try c.encode(state, forKey: .state)
+        try c.encodeIfPresent(minutesUntilFirst, forKey: .minutes)
         try c.encode(rows(titleLimit: Self.titleLimit, count: events.count), forKey: .rows)
     }
 
+    /// นัดแรกได้เพดานของตัวเอง — การ์ดกว้างกว่าคอลัมน์ชื่อของแถวล่าง และได้สองบรรทัด
+    ///
+    /// ตอนบีบเฟรม เพดานทั้งสองยุบลง *ตามสัดส่วน* ไม่ใช่ลงเหลือเท่ากัน (การ์ดที่ถูกตัดสั้น
+    /// เท่าแถวล่างคือการ์ดที่เสียเหตุผลที่มันกว้างกว่าไป) และไม่ใช่ห่างกันคงที่ — ส่วนต่าง
+    /// คงที่ทำให้การ์ดมีพื้นขั้นต่ำ ~41 ช่องที่บีบต่อไม่ได้ แล้วเฟรมที่งบแคบจริงๆ ก็ล้มทั้งใบ
+    private func heroLimit(_ titleLimit: Int) -> Int {
+        max(4, titleLimit * Self.heroTitleLimit / Self.titleLimit)
+    }
+
     private func rows(titleLimit: Int, count: Int) -> [CalendarSlot] {
-        events.prefix(count).map {
+        events.prefix(count).enumerated().map { i, e in
             CalendarSlot(
-                day: $0.day, time: $0.time, title: Text.fit($0.title, to: titleLimit))
+                day: e.day, time: e.time,
+                title: Text.fit(e.title, to: i == 0 ? heroLimit(titleLimit) : titleLimit))
         }
     }
 
@@ -186,6 +222,7 @@ public struct CalendarFrame: PageFrame, Equatable, Codable, Sendable {
             try c.encode(PageKind.calendar.rawValue, forKey: .kindID)
             try c.encode(frame.age, forKey: .age)
             try c.encode(frame.state, forKey: .state)
+            try c.encodeIfPresent(frame.minutesUntilFirst, forKey: .minutes)
             try c.encode(
                 frame.rows(titleLimit: titleLimit, count: count), forKey: .rows)
         }
@@ -280,11 +317,26 @@ public enum CalendarPage {
         calendar: Calendar = .current
     ) -> CalendarFrame {
         guard state == .ok else { return CalendarFrame(events: [], state: state) }
-        let rows = upcoming(events, now: now, calendar: calendar).map {
+        let picked = upcoming(events, now: now, calendar: calendar)
+        let rows = picked.map {
             CalendarFrame.CalendarSlot(
                 day: dayText($0, now: now, calendar: calendar),
                 time: timeText($0, calendar: calendar), title: $0.title)
         }
-        return CalendarFrame(events: rows, state: rows.isEmpty ? .empty : .ok)
+        return CalendarFrame(
+            events: rows, state: rows.isEmpty ? .empty : .ok,
+            minutesUntilFirst: minutesUntil(picked.first, now: now))
+    }
+
+    /// นาทีจนถึงนัดหนึ่ง — `nil` เมื่อไม่มีนัด หรือเมื่อมันเป็นนัดทั้งวัน
+    ///
+    /// นัดทั้งวันไม่มีเวลาเริ่ม การนับถอยหลังไปหาเที่ยงคืนของมันคือตัวเลขที่ถูกทางเลข
+    /// แต่ตอบผิดคำถาม — จอจะบอกว่า "in 14h 20m" สำหรับวันเกิดที่ไม่ได้เริ่มตอนเที่ยงคืน
+    ///
+    /// ปัดขึ้น ไม่ใช่ปัดลง: นัดที่เหลือ 90 วินาทีต้องอ่านว่า "in 2 min" ไม่ใช่ "in 1 min"
+    /// ที่กำลังจะกลายเป็น "now" ทั้งที่ยังมีเวลาเดินไปห้องประชุม
+    public static func minutesUntil(_ event: CalendarEvent?, now: Date) -> Int? {
+        guard let event, !event.isAllDay else { return nil }
+        return Int(ceil(event.start.timeIntervalSince(now) / 60))
     }
 }

@@ -3171,19 +3171,21 @@ func runAllTests() {
                 day: "Tomorrow", time: "09:3\($0)",
                 title: "ประชุมทีมที่ปั๊มน้ำมันกับผู้รับเหมาเรื่องหลังคาใหม่ \($0)")
         }
-        let frame = CalendarFrame(events: rows, age: 42)
+        let frame = CalendarFrame(events: rows, age: 42, minutesUntilFirst: 42)
         let data = try frame.encoded()
         expect(data.count <= Wire.maxPayload, "a full page fits one mtu")
 
         let text = String(data: data, encoding: .utf8) ?? ""
         expect(text.contains("\"g\":3"), "the calendar page names itself on the wire")
         expect(text.contains("\"a\":42"), "and carries the age of what it says")
+        expect(text.contains("\"m\":42"), "and how long is left until the first one")
 
         let back = try JSONDecoder().decode(CalendarFrame.self, from: data)
-        equal(back.events.count, 4, "four appointments make the round trip")
+        equal(back.events.count, 3, "three appointments make the round trip")
+        equal(back.minutesUntilFirst, 42, "with the countdown intact")
         equal(back.state, .ok, "and the page says it has something to show")
         equal(
-            back.events.map(\.time), rows.map(\.time),
+            back.events.map(\.time), rows.prefix(CalendarFrame.maxRows).map(\.time),
             "with the times untouched by the squeeze")
 
         // บีบจนแคบ: ชื่อนัดสั้นลงได้ แต่วันกับเวลาต้องมาครบทุกแถวที่ยังอยู่
@@ -3200,13 +3202,26 @@ func runAllTests() {
         let long = CalendarFrame(events: [
             CalendarFrame.CalendarSlot(
                 day: "Today", time: "10:30",
-                title: "ที่ปั๊มน้ำมันกับกตัญญูและฝั่งโน้นอีกหลายคำที่ยาวเกินคอลัมน์")
+                title: "ที่ปั๊มน้ำมันกับกตัญญูและฝั่งโน้นอีกหลายคำที่ยาวเกินสองบรรทัดของการ์ดใบนี้ไปมากจนต้องโดนตัดท้ายทิ้ง")
         ])
         let clipped = try JSONDecoder().decode(
             CalendarFrame.self, from: try long.encoded())
         equal(
-            Text.displayWidth(clipped.events[0].title), CalendarFrame.titleLimit,
-            "a long thai title uses the whole column instead of stopping short")
+            Text.displayWidth(clipped.events[0].title), CalendarFrame.heroTitleLimit,
+            "a long thai title uses the whole card instead of stopping short")
+
+        // การ์ดกว้างกว่าคอลัมน์ของแถวล่าง ชื่อนัดแรกจึงถูกตัดสั้นกว่าที่อื่นไม่ได้
+        let mixed = try JSONDecoder().decode(
+            CalendarFrame.self,
+            from: try CalendarFrame(events: (0..<3).map { _ in
+                CalendarFrame.CalendarSlot(
+                    day: "Today", time: "10:30",
+                    title: "ที่ปั๊มน้ำมันกับกตัญญูและฝั่งโน้นอีกหลายคำที่ยาวเกินคอลัมน์")
+            }).encoded())
+        expect(
+            Text.displayWidth(mixed.events[0].title)
+                > Text.displayWidth(mixed.events[1].title),
+            "the appointment on the card gets more room than the ones under it")
 
         do {
             _ = try frame.encoded(maxBytes: 40)
@@ -3226,7 +3241,7 @@ func runAllTests() {
             "and a page without permission says that, whatever rows it was handed")
     }
 
-    suite("the calendar keeps what is ahead, inside seven days, and at most four") {
+    suite("the calendar keeps what is ahead, inside seven days, and at most three") {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "Asia/Bangkok")!
         // จันทร์ 6 ก.ค. 2026 เวลา 08:00 — วันที่คงที่ เทสต์จึงไม่เปลี่ยนผลตามวันที่รัน
@@ -3244,7 +3259,7 @@ func runAllTests() {
         ]
         let picked = CalendarPage.upcoming(events, now: now, calendar: cal)
         equal(
-            picked.map(\.title), ["วันนี้บ่าย", "พรุ่งนี้", "วันหยุดทั้งวัน", "ศุกร์"],
+            picked.map(\.title), ["วันนี้บ่าย", "พรุ่งนี้", "วันหยุดทั้งวัน"],
             "what is behind us or past the week is gone, and the rest is in time order")
 
         // นัดทั้งวันของ *วันนี้* เริ่มที่เที่ยงคืนที่ผ่านมาแล้ว แต่ยังไม่ผ่านไป — วันเกิดกับ
@@ -3261,7 +3276,7 @@ func runAllTests() {
             0, "while yesterday's is gone, which is the only difference between the two")
 
         let frame = CalendarPage.frame(events: events, now: now, calendar: cal)
-        equal(frame.events.count, 4, "four is what the screen has room for")
+        equal(frame.events.count, 3, "three is what the screen has room for")
         equal(frame.events[0].day, "Today", "the first is today")
         equal(frame.events[0].time, "14:00", "at a time written the same width every row")
         equal(frame.events[1].day, "Tomorrow", "tomorrow has a word of its own")
@@ -3269,8 +3284,26 @@ func runAllTests() {
             frame.events[2].time, "all day",
             "an all-day appointment says so instead of showing midnight")
         equal(
-            frame.events[3].day, "Fri",
-            "and further out is a weekday, which is unambiguous inside seven days")
+            CalendarPage.dayText(
+                CalendarEvent(title: "ศุกร์", start: now + 4 * 86400), now: now,
+                calendar: cal),
+            "Fri", "and further out is a weekday, which is unambiguous inside seven days")
+
+        // ตัวนับถอยหลังบนการ์ด — นาที ไม่ใช่เวลาสัมบูรณ์ เพราะบอร์ดไม่มีนาฬิกาที่ตั้งตรง
+        equal(frame.minutesUntilFirst, 6 * 60, "the card counts down to the first one")
+        // ปัดขึ้น: นัดที่เหลือ 90 วินาทีต้องอ่านว่า "in 2 min" ไม่ใช่ "in 1 min" ที่กำลังจะ
+        // กลายเป็น "now" ทั้งที่ยังมีเวลาเดินไปห้องประชุม
+        equal(
+            CalendarPage.minutesUntil(
+                CalendarEvent(title: "อีกนิดเดียว", start: now + 90), now: now),
+            2, "a minute and a half left rounds up, never down")
+        // นัดทั้งวันไม่มีเวลาเริ่ม การนับถอยหลังไปหาเที่ยงคืนของมันตอบผิดคำถาม
+        equal(
+            CalendarPage.frame(
+                events: [CalendarEvent(title: "วันเกิด", start: cal.startOfDay(for: now),
+                                       isAllDay: true)], now: now, calendar: cal
+            ).minutesUntilFirst,
+            nil, "an all-day appointment has nothing to count down to")
 
         equal(
             CalendarPage.frame(events: [], now: now, calendar: cal).state, .empty,

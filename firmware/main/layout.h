@@ -181,19 +181,49 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_STOCKS_EMPTY_SUB_Y        104
 #define CT_STOCKS_REFRESH_S          60
 
-#define CT_CALENDAR_ROWS             4
-#define CT_CALENDAR_ROW_Y            32
-#define CT_CALENDAR_ROW_H            44
+#define CT_CALENDAR_ROWS             3
+#define CT_CALENDAR_LIST_ROWS        2
+#define CT_CALENDAR_HERO_PAD         8
+#define CT_CALENDAR_HERO_Y           26
+#define CT_CALENDAR_HERO_H           96
+#define CT_CALENDAR_HERO_TIME_X      20
+#define CT_CALENDAR_HERO_TIME_DY     6
+#define CT_CALENDAR_HERO_TIME_FONT   24
+#define CT_CALENDAR_HERO_TIME_FONT_PIL 20
+#define CT_CALENDAR_HERO_DAY_X       96
+#define CT_CALENDAR_HERO_DAY_W       80
+#define CT_CALENDAR_HERO_SUB_RIGHT   20
+#define CT_CALENDAR_HERO_SUB_DY      13
+#define CT_CALENDAR_HERO_SUB_W       120
+#define CT_CALENDAR_HERO_TITLE_X     20
+#define CT_CALENDAR_HERO_TITLE_DY    38
+#define CT_CALENDAR_HERO_TITLE_W     280
+#define CT_CALENDAR_HERO_TITLE_LINES 2
+#define CT_CALENDAR_HERO_TITLE_LINE_H 22
+#define CT_CALENDAR_CARD_DISC_X      268
+#define CT_CALENDAR_CARD_DISC_Y      2
+#define CT_CALENDAR_CARD_DISC_R      11
+#define CT_CALENDAR_CARD_STAR_PX     2
+#define CT_CALENDAR_CARD_CLOUD_H     7
+#define CT_CALENDAR_CARD_CLOUD_R     3
+#define CT_CALENDAR_SPINE_X          88
+#define CT_CALENDAR_SPINE_W          2
+#define CT_CALENDAR_SPINE_TOP        126
+#define CT_CALENDAR_SPINE_PAD        4
+#define CT_CALENDAR_COUNTDOWN_MAX_MIN 720
+#define CT_CALENDAR_ROW_Y            128
+#define CT_CALENDAR_ROW_H            37
 #define CT_CALENDAR_TIME_X           12
-#define CT_CALENDAR_TIME_W           74
+#define CT_CALENDAR_TIME_W           68
 #define CT_CALENDAR_DAY_X            12
-#define CT_CALENDAR_DAY_W            74
-#define CT_CALENDAR_TITLE_X          92
+#define CT_CALENDAR_DAY_W            68
+#define CT_CALENDAR_TITLE_X          96
 #define CT_CALENDAR_TITLE_W          216
-#define CT_CALENDAR_TIME_FONT        24
-#define CT_CALENDAR_TIME_FONT_PIL    20
-#define CT_CALENDAR_TIME_DY          2
-#define CT_CALENDAR_DAY_DY           28
+#define CT_CALENDAR_TIME_FONT        14
+#define CT_CALENDAR_DAY_FONT         12
+#define CT_CALENDAR_TITLE_FONT       12
+#define CT_CALENDAR_TIME_DY          4
+#define CT_CALENDAR_DAY_DY           21
 #define CT_CALENDAR_TITLE_DY         12
 #define CT_CALENDAR_EMPTY_Y          80
 #define CT_CALENDAR_EMPTY_SUB_Y      104
@@ -202,6 +232,23 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_CALENDAR_DATE_FONT        48
 #define CT_CALENDAR_DATE_FONT_PIL    46
 #define CT_CALENDAR_REFRESH_S        300
+
+#define CT_CALENDAR_CARD_STARS_COUNT 7
+static const int16_t ct_calendar_card_stars[CT_CALENDAR_CARD_STARS_COUNT][2] = {
+    { 34,  16},
+    {108,  10},
+    {166,  24},
+    {244,  12},
+    {292,  40},
+    { 58,  44},
+    {214,  52},
+};
+
+#define CT_CALENDAR_CARD_CLOUDS_COUNT 2
+static const int16_t ct_calendar_card_clouds[CT_CALENDAR_CARD_CLOUDS_COUNT][3] = {
+    { 40,  36,  38},
+    {196,  38,  30},
+};
 
 #define CT_MASCOT_GRID_W             16.5f
 #define CT_MASCOT_GRID_H             12
@@ -258,6 +305,31 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_COL_SHADOW_DAWN           0x10A3
 #define CT_COL_SHADOW_DAY            0x1923
 #define CT_COL_SHADOW_DUSK           0x1884
+#define CT_COL_CAL_SKY_NIGHT         0x1907
+#define CT_COL_CAL_SKY_DAWN          0x3A4F
+#define CT_COL_CAL_SKY_DAY           0xBEFE
+#define CT_COL_CAL_SKY_DUSK          0x696F
+#define CT_COL_CAL_EDGE_NIGHT        0x4AD1
+#define CT_COL_CAL_EDGE_DAWN         0x7438
+#define CT_COL_CAL_EDGE_DAY          0x5C97
+#define CT_COL_CAL_EDGE_DUSK         0xAB17
+#define CT_COL_CAL_DIM               0xBE1B
+#define CT_COL_CAL_ACCENT            0xFE14
+#define CT_COL_CAL_INK               0x10A1
+#define CT_COL_CAL_INK_DIM           0x3AAD
+#define CT_COL_CAL_INK_ACCENT        0x8A04
+#define CT_COL_CAL_LO_NIGHT          0x2169
+#define CT_COL_CAL_LO_DAWN           0x4AD1
+#define CT_COL_CAL_LO_DAY            0xD75F
+#define CT_COL_CAL_LO_DUSK           0x79D1
+#define CT_COL_CAL_GLOW_NIGHT        0x3A4E
+#define CT_COL_CAL_GLOW_DAWN         0x63B5
+#define CT_COL_CAL_GLOW_DAY          0xE79F
+#define CT_COL_CAL_GLOW_DUSK         0x9293
+#define CT_COL_CAL_DISC_NIGHT        0x5B51
+#define CT_COL_CAL_DISC_DAWN         0x6BD5
+#define CT_COL_CAL_DISC_DAY          0xE54B
+#define CT_COL_CAL_DISC_DUSK         0x9293
 
 // visual state — daemon ส่งค่าพวกนี้มาบน BLE ห้ามเรียงใหม่
 typedef enum {

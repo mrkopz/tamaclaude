@@ -329,16 +329,51 @@ CALENDAR_SCENES: dict[str, calendar.Calendar] = {
         calendar.Appointment("Today", "09:30", "ประชุมทีมที่ปั๊มน้ำมัน"),
         calendar.Appointment("Today", "14:00", "1:1 with Ann"),
         calendar.Appointment("Tomorrow", "all day", "กตัญญู ฝั่งโน้น ฐู ฟ้า ปี"),
+    ], age=95, mins=44, mascot_state="alert"),
+    # นัดถัดไปเป็นนัดทั้งวัน — ไม่มีอะไรให้นับถอยหลัง ช่องขวาของการ์ดจึงเป็นชื่อวันแทน
+    # การ์ดที่ว่างครึ่งขวาอ่านเป็นการ์ดที่โหลดไม่ครบ
+    "allday": calendar.Calendar(events=[
+        calendar.Appointment("Tomorrow", "all day", "กตัญญู ฝั่งโน้น ฐู ฟ้า ปี"),
         calendar.Appointment("Fri", "08:15", "Flight BKK -> CNX"),
-    ], age=95, mascot_state="alert"),
-    # นัดเดียวต้องดูเหมือนนัดเดียว ไม่ใช่สี่นัดที่หายไปสาม
+    ], age=30),
+    # นัดที่เริ่มแล้วระหว่างที่เฟรมยังไม่ถึงรอบถัดไป — ตัวนับถอยหลังเดินด้วยอายุข้อมูล
+    # ตัวเดียวกับบรรทัดล่าง มันจึงถึง "now" เองโดยไม่ต้องรอเฟรมใหม่
+    "now": calendar.Calendar(events=[
+        calendar.Appointment("Today", "09:30", "ยืนคุยกับทีมหน้าไวท์บอร์ด"),
+        calendar.Appointment("Today", "14:00", "1:1 with Ann"),
+    ], age=280, mins=3),
+    # นัดพรุ่งนี้เช้าที่ยังอยู่ในระยะนับถอยหลัง — ชื่อวันต้องอยู่ *ด้วย* ไม่ใช่ถูกตัวนับ
+    # แทนที่ ไม่งั้น "07:00" อ่านเป็นเช้านี้ ซึ่งเป็นคนละวันกับที่มันหมายถึง
+    "tomorrow_soon": calendar.Calendar(events=[
+        calendar.Appointment("Tomorrow", "07:00", "รถรับที่ล็อบบี้"),
+        calendar.Appointment("Tomorrow", "09:30", "ประชุมทีมที่ปั๊มน้ำมัน"),
+    ], age=45, mins=9 * 60),
+    # นัดเดียวต้องดูเหมือนนัดเดียว ไม่ใช่สามนัดที่หายไปสอง — และไม่มีสันเวลาเพราะ
+    # ไม่มีแถวให้กั้น
     "one": calendar.Calendar(events=[
         calendar.Appointment("Tomorrow", "10:00", "หมอฟัน"),
-    ], age=12),
-    # ชื่อที่ถูกตัดมาแล้วฝั่ง Mac — จุดไข่ปลาอยู่ท้ายคลัสเตอร์ ไม่ใช่กลางวรรณยุกต์
+    ], age=12, mins=1490),
+    # ชื่อยาวเต็มเพดานสองบรรทัดของการ์ด — ตัวตัดคำต้องตรงกับ LVGL และจุดไข่ปลาต้องอยู่
+    # ท้ายคลัสเตอร์ ไม่ใช่กลางวรรณยุกต์
     "long": calendar.Calendar(events=[
-        calendar.Appointment("Today", "16:45", "ที่ปั๊มน้ำมันกับผู้รับเหมาเรื..."),
-    ], age=200),
+        calendar.Appointment("Today", "16:45",
+                             "ประชุมที่ปั๊มน้ำมันกับผู้รับเหมาเรื่องหลังคาใหม่และท่อ"),
+        calendar.Appointment("Fri", "08:15", "Flight BKK -> CNX with the whole team"),
+    ], age=200, mins=430),
+    # สามใบที่เหลือของพื้นการ์ด — ช่วงเวลาของ *นัด* ไม่ใช่ของตอนนี้ (นาฬิกาบนแถบบน
+    # เป็น 14:32 ทั้งสามฉาก) ใบกลางคืนคือใบที่พิสูจน์ว่าขอบ 1px จำเป็น
+    "dusk": calendar.Calendar(events=[
+        calendar.Appointment("Today", "17:30", "ซ้อมวิ่งกับกลุ่มที่สวน"),
+        calendar.Appointment("Today", "19:00", "Dinner with the Chens"),
+    ], age=40, mins=175),
+    "night": calendar.Calendar(events=[
+        calendar.Appointment("Today", "21:00", "โทรหาทีมที่ซานฟราน"),
+        calendar.Appointment("Tomorrow", "06:30", "Inter Miami CF - Atlanta"),
+    ], age=25, mins=385),
+    "dawn": calendar.Calendar(events=[
+        calendar.Appointment("Tomorrow", "05:40", "รถไปสนามบิน"),
+        calendar.Appointment("Tomorrow", "08:15", "Flight BKK -> CNX"),
+    ], age=90, mins=920),
     # สัปดาห์ที่ว่างจริงๆ — หน้านี้กลายเป็นปฏิทินตั้งโต๊ะ ไม่ใช่ประโยคบอกว่าไม่มีอะไร
     "empty": calendar.Calendar(state=calendar.EMPTY, age=60),
     # ว่างเหมือนกันแต่ยังไม่เคยได้ snapshot เลย จึงยังไม่รู้ว่าวันนี้วันอะไร — ถอยกลับไป
@@ -357,7 +392,7 @@ CALENDAR_SCENES: dict[str, calendar.Calendar] = {
     "offline": calendar.Calendar(events=[
         calendar.Appointment("Today", "09:30", "ประชุมทีมที่ปั๊มน้ำมัน"),
         calendar.Appointment("Wed", "13:00", "Design review"),
-    ], age=50 * 60, connected=False),
+    ], age=50 * 60, mins=20, connected=False),
 }
 
 
@@ -416,8 +451,12 @@ LABELS = (
     ("cardTitle", screen.CARD_TEXT_W, 14, _CARD_BODY_TOP - _CARD_TITLE_TOP),
     ("cardBody", screen.CARD_TEXT_W, 12, L.card.h_two - _CARD_BODY_TOP),
     ("Weather.placeLimit", L.weather.icon_x - L.weather.place_x - 8, 14, None),
-    ("Calendar.titleLimit", L.calendar.title_w, 14,
-     L.calendar.row_h - (L.calendar.title_dy - _RISE[14])),
+    ("Calendar.titleLimit", L.calendar.title_w, L.calendar.title_font,
+     L.calendar.row_h - (L.calendar.title_dy - _RISE[L.calendar.title_font])),
+    # ชื่อนัดบนการ์ดได้ทั้งความกว้างการ์ด *และสองบรรทัด* — เพดานคนละตัวกับแถวล่าง
+    # โดยตั้งใจ ตัวเลขที่ Swift ถือคือค่านี้คูณจำนวนบรรทัด แล้วเผื่อระยะเท่ากับแถวล่าง
+    ("Calendar.heroLine", L.calendar.hero_title_w, 14,
+     L.calendar.hero_h - (L.calendar.hero_title_dy - _RISE[14])),
 )
 
 

@@ -64,6 +64,43 @@ def _cells(draw: ImageDraw.ImageDraw, text: str, pil: int, board: int) -> list[t
     return out
 
 
+def wrap(draw: ImageDraw.ImageDraw, text: str, *, pil: int, board: int, max_w: int,
+         max_lines: int) -> list[str]:
+    """ตัดข้อความเป็นหลายบรรทัด — พอร์ตของ LV_LABEL_LONG_DOT ที่ความกว้างคงที่
+
+    LVGL ตัดที่ช่องว่างถ้ามี ไม่มีก็ตัดตรงตัวที่ล้น — ภาษาไทยไม่มีช่องว่างระหว่างคำ
+    มันจึงตกทางหลังเสมอ และการตัดต้องเป็น *ช่อง* ไม่ใช่ scalar ไม่งั้นวรรณยุกต์จะหลุด
+    จากฐานของมัน (เหตุผลเดียวกับ `line`)
+
+    บรรทัดสุดท้ายที่ยังเหลือข้อความต่อท้ายจบด้วย "..." เหมือนที่บอร์ดทำ
+    """
+    cells = _cells(draw, text, pil, board)
+    ell = draw.textlength("...", font=font(pil))
+    lines: list[str] = []
+    while cells and len(lines) < max_lines:
+        last = len(lines) == max_lines - 1
+        take, w = 0, 0.0
+        while take < len(cells) and w + cells[take][2] <= max_w:
+            w += cells[take][2]
+            take += 1
+        if take == len(cells):
+            lines.append("".join(c for c, _, _ in cells))
+            return lines
+        if last:
+            # เหลือข้อความต่อท้าย — ถอยจนที่ว่างพอสำหรับจุดไข่ปลา
+            while take > 0 and w + ell > max_w:
+                take -= 1
+                w -= cells[take][2]
+            lines.append("".join(c for c, _, _ in cells[:take]) + "...")
+            return lines
+        # ตัดที่ช่องว่างท้ายสุดของบรรทัดนี้ถ้ามี — กติกาเดียวกับ LVGL กับข้อความละติน
+        brk = next((i for i in range(take - 1, 0, -1) if cells[i][0] == " "), None)
+        cut = brk if brk is not None else max(take, 1)
+        lines.append("".join(c for c, _, _ in cells[:cut]))
+        cells = cells[cut + 1:] if brk is not None else cells[cut:]
+    return lines
+
+
 def line(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str, *,
           pil: int, board: int, fill: str, anchor: str, max_w: int | None = None) -> None:
     """วาดข้อความหนึ่งบรรทัด
