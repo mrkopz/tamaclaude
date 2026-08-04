@@ -2,7 +2,7 @@
 
 #include "driver/gpio.h"
 
-// ขาตามเอกสารชุมชน ยังไม่ได้วัดจากบอร์ดจริง (DESIGN.md)
+// ขาตามเอกสารชุมชน ยังไม่ได้วัดจากบอร์ดจริง (docs/hardware.md)
 #define PIN_R 4
 #define PIN_G 16
 #define PIN_B 17

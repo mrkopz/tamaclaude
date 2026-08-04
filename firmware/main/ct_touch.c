@@ -6,7 +6,7 @@
 
 static const char *TAG = "touch";
 
-// ยืนยันแล้วจากบอร์ดจริง (DESIGN.md) — คนละ host กับจอ จึงไม่ต้องล็อกอะไรร่วมกับการวาด
+// ยืนยันแล้วจากบอร์ดจริง (docs/hardware.md) — คนละ host กับจอ จึงไม่ต้องล็อกอะไรร่วมกับการวาด
 #define PIN_T_SCLK 25
 #define PIN_T_MOSI 32
 #define PIN_T_MISO 39
@@ -148,7 +148,7 @@ ct_swipe_t ct_touch_poll(int elapsed_ms)
     }
     s_release_run = 0;
 
-    // แกนของชิปสลับกับแกนของจอ: ADC y คือแกนนอนของภาพ ADC x คือแกนตั้ง (DESIGN.md)
+    // แกนของชิปสลับกับแกนของจอ: ADC y คือแกนนอนของภาพ ADC x คือแกนตั้ง (docs/hardware.md)
     // สลับที่นี่ที่เดียว ที่เหลือของไฟล์คิดเป็นแกนของภาพล้วนๆ
     int h = median3(T_CMD_Y);
     int v = median3(T_CMD_X);
