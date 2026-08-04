@@ -3,14 +3,17 @@
 How the engineering skills should consume this repo's domain documentation when exploring the codebase.
 
 This repo is **single-context**: one `CONTEXT.md` and one `docs/adr/` at the root cover the
-host daemon, the firmware, and the graphics tooling alike. `DESIGN.md` (Thai) remains the
-authoritative record of visual, protocol, and layout decisions — read the relevant section of
-it before changing any of those.
+host daemon, the firmware, and the graphics tooling alike.
+
+Visual, protocol, and layout rationale is **not** in a document — it sits in Thai comments
+beside the code it governs, at the density the surrounding file already uses. Read the code
+you are about to change; the reasons are there.
 
 ## Before exploring, read these
 
 - **`CONTEXT.md`** at the repo root.
 - **`docs/adr/`** — read ADRs that touch the area you're about to work in.
+- **`docs/hardware.md`** — only when you need a value measured off the real board.
 
 If any of these files don't exist, **proceed silently**. Don't flag their absence; don't suggest creating them upfront. The `/domain-modeling` skill (reached via `/grill-with-docs` and `/improve-codebase-architecture`) creates them lazily when terms or decisions actually get resolved.
 

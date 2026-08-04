@@ -1,4 +1,4 @@
-// WiFi station — ทางเดินที่สองของ snapshot เมื่อ BLE ไกลเกินไป (DESIGN.md)
+// WiFi station — ทางเดินที่สองของ snapshot เมื่อ BLE ไกลเกินไป
 //
 // บอร์ดไม่เคยยิง claude.ai เอง: `sessionKey` เป็น credential เต็มบัญชี และแฟลชบนบอร์ด
 // ดัมพ์ออกได้ด้วยสาย USB WiFi จึงมีไว้คุยกับ Mac ผ่าน LAN เท่านั้น

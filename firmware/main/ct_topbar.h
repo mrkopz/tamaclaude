@@ -27,5 +27,5 @@ void ct_topbar_redraw(void);
 void ct_topbar_set_connected(bool connected);
 
 // ไอคอนลิงก์ขวาสุด — BLE ชนะ WiFi เสมอเพราะเป็นทางหลัก ทั้งคู่ false = ยังไม่มีใครคุยด้วย
-// ไม่รับ `ip` แล้ว: ที่อยู่ของบอร์ดอยู่ในหน้าตั้งค่าบน Mac ที่เดียว (ดู DESIGN.md)
+// ไม่รับ `ip` แล้ว: ที่อยู่ของบอร์ดอยู่ในหน้าตั้งค่าบน Mac ที่เดียว ป้ายซ้ายเป็นชื่อหน้าล้วน
 void ct_topbar_set_link(bool ble, bool wifi);

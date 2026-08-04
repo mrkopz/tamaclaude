@@ -20,7 +20,7 @@ void ct_ui_redraw(void);
 void ct_ui_redraw_usage(void);
 
 // มี snapshot สดอยู่ไหม — ไม่ว่าจะมาทาง BLE หรือ LAN ก็ตาม หลุดแล้วมาสคอตเป็นสีเทา
-// ไม่มีไอคอน ไม่มีข้อความ (DESIGN.md) · เรื่องของแถบบนเป็นของ `ct_topbar_set_connected`
+// ไม่มีไอคอน ไม่มีข้อความ · เรื่องของแถบบนเป็นของ `ct_topbar_set_connected`
 void ct_ui_set_connected(bool connected);
 
 // หลุดลิงก์มากี่วินาทีแล้ว — ตัวเลขนี้แทนที่นาฬิกาตัวใหญ่ตอนไม่มีใครป้อน snapshot
