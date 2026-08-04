@@ -136,10 +136,14 @@ static ct_sky_phase_t sky_phase_at(float t)
 
 // สัดส่วนของเส้นทาง (0..1) -> จุดกึ่งกลางดวงบนส่วนโค้ง
 // ที่ u=0 และ u=1 ดวงอยู่บนเส้นขอบฟ้าพอดี (จมครึ่งดวง) ที่ขอบจอทั้งสองข้าง
+//
+// ความสูงเป็น `sqrt(sin)` ไม่ใช่ sin ล้วน — ดวงไต่ขึ้นเร็วกว่าตอนเช้าแล้วค้างสูง
+// เพื่อให้พ้นหัวมาสคอต (แถบ y 53..120) ตลอดกลางวัน ไม่ใช่แค่ 10:00-14:00
+// ต้องตรงกับ _arc ใน tools/gen/sky.py
 static void sky_arc(float u, float *x, float *y)
 {
     *x = -(float)CT_SKY_ARC_PAD + u * (float)(CT_SCREEN_WIDTH + 2 * CT_SKY_ARC_PAD);
-    *y = (float)CT_SKY_HORIZON - sinf((float)M_PI * u) * (float)CT_SKY_ARC_PEAK;
+    *y = (float)CT_SKY_HORIZON - sqrtf(sinf((float)M_PI * u)) * (float)CT_SKY_ARC_PEAK;
 }
 
 // ดวงอาทิตย์ 05:00->19:00 · ดวงจันทร์ 19:00->05:00 — มีดวงใดดวงหนึ่งบนฟ้าเสมอ
@@ -248,12 +252,14 @@ static void sky_draw_cb(lv_event_t *e)
               SKY_BG[phase], 0);
 
     draw_stars(layer, phase);
+    // เมฆก่อนดวง ไม่ใช่ดวงก่อนเมฆ — ตำแหน่งดวงคือเวลา ส่วนเมฆเป็นของประดับที่ลอยผ่าน
+    // ของที่บังนาฬิกาได้มีได้อย่างเดียวคือตัวละคร (ตรงกับ tools/gen/sky.py:draw)
+    draw_clouds(layer, phase, (float)s_cycle + s_phase);
     float x, y;
     uint16_t color;
     sky_disc(s_sky_hours, &x, &y, &color);
     int cx = (int)lroundf(x), cy = (int)lroundf(y), r = CT_SKY_DISC_R;
     fill_rect(layer, cx - r, cy - r, cx + r, cy + r, color, LV_RADIUS_CIRCLE);
-    draw_clouds(layer, phase, (float)s_cycle + s_phase);
 
     // พื้นดินวาดทับหลังสุด — ครึ่งล่างของดวงและเมฆที่ต่ำเกินไปถูกตัดที่เส้นขอบฟ้าเอง
     fill_rect(layer, 0, CT_SKY_HORIZON, CT_SCREEN_WIDTH - 1, CT_SCREEN_HEIGHT - 1,
@@ -908,7 +914,7 @@ uint16_t ct_ui_usage_color(int percent)
 // "60% ตอนเหลือเวลาอีกครึ่ง" เป็นปัญหาคนละแบบกับ "60% ตอนหมดเวลาพอดี"
 // ต้องตรงกับ usage_bar_color ใน tools/gen/screen.py
 // และ MenuBadge.alarming ใน host/Sources/TamaCore/MenuBadge.swift (แถบเมนูใช้สูตร pace เดียวกัน แต่ไม่มีเกณฑ์ %)
-static uint16_t usage_bar_color(const ct_usage_t *u, int window)
+uint16_t ct_ui_usage_bar_color(const ct_usage_t *u, int window)
 {
     if (u->percent < 0) return CT_COL_TEXT_DIM;
     if (u->remaining > 0 && window > 0) {
@@ -958,7 +964,7 @@ static void layout_usage(void)
             continue;
         }
         const ct_usage_t *u = &s_frame->usage[i];
-        uint16_t col = usage_bar_color(u, USAGE_WINDOWS[i]);
+        uint16_t col = ct_ui_usage_bar_color(u, USAGE_WINDOWS[i]);
 
         lv_obj_remove_flag(row->percent, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(row->percent_bold, LV_OBJ_FLAG_HIDDEN);

@@ -39,7 +39,7 @@ static ct_page_kind_t s_page = CT_PAGE_MASCOT;
 
 static lv_obj_t *s_dot, *s_link, *s_clock, *s_overflow, *s_usage_pct;
 static lv_obj_t *s_link_icon[LINK_ICON_PARTS];
-static lv_obj_t *s_usage_track, *s_usage_fill;
+static lv_obj_t *s_usage_track, *s_usage_fill, *s_usage_pace;
 
 static lv_obj_t *plain_obj(lv_obj_t *parent, int w, int h)
 {
@@ -130,6 +130,14 @@ void ct_topbar_init(lv_obj_t *scr, const ct_snapshot_t *mascot)
     lv_obj_set_style_bg_opa(s_usage_fill, LV_OPA_COVER, 0);
     lv_obj_set_pos(s_usage_fill, 0, 0);
 
+    // ขีด pace — แผงเต็มมีมาตลอด แถบบนไม่มี ทั้งที่เป็นตัวเลขตัวเดียวกัน · "88%" ที่เพิ่ง
+    // เริ่มหน้าต่างกับ "88%" ที่เหลืออีกสิบนาทีเป็นคนละเรื่อง และแถบเปล่าตอบไม่ได้
+    // เป็นลูกของ track จึงถูก clip ที่ขอบใน ไม่ต้องคำนวณพิกัดสัมบูรณ์ตามที่ track เลื่อนไป
+    s_usage_pace = plain_obj(s_usage_track, 1, USAGE_TOP_H);
+    lv_obj_set_style_bg_color(s_usage_pace, ct_color(CT_COL_OUTLINE), 0);
+    lv_obj_set_style_bg_opa(s_usage_pace, LV_OPA_COVER, 0);
+    lv_obj_add_flag(s_usage_pace, LV_OBJ_FLAG_HIDDEN);
+
     ct_topbar_redraw();
 }
 
@@ -177,8 +185,10 @@ void ct_topbar_redraw(void)
     if (!usage_shown) return;
 
     // หน้าต่าง 5 ชม. เท่านั้น — ตัวที่ขยับเร็วพอจะเปลี่ยนการตัดสินใจภายในวันเดียว
+    // สีมาจากสูตรเดียวกับแผงเต็ม (เกณฑ์ % *กับ* จังหวะการใช้) ไม่ใช่เกณฑ์ % ล้วน:
+    // ตัวเลขเดียวกันต้องพูดภาษาเดียวกันไม่ว่าจะอ่านจากแถบบนหรือจากแผง
     const ct_usage_t *u = &s_frame->usage[0];
-    uint16_t col = ct_ui_usage_color(u->percent);
+    uint16_t col = ct_ui_usage_bar_color(u, CT_USAGE_SESSION_WINDOW);
     if (u->percent < 0) {
         lv_label_set_text(s_usage_pct, "--%");
     } else {
@@ -199,6 +209,30 @@ void ct_topbar_redraw(void)
     if (w > 0) {
         lv_obj_set_width(s_usage_fill, w);
         lv_obj_set_style_bg_color(s_usage_fill, ct_color(col), 0);
+    }
+
+    // ขีดหนาขึ้นตอนใช้เร็วเกิน เหมือนแผงเต็ม — สีบอกแทนไม่ได้เมื่อภาพเป็นขาวดำ
+    // "over" มาจากสูตรตรงๆ ไม่ใช่จากสีที่ได้ เพราะสีแดงมาจากเกณฑ์ % ได้ด้วย
+    //
+    // ในกรอบ 34px ขีดต้องไม่ทับกรอบขาวเอง ไม่งั้นตอนต้น/ปลายหน้าต่างมันหายไปกับขอบ
+    // จึงหนีบไว้ให้เหลือขอบข้างละ 1px — ตำแหน่งเพี้ยนหนึ่งพิกเซลดีกว่าขีดที่มองไม่เห็น
+    // ต้องตรงกับ tools/gen/topbar.py:draw
+    bool pace_shown = u->remaining > 0;
+    show(s_usage_pace, pace_shown);
+    if (pace_shown) {
+        int elapsed = CT_USAGE_SESSION_WINDOW - u->remaining;
+        if (elapsed < 0) elapsed = 0;
+        if (elapsed > CT_USAGE_SESSION_WINDOW) elapsed = CT_USAGE_SESSION_WINDOW;
+        int half = (u->percent >= 0 && (int64_t)u->percent * CT_USAGE_SESSION_WINDOW >
+                                           (int64_t)elapsed * 100)
+                       ? 1
+                       : 0;
+        int mx = (int)(((int64_t)(USAGE_TOP_W - 1) * elapsed + CT_USAGE_SESSION_WINDOW / 2) /
+                       CT_USAGE_SESSION_WINDOW);
+        if (mx < half + 1) mx = half + 1;
+        if (mx > USAGE_TOP_W - 2 - half) mx = USAGE_TOP_W - 2 - half;
+        lv_obj_set_width(s_usage_pace, half * 2 + 1);
+        lv_obj_set_pos(s_usage_pace, mx - half, 0);
     }
 }
 

@@ -680,15 +680,17 @@ def shows_usage_panel(s: Screen) -> bool:
 def _bar(s: Screen) -> topbar.Bar:
     usage = s.shown_usage()
     return topbar.Bar(clock=s.clock, ble=s.ble, wifi=s.wifi, overflow=s.overflow,
-                      has_usage=bool(usage), pct=usage[0].pct if usage else None)
+                      has_usage=bool(usage), pct=usage[0].pct if usage else None,
+                      remaining=usage[0].remaining if usage else None)
 
 
 def render(s: Screen, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     img = Image.new("RGB", (L.screen.width, L.screen.height), quantize565(PAL.bg))
     draw = ImageDraw.Draw(img)
-    # ฉากอยู่หลังทุกอย่าง กินเต็มจอใต้แถบบน — มาสคอตยืนทับ ยอมให้บังดวงอาทิตย์/ดาว
-    # การถูกบังคือระยะลึก ไม่ใช่ของหาย และตอนไม่มี session (ซึ่งเป็นเกือบตลอดเวลา)
-    # ฟ้าโล่งทั้งแถบอยู่แล้ว
+    # ฉากอยู่หลังทุกอย่าง กินเต็มจอใต้แถบบน — มาสคอตยืนทับ ยอมให้บังดาวและดวงที่เตี้ย
+    # การถูกบังคือระยะลึก ไม่ใช่ของหาย · แต่ตำแหน่งดวงคือ *เวลา* ไม่ใช่ของประดับ
+    # ส่วนโค้งจึงถูกดันขึ้นให้ดวงพ้นหัวมาสคอตตลอดกลางวัน (ดู sky._arc) แทนที่จะแก้ที่
+    # ลำดับการวาด — ดวงอาทิตย์ที่ลอยทับตัวละครไม่ใช่ระยะลึกอีกต่อไป มันคือสติกเกอร์
     sky.draw(draw, s.clock, s.connected, cycle + phase)
     topbar.draw(draw, _bar(s), page=pages.LABELS["mascot"], connected=s.connected,
                 page_shows_clock=shows_idle_clock(s), page_shows_usage=shows_usage_panel(s))

@@ -44,6 +44,9 @@ class Bar:
     has_usage: bool = False
     # หน้าต่าง 5 ชม. เท่านั้น ตัวที่ขยับเร็วพอจะเปลี่ยนการตัดสินใจภายในวันเดียว
     pct: int | None = None
+    # วินาทีถึงรีเซ็ต — บอร์ดนับถอยลงเอง ไม่ได้มากับ snapshot ทุกวินาที
+    # มีอยู่ที่นี่เพราะแถบบนต้องตอบด้วยภาษาเดียวกับแผงเต็ม ไม่ใช่แค่เปอร์เซ็นต์เปล่าๆ
+    remaining: int | None = None
 
     def ble_link(self, connected: bool) -> bool:
         return connected if self.ble is None else self.ble
@@ -102,7 +105,11 @@ def draw(draw_: ImageDraw.ImageDraw, bar: Bar, *, page: str, connected: bool,
     # ส่วนเวลาที่ผิดรู้ทันที — ตรงกับ Screen.shown_usage()
     if not connected or not bar.has_usage or page_shows_usage:
         return
-    col = screen.usage_color(bar.pct)
+    # ตัวเลขเดียวกันต้องพูดภาษาเดียวกันทั้งสองที่ — สีมาจาก `usage_bar_color` ตัวเดียว
+    # กับที่แผงเต็มใช้ ไม่ใช่ `usage_color` ที่ดูแค่เกณฑ์ % · แถบบนที่ยังเขียวอยู่ขณะที่
+    # แผงเต็มแดงเพราะใช้เร็วเกินเวลา คือจอที่บอกสองอย่างเกี่ยวกับเลขตัวเดียวกัน
+    u = screen.Usage("", L.usage.session_window, bar.pct, bar.remaining)
+    col = screen.usage_bar_color(u)
     draw_.text((right, h // 2), "--%" if bar.pct is None else f"{bar.pct}%",
                font=screen.font(11), fill=quantize565(col), anchor="rm")
     right -= 30
@@ -120,3 +127,23 @@ def draw(draw_: ImageDraw.ImageDraw, bar: Bar, *, page: str, connected: bool,
         fill_w = round(bw * min(max(bar.pct, 0), 100) / 100)
         if fill_w:
             draw_.rectangle([bx, by, bx + fill_w - 1, by + bh - 1], fill=quantize565(col))
+
+    # ขีด pace — แผงเต็มมีมาตลอด แถบบนไม่มี ทั้งที่เป็นตัวเลขตัวเดียวกัน · "88%"
+    # ที่เพิ่งเริ่มหน้าต่างกับ "88%" ที่เหลืออีกสิบนาทีเป็นคนละเรื่องกันสิ้นเชิง และ
+    # แถบเปล่าตอบไม่ได้ · สีบอกแทนไม่ได้เพราะ alert กับ good เทาเท่ากันเมื่อเป็นขาวดำ
+    #
+    # ขีดหนาขึ้นตอนใช้เร็วเกิน เหมือนแผงเต็ม — สีบอกแทนไม่ได้เมื่อภาพเป็นขาวดำ
+    # (alert L 0.30 กับ good L 0.33 เทาเท่ากัน) ความหนาคือแกนที่ไม่พึ่งสีเลย
+    #
+    # ในกรอบ 34px ขีดต้องไม่ทับกรอบขาวเอง ไม่งั้นตอนต้น/ปลายหน้าต่างมันหายไปกับขอบ
+    # จึงหนีบไว้ให้เหลือขอบข้างละ 1px — ตำแหน่งเพี้ยนหนึ่งพิกเซลดีกว่าขีดที่มองไม่เห็น
+    if bar.remaining is not None and bar.remaining > 0:
+        window = L.usage.session_window
+        elapsed = max(0, min(window, window - bar.remaining))
+        # "over" มาจากสูตรตรงๆ ไม่ใช่จากสีที่ได้ — สีแดงมาจากเกณฑ์ % ได้ด้วย
+        # ขีดหนาต้องแปลว่า "เร็วเกินเวลา" อย่างเดียว ไม่งั้นสองแกนก็เล่าเรื่องเดียวกันซ้ำ
+        half = 1 if bar.pct is not None and bar.pct * window > elapsed * 100 else 0
+        mx = round((bw - 1) * elapsed / window)
+        mx = min(max(mx, half + 1), bw - 2 - half)
+        draw_.rectangle([bx + mx - half, by, bx + mx + half, by + bh - 1],
+                        fill=quantize565(PAL.outline))

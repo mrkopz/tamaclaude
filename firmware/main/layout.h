@@ -19,10 +19,10 @@
 #define CT_SLOTS_UNIT_PX             4
 #define CT_SLOTS_BASELINE_PAD        19
 #define CT_SLOTS_LABEL_INSET         4
-#define CT_SLOTS_LABEL_DY            2
+#define CT_SLOTS_LABEL_DY            4
 
-#define CT_CARD_TOP                  142
-#define CT_CARD_HEIGHT               98
+#define CT_CARD_TOP                  144
+#define CT_CARD_HEIGHT               96
 #define CT_CARD_PAD                  6
 #define CT_CARD_MAX                  2
 #define CT_CARD_H_ONE                32
@@ -60,7 +60,7 @@
 #define CT_SKY_DUSK_HOUR             17
 #define CT_SKY_NIGHT_HOUR            19
 #define CT_SKY_DISC_R                7
-#define CT_SKY_ARC_PEAK              82
+#define CT_SKY_ARC_PEAK              89
 #define CT_SKY_ARC_PAD               0
 #define CT_SKY_TWINKLE_N             4
 #define CT_SKY_STAR_PX               1
@@ -250,10 +250,10 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_COL_CLOUD_DAY             0xF7DF
 #define CT_COL_CLOUD_DAWN            0x5B73
 #define CT_COL_CLOUD_DUSK            0xC352
-#define CT_COL_GRASS_NIGHT           0x2A07
-#define CT_COL_GRASS_DAWN            0x3287
+#define CT_COL_GRASS_NIGHT           0x3248
+#define CT_COL_GRASS_DAWN            0x10E3
 #define CT_COL_GRASS_DAY             0x6D4B
-#define CT_COL_GRASS_DUSK            0x5A87
+#define CT_COL_GRASS_DUSK            0x10A2
 #define CT_COL_SHADOW_NIGHT          0x0862
 #define CT_COL_SHADOW_DAWN           0x10A3
 #define CT_COL_SHADOW_DAY            0x1923

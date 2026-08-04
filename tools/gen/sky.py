@@ -99,9 +99,13 @@ def _arc(u: float) -> tuple[float, float]:
     """สัดส่วนของเส้นทาง (0..1) -> จุดกึ่งกลางดวงบนส่วนโค้ง
 
     ที่ u=0 และ u=1 ดวงอยู่บนเส้นขอบฟ้าพอดี (จมครึ่งดวง) และอยู่นอกจอทั้งสองข้าง
+
+    ความสูงไม่ใช่ sin ล้วน แต่เป็น `sqrt(sin)` — ดวงไต่ขึ้นเร็วกว่าตอนเช้าแล้วค้างสูง
+    เพื่อให้มันพ้นหัวมาสคอต (แถบ y 53..120) ตลอดกลางวันจริงๆ ไม่ใช่แค่สี่ชั่วโมงกลางวัน
+    · x ยังเป็นเส้นตรงตามเวลา สิ่งที่แบกข้อมูลเวลาจึงไม่ถูกแตะ (ดู layout.toml)
     """
     x = -L.sky.arc_pad + u * (L.screen.width + 2 * L.sky.arc_pad)
-    y = HORIZON - math.sin(math.pi * u) * L.sky.arc_peak
+    y = HORIZON - math.sqrt(math.sin(math.pi * u)) * L.sky.arc_peak
     return x, y
 
 
@@ -214,9 +218,12 @@ def draw(draw_ctx: ImageDraw.ImageDraw, clock: str, connected: bool, t: float) -
     draw_ctx.rectangle([0, SKY_TOP, W - 1, HORIZON - 1], fill=quantize565(SKY_COLOR[phase]))
 
     _draw_stars(draw_ctx, phase, int(t))
+    # เมฆก่อนดวง ไม่ใช่ดวงก่อนเมฆ — ตำแหน่งดวงคือเวลา ส่วนเมฆเป็นของประดับที่ลอยผ่าน
+    # เมื่อส่วนโค้งถูกดันขึ้น ดวงกับเมฆก้อนสูงมาอยู่ย่านเดียวกัน แล้วเมฆขาวก็กินดวงไป
+    # ทั้งดวงนานหลายสิบวินาทีต่อรอบ · ของที่บังนาฬิกาได้มีได้อย่างเดียวคือตัวละคร
+    _draw_clouds(draw_ctx, phase, t)
     x, y, color = disc(h)
     _draw_disc(draw_ctx, x, y, color)
-    _draw_clouds(draw_ctx, phase, t)
 
     # พื้นดินวาดทับหลังสุด — ครึ่งล่างของดวงและเมฆที่ต่ำเกินไปจึงถูกตัดที่เส้นขอบฟ้าเอง
     draw_ctx.rectangle([0, HORIZON, W - 1, GROUND_BOTTOM - 1],
