@@ -43,7 +43,7 @@ lv_obj_t *ct_age_label(lv_obj_t *parent)
     lv_obj_set_style_text_font(l, ct_font_text_12(), 0);
     lv_obj_set_style_text_color(l, ct_color(CT_COL_TEXT_DIM), 0);
     lv_label_set_text(l, "");
-    lv_obj_set_pos(l, CT_PAGE_AGE_X, CT_PAGE_AGE_Y);
+    ct_label_set_pos(l, CT_PAGE_AGE_X, CT_PAGE_AGE_Y);
     return l;
 }
 

@@ -51,7 +51,7 @@ static lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font, uint16_t color, 
     lv_obj_set_style_text_font(l, font, 0);
     lv_obj_set_style_text_color(l, ct_color(color), 0);
     lv_label_set_text(l, "");
-    lv_obj_set_pos(l, x, y);
+    ct_label_set_pos(l, x, y);
     return l;
 }
 

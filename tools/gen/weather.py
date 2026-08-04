@@ -117,23 +117,23 @@ def render(w: Weather, phase: float = 0.0, cycle: int = 0) -> Image.Image:
 
     if not w.has_frame:
         # ยังไม่เคยได้ข้อมูลของหน้านี้ ต้องมีหน้าตาของตัวเอง ห้ามเป็นจอเปล่า (ADR-0002)
-        screen.line(draw, (L.weather.temp_x, L.weather.empty_y + 7), "No weather yet",
-                    pil=12, board=14, fill=PAL.text, anchor="lm")
-        screen.line(draw, (L.weather.temp_x, L.weather.empty_sub_y + 6),
+        screen.line(draw, (L.weather.temp_x, L.weather.empty_y), "No weather yet",
+                    pil=12, board=14, fill=PAL.text, anchor="lt")
+        screen.line(draw, (L.weather.temp_x, L.weather.empty_sub_y),
                     "the mac has not sent this page", pil=10, board=12,
-                    fill=PAL.text_dim, anchor="lm")
+                    fill=PAL.text_dim, anchor="lt")
         return img
 
-    screen.line(draw, (L.weather.place_x, L.weather.place_y + 7), w.place,
-                 pil=12, board=14, fill=PAL.text, anchor="lm",
+    screen.line(draw, (L.weather.place_x, L.weather.place_y), w.place,
+                 pil=12, board=14, fill=PAL.text, anchor="lt",
                  max_w=icon_x - L.weather.place_x - 8)
     # ไม่มีสัญลักษณ์องศาในฟอนต์บนบอร์ด และการประดิษฐ์วงแหวนจาก rect ขึ้นมาเองเพื่อสิ่งที่
     # ไม่มีใครอ่านผิดคือค่าใช้จ่ายที่ไม่คุ้ม — "31C" อ่านออกทันที
     draw.text((L.weather.temp_x, L.weather.temp_y + 24), f"{w.temp}{w.unit}",
               font=screen.font(L.weather.temp_font_pil),
               fill=quantize565(PAL.text if w.connected else PAL.gray), anchor="lm")
-    screen.line(draw, (L.weather.hilo_x, L.weather.hilo_y + 7),
-                 f"H {w.high}   L {w.low}", pil=12, board=14, fill=PAL.text_dim, anchor="lm")
+    screen.line(draw, (L.weather.hilo_x, L.weather.hilo_y),
+                 f"H {w.high}   L {w.low}", pil=12, board=14, fill=PAL.text_dim, anchor="lt")
 
     age.draw_age(draw, w.age, L.weather.refresh_s)
     return img

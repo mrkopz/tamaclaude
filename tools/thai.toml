@@ -20,6 +20,14 @@ advance = { 12 = 8, 14 = 9 }
 source = "fonts/Sarabun-Regular.ttf"
 # ร่างที่สร้างเพิ่มถูกวางไว้ใน Private Use Area เรียงตามลำดับใน [[variant]]
 pua_start = 0xF700
+# metric ของฟอนต์ที่ฟอนต์ไทยเป็น fallback ให้ — คัดมาจาก LVGL ตรงๆ
+#     lv_font_montserrat_12.c:1903  line_height 15  base_line 3
+#     lv_font_montserrat_14.c:2179  line_height 16  base_line 3
+# ต้องอยู่ที่นี่เพราะ LVGL วาง glyph ของ *fallback* ด้วย metric ของฟอนต์ *หลัก*
+# (`lv_draw_label.c:405` ใช้ `font->line_height - font->base_line` ของ dsc->font
+# ไม่ใช่ของ g.resolved_font) metric ที่ export ออกไปจึงต้องเป็นค่ารวมของสองฟอนต์
+# ไม่ใช่ค่าของ Sarabun ตัวเดียว — ไม่งั้นบรรทัดที่ปนไทยกับอังกฤษจะคนละเส้นฐาน
+host = { 12 = { line_height = 15, base_line = 3 }, 14 = { line_height = 16, base_line = 3 } }
 
 [block]
 # ช่วงอักขระไทยที่ sanitize ยอมให้ผ่าน — นอกช่วงนี้ยังถูกทิ้งเหมือนเดิม

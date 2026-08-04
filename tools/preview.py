@@ -389,12 +389,23 @@ def sky_scene(clock: str) -> screen.Screen:
 # ตัดด้วย LV_LABEL_LONG_DOT อยู่แล้ว เลขที่สูงเกินจึงไม่ทำให้ข้อความล้นทับอะไร แต่มันแปลว่า
 # daemon จ่ายไบต์ (ไทยตัวละ 3) ให้ตัวอักษรที่ไม่มีวันขึ้นจอ และการตัดไปอยู่ที่บอร์ดแทนที่จะ
 # อยู่ที่เดียวกับ "..." ที่ daemon เติม
+#
+# `box` คือความสูงที่ป้ายนั้นมีจริงก่อนจะไปชนของชิ้นถัดไป — None แปลว่าไม่มีอะไรอยู่ใต้มัน
+# ให้ชน ค่านี้ต้องไม่น้อยกว่า `band` (กล่องบรรทัดของฟอนต์) ไม่งั้นสระล่างกับวรรณยุกต์
+# โดน LVGL หนีบทิ้งบนบอร์ด ซึ่งเป็นบั๊กที่มองไม่เห็นจนกว่าจะมีคนใช้ชื่อภาษาไทย
+_RISE = {size: screen.bitmapfont.font(size).rise for size in (12, 14)}
+_CARD_TITLE_TOP = L.card.title_dy - _RISE[14]
+_CARD_BODY_TOP = L.card.body_dy - _RISE[12]
+_PROJECT_TOP = (L.slots.top + L.slots.height - L.slots.baseline_pad
+                + L.slots.label_dy - _RISE[12])
+
 LABELS = (
-    ("project", screen.PROJECT_W, 12),
-    ("cardTitle", screen.CARD_TEXT_W, 14),
-    ("cardBody", screen.CARD_TEXT_W, 12),
-    ("Weather.placeLimit", L.weather.icon_x - L.weather.place_x - 8, 14),
-    ("Calendar.titleLimit", L.calendar.title_w, 14),
+    ("project", screen.PROJECT_W, 12, L.card.top - _PROJECT_TOP),
+    ("cardTitle", screen.CARD_TEXT_W, 14, _CARD_BODY_TOP - _CARD_TITLE_TOP),
+    ("cardBody", screen.CARD_TEXT_W, 12, L.card.h_two - _CARD_BODY_TOP),
+    ("Weather.placeLimit", L.weather.icon_x - L.weather.place_x - 8, 14, None),
+    ("Calendar.titleLimit", L.calendar.title_w, 14,
+     L.calendar.row_h - (L.calendar.title_dy - _RISE[14])),
 )
 
 
@@ -407,8 +418,10 @@ def print_limits() -> None:
     นั่นคือเหตุผลที่สองภาษาถือเลขคนละตัว ไม่ใช่เลขเดียวที่ประนีประนอมทั้งคู่
     """
     d = ImageDraw.Draw(Image.new("RGB", (1, 1)))
-    print(f"{'label':<20} {'width':>6} {'font':>5} {'thai':>5} {'ascii~':>7}")
-    for name, width, board in LABELS:
+    print(f"{'label':<20} {'width':>6} {'font':>5} {'thai':>5} {'ascii~':>7} "
+          f"{'band':>5} {'box':>5}")
+    bad = []
+    for name, width, board, box in LABELS:
         bf = screen.bitmapfont.font(board)
         # ช่องไทยกว้างคงที่ วัดจากพยัญชนะตัวไหนก็ได้
         thai_cell = bf.length("ก")
@@ -416,8 +429,14 @@ def print_limits() -> None:
         f = screen.font(pil)
         letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 "
         ascii_cell = sum(d.textlength(c, font=f) for c in letters) / len(letters)
+        tight = box is not None and box < bf.line_height
+        if tight:
+            bad.append(name)
         print(f"{name:<20} {width:>6} {board:>5} {int(width // thai_cell):>5} "
-              f"{int(width // ascii_cell):>7}")
+              f"{int(width // ascii_cell):>7} {bf.line_height:>5} "
+              f"{('-' if box is None else box):>5}{'  <- สระล่างโดนตัด' if tight else ''}")
+    if bad:
+        raise SystemExit(f"box < band: {', '.join(bad)} — ขยายที่ให้บรรทัด อย่ายอมให้สระตก")
 
 
 def main() -> None:

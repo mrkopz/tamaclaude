@@ -4,6 +4,10 @@
  * ฟอนต์: fonts/Sarabun-Regular.ttf (SIL Open Font License 1.1 ดู tools/fonts/OFL.txt)
  * ขนาด 14px · 4bpp · ไม่มี kerning · ร่างของสระบนและวรรณยุกต์อยู่ที่ U+F700 ขึ้นไป
  * ตารางเลือกร่างและระยะเลื่อนอยู่ใน tools/thai.toml — ที่นี่เป็นผลลัพธ์เท่านั้น
+ *
+ * line_height/base_line ที่นี่คือของ *บรรทัดที่อาจมีภาษาไทย* (รวม Montserrat แล้ว)
+ * ไม่ใช่ของ Sarabun ตัวเดียว — ct_fonts.c ก๊อปสองค่านี้ไปใส่ฟอนต์หลัก เพราะ LVGL
+ * วาง glyph ของ fallback ด้วย metric ของฟอนต์หลัก ไม่ใช่ของ fallback เอง
  */
 
 #include "lvgl.h"
@@ -239,8 +243,8 @@ static const lv_font_fmt_txt_dsc_t ct_font_thai_14_font_dsc = {
 const lv_font_t ct_font_thai_14 = {
     .get_glyph_dsc = lv_font_get_glyph_dsc_fmt_txt,
     .get_glyph_bitmap = lv_font_get_bitmap_fmt_txt,
-    .line_height = 19,
-    .base_line = 4,
+    .line_height = 28,
+    .base_line = 9,
     .subpx = LV_FONT_SUBPX_NONE,
     .underline_position = -1,
     .underline_thickness = 1,

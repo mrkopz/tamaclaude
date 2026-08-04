@@ -74,11 +74,11 @@ def render(s: Stocks, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     rows = s.rows[: L.stocks.rows] if s.has_frame else []
     if not rows:
         # ยังไม่เคยได้ข้อมูลของหน้านี้ ต้องมีหน้าตาของตัวเอง ห้ามเป็นจอเปล่า (ADR-0002)
-        screen.line(draw, (L.stocks.sym_x, L.stocks.empty_y + 7), "No stocks yet",
-                    pil=12, board=14, fill=PAL.text, anchor="lm")
-        screen.line(draw, (L.stocks.sym_x, L.stocks.empty_sub_y + 6),
+        screen.line(draw, (L.stocks.sym_x, L.stocks.empty_y), "No stocks yet",
+                    pil=12, board=14, fill=PAL.text, anchor="lt")
+        screen.line(draw, (L.stocks.sym_x, L.stocks.empty_sub_y),
                     "add symbols in the mac app", pil=10, board=12,
-                    fill=PAL.text_dim, anchor="lm")
+                    fill=PAL.text_dim, anchor="lt")
         if s.has_frame:
             age.draw_age(draw, s.age, L.stocks.refresh_s, frozen)
         return img
@@ -86,8 +86,8 @@ def render(s: Stocks, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     text = PAL.text if s.connected else PAL.gray
     for i, row in enumerate(rows):
         top = L.stocks.row_y + i * L.stocks.row_h
-        screen.line(draw, (L.stocks.sym_x, top + L.stocks.sym_dy + 7), row.symbol,
-                    pil=12, board=14, fill=text, anchor="lm", max_w=L.stocks.sym_w)
+        screen.line(draw, (L.stocks.sym_x, top + L.stocks.sym_dy), row.symbol,
+                    pil=12, board=14, fill=text, anchor="lt", max_w=L.stocks.sym_w)
         # ราคาชิดขวา หลักหน่วยของทุกแถวจึงเรียงตรงกัน และเทียบข้ามแถวได้ด้วยการกวาดตา
         draw.text((L.stocks.price_x + L.stocks.price_w, top + L.stocks.price_dy + 12),
                   row.price, font=screen.font(L.stocks.price_font_pil),
@@ -97,9 +97,9 @@ def render(s: Stocks, phase: float = 0.0, cycle: int = 0) -> Image.Image:
         # "ราคานิ่ง" ซึ่งเป็นข้อมูลที่เราไม่มีในเฟรมนั้น
         if row.change is None:
             continue
-        screen.line(draw, (L.stocks.pct_x + L.stocks.pct_w, top + L.stocks.pct_dy + 7),
+        screen.line(draw, (L.stocks.pct_x + L.stocks.pct_w, top + L.stocks.pct_dy),
                     pct_text(row.change), pil=12, board=14,
-                    fill=tone(row.change, s.connected), anchor="rm")
+                    fill=tone(row.change, s.connected), anchor="rt")
         draw_rects(draw, arrow(row.change, s.connected), L.stocks.arrow_px,
                    L.stocks.arrow_x, top + L.stocks.arrow_dy)
 

@@ -15,3 +15,16 @@ void ct_fonts_init(void);
 
 const lv_font_t *ct_font_text_12(void);
 const lv_font_t *ct_font_text_14(void);
+
+// วางป้ายด้วย "ขอบบนของตัวละติน" ไม่ใช่ขอบบนของกล่องบรรทัด
+//
+// กล่องบรรทัดของฟอนต์พวกนี้สูงกว่าตัวละตินอยู่หลายพิกเซล เพราะต้องมีที่ให้วรรณยุกต์ไทย
+// ที่ลอยสูงกว่าตัวพิมพ์ใหญ่ ถ้าเลย์เอาต์วางด้วยขอบบนของกล่อง เลขทุกตัวจะกลายเป็น
+// "ตำแหน่งที่ตัวอักษรไม่ได้อยู่" และการเพิ่มร่างใหม่ใน thai.toml จะเลื่อนข้อความทั้งจอ
+//
+// ใช้แทน lv_obj_set_pos กับป้ายข้อความทุกใบที่ใช้ ct_font_text_* — ตรงกับ anchor "t"
+// ของ line() ใน tools/gen/screen.py
+void ct_label_set_pos(lv_obj_t *label, int x, int y);
+
+// ระยะเดียวกัน สำหรับป้ายที่วางด้วย lv_obj_align แทน lv_obj_set_pos
+int ct_font_rise(const lv_font_t *font);

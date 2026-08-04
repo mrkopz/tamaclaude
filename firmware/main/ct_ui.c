@@ -13,10 +13,6 @@
 #include "layout.h"
 #include "lvgl.h"
 
-// ความสูง/ระยะของการ์ด — ตรงกับ tools/gen/screen.py
-#define CARD_H 36
-#define CARD_GAP 4
-
 // หนึ่งลูปอนิเมชันยาวเท่าไร (ms) — ตรงกับสมมติฐาน "ลูปหนึ่งราว 1 วินาที" ของ mascot.c
 #define LOOP_MS 1000
 
@@ -453,12 +449,13 @@ static void build_cards(lv_obj_t *scr)
 {
     int w = CT_SCREEN_WIDTH - CT_CARD_PAD * 2;
     for (int i = 0; i < CT_MAX_CARDS; i++) {
-        lv_obj_t *box = plain_obj(scr, w, CARD_H);
-        lv_obj_set_pos(box, CT_CARD_PAD, CT_CARD_TOP + CT_CARD_PAD + i * (CARD_H + CARD_GAP));
+        // ขนาดและตำแหน่งขึ้นกับว่าการ์ดใบนั้นมีสองบรรทัดหรือบรรทัดเดียว จึงตั้งใน
+        // layout_cards ทุกครั้งที่เฟรมเปลี่ยน ไม่ใช่ตรงนี้
+        lv_obj_t *box = plain_obj(scr, w, CT_CARD_H_TWO);
         lv_obj_set_style_bg_color(box, ct_color(CT_COL_BG_SLOT), 0);
         lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
 
-        lv_obj_t *accent = plain_obj(box, CT_CARD_RAIL_W, CARD_H);
+        lv_obj_t *accent = plain_obj(box, CT_CARD_RAIL_W, CT_CARD_H_TWO);
         lv_obj_set_pos(accent, 0, 0);
         lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
 
@@ -472,12 +469,12 @@ static void build_cards(lv_obj_t *scr)
         lv_obj_t *title = plain_label(box, ct_font_text_14(), CT_COL_TEXT);
         lv_obj_set_width(title, w - CT_CARD_TEXT_INSET);
         lv_label_set_long_mode(title, LV_LABEL_LONG_DOT);
-        lv_obj_set_pos(title, 9, 4);
+        ct_label_set_pos(title, 9, CT_CARD_TITLE_DY);
 
         lv_obj_t *body = plain_label(box, ct_font_text_12(), CT_COL_TEXT_DIM);
         lv_obj_set_width(body, w - CT_CARD_TEXT_INSET);
         lv_label_set_long_mode(body, LV_LABEL_LONG_DOT);
-        lv_obj_set_pos(body, 9, 20);
+        ct_label_set_pos(body, 9, CT_CARD_BODY_DY);
 
         s_cards[i] = (card_t){box, accent, mark, mark_hole, title, body};
         lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
@@ -623,7 +620,7 @@ static void layout_slots(void)
         lv_obj_set_style_text_color(
             s->label, ct_color(s_connected ? CT_COL_TEXT : CT_COL_TEXT_DIM), 0);
         int foot = CT_SLOTS_TOP + CT_SLOTS_HEIGHT - CT_SLOTS_BASELINE_PAD;
-        lv_obj_set_pos(s->label, x + 2, foot + 4);
+        ct_label_set_pos(s->label, x + 2, foot + CT_SLOTS_LABEL_DY);
     }
 }
 
@@ -678,9 +675,44 @@ bool ct_ui_shows_usage(void)
     return usage_shown() && shown_card_count() == 0;
 }
 
+// การ์ดสองบรรทัดสูงกว่าเพราะกล่องบรรทัดต้องมีที่ให้วรรณยุกต์ไทยจริงๆ ไม่ใช่แค่ตัวละติน
+static int card_h(const ct_card_t *c) { return c->body[0] ? CT_CARD_H_TWO : CT_CARD_H_ONE; }
+
+#define CARD_BUDGET (CT_SCREEN_HEIGHT - (CT_CARD_TOP + CT_CARD_PAD))
+
+static int fit_cards(int count, int budget)
+{
+    int used = 0;
+    int n = 0;
+    for (int i = 0; i < count && i < CT_MAX_CARDS; i++) {
+        int need = card_h(&s_frame->cards[i]) + (n ? CT_CARD_GAP : 0);
+        if (used + need > budget) {
+            break;
+        }
+        used += need;
+        n++;
+    }
+    return n;
+}
+
+// แสดงได้กี่ใบ — เติมจากบนลงล่างจนกว่าที่จะไม่พอ ต้องตรงกับ card_fit() ใน gen/screen.py
+//
+// ลองสองรอบ เพราะที่ของบรรทัด "+N more" ต้องกันไว้ก็ต่อเมื่อมีอะไรให้บอกจริงๆ — กันไว้
+// ตลอดแปลว่าการ์ดคู่ที่พอดีเป๊ะ (32 + 4 + 56 = 92) เสียใบที่สองให้บรรทัดที่ไม่มีอะไรจะเขียน
+static int card_fit(int count)
+{
+    int n = fit_cards(count, CARD_BUDGET);
+    if (n == count && s_frame->card_overflow == 0) {
+        return n;
+    }
+    return fit_cards(count, CARD_BUDGET - CT_CARD_MORE_H);
+}
+
 static void layout_cards(void)
 {
-    int n = shown_card_count();
+    int given = shown_card_count();
+    int n = card_fit(given);
+    int y = CT_CARD_TOP + CT_CARD_PAD;
     for (int i = 0; i < CT_MAX_CARDS; i++) {
         if (i >= n) {
             lv_obj_add_flag(s_cards[i].box, LV_OBJ_FLAG_HIDDEN);
@@ -689,19 +721,22 @@ static void layout_cards(void)
         const ct_card_t *c = &s_frame->cards[i];
         const card_t *cd = &s_cards[i];
         card_style_t st = card_style(c->kind);
+        int h = card_h(c);
         lv_obj_remove_flag(cd->box, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_height(cd->box, h);
+        lv_obj_set_pos(cd->box, CT_CARD_PAD, y);
+        y += h + CT_CARD_GAP;
         lv_obj_set_style_bg_color(cd->box, ct_color(st.plate), 0);
         lv_obj_set_style_bg_color(cd->accent, ct_color(st.accent), 0);
         lv_obj_set_pos(cd->accent, 0, st.rail_inset);
-        lv_obj_set_height(cd->accent, CARD_H - st.rail_inset * 2);
+        lv_obj_set_height(cd->accent, h - st.rail_inset * 2);
 
         // ขีด (done) คือ mark ตัวเดิมที่ถูกบีบให้เตี้ยลงเหลือความหนาของขอบ
         // ไม่ใช่ obj คนละตัว — ตำแหน่งกลางแนวตั้งจึงคำนวณจากความสูงจริงเสมอ
         int mh = st.mark == MARK_DASH ? CT_CARD_MARK_STROKE : CT_CARD_MARK;
         int mw = CT_SCREEN_WIDTH - CT_CARD_PAD * 2;
         lv_obj_set_height(cd->mark, mh);
-        lv_obj_set_pos(cd->mark, mw - CT_CARD_MARK_RIGHT - CT_CARD_MARK / 2,
-                       (CARD_H - mh) / 2);
+        lv_obj_set_pos(cd->mark, mw - CT_CARD_MARK_RIGHT - CT_CARD_MARK / 2, (h - mh) / 2);
         lv_obj_set_style_bg_color(cd->mark, ct_color(st.accent), 0);
         if (st.mark == MARK_HOLLOW) {
             lv_obj_set_style_bg_color(cd->mark_hole, ct_color(st.plate), 0);
@@ -711,13 +746,12 @@ static void layout_cards(void)
         }
 
         // body ว่าง = การ์ดบรรทัดเดียว (daemon ตัดหัวที่ซ้ำกับป้ายใต้มาสคอตทิ้ง)
-        // บรรทัดเดียวย้ายลงมากลางการ์ด ไม่ใช่ค้างอยู่บนแล้วเว้นครึ่งล่างโล่ง
+        // หัวเรื่องอยู่ที่เดิมทั้งสองแบบ ไม่ต้องคำนวณกึ่งกลาง — CT_CARD_H_ONE ถูกเลือกให้
+        // กล่องหัวเรื่องพอดีกับขอบบนล่างข้างละ 2 อยู่แล้ว (ดูหมายเหตุใน layout.toml)
         // ต้องตรงกับ _card() ใน tools/gen/screen.py
         bool one_line = c->body[0] == '\0';
         lv_label_set_text(cd->title, c->title);
         lv_label_set_text(cd->body, c->body);
-        int line_h = lv_font_get_line_height(ct_font_text_14());
-        lv_obj_set_pos(cd->title, 9, one_line ? (CARD_H - line_h) / 2 : 4);
         if (one_line) {
             lv_obj_add_flag(cd->body, LV_OBJ_FLAG_HIDDEN);
         } else {
@@ -727,14 +761,17 @@ static void layout_cards(void)
 
     // การ์ดที่ไม่ได้วาดต้องเหลือร่องรอย ไม่ใช่หายเงียบ — "ไม่มีอะไรค้างแล้ว" กับ
     // "ยังค้างอีกสองเรื่องแต่จอไม่พอ" คือสองสถานะที่ต้องแยกออกได้ในเหลือบเดียว
-    if (n > 0 && s_frame->card_overflow > 0) {
+    //
+    // นับสองชั้น: ที่ daemon ตัดทิ้งก่อนส่ง + ที่ส่งมาแล้วแต่จอไม่พอ · ชั้นหลังเพิ่งเป็นไปได้
+    // ตอนความสูงการ์ดไม่เท่ากัน ถ้าลืมบวก ตัวเลขจะโกหกทันทีที่การ์ดสองบรรทัดมาสองใบ
+    int hidden = s_frame->card_overflow + (given - n);
+    if (n > 0 && hidden > 0) {
         // ตัดที่ 99 — เกินกว่านั้นตัวเลขที่แน่นอนไม่ได้บอกอะไรเพิ่มแล้ว มีแต่จะล้นบรรทัด
-        int more = s_frame->card_overflow > 99 ? 99 : s_frame->card_overflow;
+        int more = hidden > 99 ? 99 : hidden;
         char buf[16];
         snprintf(buf, sizeof(buf), "+%d more", more);
         lv_label_set_text(s_card_more, buf);
-        int y = CT_CARD_TOP + CT_CARD_PAD + n * (CARD_H + CARD_GAP) + 1;
-        lv_obj_align(s_card_more, LV_ALIGN_TOP_RIGHT, -(CT_CARD_PAD + 8), y);
+        lv_obj_align(s_card_more, LV_ALIGN_TOP_RIGHT, -(CT_CARD_PAD + 8), y - CT_CARD_GAP + 1);
         lv_obj_remove_flag(s_card_more, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(s_card_more, LV_OBJ_FLAG_HIDDEN);

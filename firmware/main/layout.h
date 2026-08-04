@@ -19,11 +19,18 @@
 #define CT_SLOTS_UNIT_PX             4
 #define CT_SLOTS_BASELINE_PAD        19
 #define CT_SLOTS_LABEL_INSET         4
+#define CT_SLOTS_LABEL_DY            2
 
 #define CT_CARD_TOP                  142
 #define CT_CARD_HEIGHT               98
 #define CT_CARD_PAD                  6
 #define CT_CARD_MAX                  2
+#define CT_CARD_H_ONE                32
+#define CT_CARD_H_TWO                56
+#define CT_CARD_GAP                  4
+#define CT_CARD_TITLE_DY             8
+#define CT_CARD_BODY_DY              34
+#define CT_CARD_MORE_H               16
 #define CT_CARD_TEXT_INSET           30
 #define CT_CARD_RAIL_W               3
 #define CT_CARD_RAIL_INSET_ALERT     0

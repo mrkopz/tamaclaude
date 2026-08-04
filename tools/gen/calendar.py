@@ -87,16 +87,16 @@ def _empty(draw: ImageDraw.ImageDraw, c: Calendar) -> None:
         draw.text((L.screen.width // 2, L.calendar.date_y + 24), c.date,
                   font=screen.font(L.calendar.date_font_pil),
                   fill=quantize565(PAL.text if c.connected else PAL.gray), anchor="mm")
-        screen.line(draw, (L.screen.width // 2, L.calendar.date_sub_y + 6),
-                    MESSAGES[EMPTY][1], pil=10, board=12, fill=PAL.text_dim, anchor="mm")
+        screen.line(draw, (L.screen.width // 2, L.calendar.date_sub_y),
+                    MESSAGES[EMPTY][1], pil=10, board=12, fill=PAL.text_dim, anchor="mt")
         return
 
     state = c.state if c.has_frame else NO_CALENDARS
     head, sub = MESSAGES.get(state, MESSAGES[NO_CALENDARS])
-    screen.line(draw, (L.calendar.time_x, L.calendar.empty_y + 7), head,
-                pil=12, board=14, fill=PAL.text, anchor="lm")
-    screen.line(draw, (L.calendar.time_x, L.calendar.empty_sub_y + 6), sub,
-                pil=10, board=12, fill=PAL.text_dim, anchor="lm")
+    screen.line(draw, (L.calendar.time_x, L.calendar.empty_y), head,
+                pil=12, board=14, fill=PAL.text, anchor="lt")
+    screen.line(draw, (L.calendar.time_x, L.calendar.empty_sub_y), sub,
+                pil=10, board=12, fill=PAL.text_dim, anchor="lt")
 
 
 def render(c: Calendar, phase: float = 0.0, cycle: int = 0) -> Image.Image:
@@ -124,10 +124,10 @@ def render(c: Calendar, phase: float = 0.0, cycle: int = 0) -> Image.Image:
         draw.text((L.calendar.time_x, top + L.calendar.time_dy + 12), event.time,
                   font=screen.font(L.calendar.time_font_pil), fill=quantize565(text),
                   anchor="lm")
-        screen.line(draw, (L.calendar.day_x, top + L.calendar.day_dy + 6), event.day,
-                    pil=10, board=12, fill=dim, anchor="lm", max_w=L.calendar.day_w)
-        screen.line(draw, (L.calendar.title_x, top + L.calendar.title_dy + 7), event.title,
-                    pil=12, board=14, fill=text, anchor="lm", max_w=L.calendar.title_w)
+        screen.line(draw, (L.calendar.day_x, top + L.calendar.day_dy), event.day,
+                    pil=10, board=12, fill=dim, anchor="lt", max_w=L.calendar.day_w)
+        screen.line(draw, (L.calendar.title_x, top + L.calendar.title_dy), event.title,
+                    pil=12, board=14, fill=text, anchor="lt", max_w=L.calendar.title_w)
 
     age.draw_age(draw, c.age, L.calendar.refresh_s)
     return img

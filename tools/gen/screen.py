@@ -71,15 +71,29 @@ def line(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str, *,
     `pil` คือขนาดที่ฟอนต์สาธิตฝั่ง PIL ใช้ `board` คือขนาดฟอนต์จริงบนบอร์ด สองค่านี้
     ไม่เท่ากันเพราะฟอนต์คนละตัว (ดูหมายเหตุที่ lv_font_montserrat_24 ใน draw_usage)
     ส่วนภาษาไทยไม่มีทางเลือก: ต้องเป็นบิตแมปตัวเดียวกับที่แฟลชลงบอร์ด (ADR-0008)
+
+    แนวตั้งมีสองแบบ และแบบที่ควรใช้กับป้ายคือ `t`:
+
+    - `t` — `y` คือ **ขอบบนของตัวละติน** ซึ่งเป็นเลขเดียวกับที่ `lv_obj_set_pos` รับบนบอร์ด
+      (ผ่าน `ct_label_set_pos` ที่ถอย `ct_font_rise` ให้เอง) ที่ว่างเหนือมันสำหรับ
+      วรรณยุกต์ไทยเป็นของฟอนต์ ไม่ใช่ของเลย์เอาต์ — เลขในเลย์เอาต์จึงยังหมายถึงที่ที่
+      ตัวอักษรไปโผล่ ไม่ใช่ขอบบนของกล่องที่มีที่ว่างปนอยู่
+    - `m` — `y` คือกึ่งกลางกล่องบรรทัด ใช้เมื่อของที่ต้องจัดกลางเป็นกล่องอื่น
+
+    ทั้งสองแบบวางตัว ASCII บนเส้นฐานของกล่องบรรทัดเดียวกับไทยเสมอ ไม่ใช่ให้ PIL จัดเอง —
+    บนบอร์ดตัว ASCII กับตัวไทยอยู่บรรทัดเดียวกันและใช้เส้นฐานเดียว
     """
     col = quantize565(fill)
+    bf = bitmapfont.font(board)
+    # ขอบบนของกล่องบรรทัด — จุดตั้งต้นเดียวของทั้งสองภาษา
+    top = xy[1] - bf.rise if anchor[1] == "t" else xy[1] - bf.line_height / 2
     if not _is_thai(text):
         f = font(pil)
         s = _fit(draw, text, f, max_w) if max_w is not None else text
-        draw.text(xy, s, font=f, fill=col, anchor=anchor)
+        draw.text((xy[0], top + bf.ascent), s, font=f, fill=col, anchor=f"{anchor[0]}s")
         return
 
-    f, bf = font(pil), bitmapfont.font(board)
+    f = font(pil)
     cells = _cells(draw, text, pil, board)
     if max_w is not None:
         # ตัดทีละช่อง ไม่ใช่ทีละ scalar — ไม่งั้นวรรณยุกต์จะหลุดจากฐานของมัน
@@ -90,13 +104,12 @@ def line(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str, *,
             cells.append(("...", False, ell))
     total = sum(w for _, _, w in cells)
 
-    x, y = xy
+    x = xy[0]
     if anchor[0] == "m":
         x -= total / 2
     elif anchor[0] == "r":
         x -= total
-    if anchor[1] == "m":
-        y -= bf.line_height / 2
+    y = top
     # เส้นฐานของบรรทัดมาจากฟอนต์ของบอร์ด แล้วตัวที่วาดด้วย PIL ไปเกาะเส้นเดียวกัน
     base = y + bf.ascent
     for s, is_thai, w in cells:
@@ -255,8 +268,8 @@ def _slot(draw: ImageDraw.ImageDraw, i: int, sess: Session | None, s: Screen,
     # ความกว้างต้องเท่ากับ `lv_obj_set_width(l, CT_SLOTS_WIDTH - 4)` ใน ct_ui.c เป๊ะ —
     # ถ้าที่นี่แคบกว่า preview จะตัดชื่อโปรเจกต์เร็วกว่าบอร์ด แล้วเลขใน `Text.Limit`
     # ที่วัดจากตรงนี้ก็จะเตี้ยกว่าที่จอรับได้จริง
-    line(draw, (x + sw / 2, foot_px + 11), sess.project, pil=9, board=12,
-          fill=PAL.text if s.connected else PAL.text_dim, anchor="mm", max_w=PROJECT_W)
+    line(draw, (x + sw / 2, foot_px + L.slots.label_dy), sess.project, pil=9, board=12,
+          fill=PAL.text if s.connected else PAL.text_dim, anchor="mt", max_w=PROJECT_W)
 
 
 # --- มาสคอตเดินเล่นตอนไม่มี session ------------------------------------------
@@ -302,9 +315,43 @@ def _stroll(draw: ImageDraw.ImageDraw, s: Screen, phase: float, cycle: int) -> N
                ox, foot_px - BOX_Y1 * px)
 
 
-CARD_H = 36
-CARD_GAP = 4
+CARD_GAP = L.card.gap
 CARD_MAX = L.card.max
+# ที่ที่กองการ์ดมีจริง ตั้งแต่ใบแรกถึงก้นจอ — ต้องตรงกับ card_fit() ใน ct_ui.c
+CARD_BUDGET = L.screen.height - (L.card.top + L.card.pad)
+
+
+def card_h(c: Card) -> int:
+    return L.card.h_two if c.body else L.card.h_one
+
+
+def _fit_cards(cards: list[Card], budget: int) -> int:
+    used = 0
+    n = 0
+    for c in cards[:CARD_MAX]:
+        need = card_h(c) + (CARD_GAP if n else 0)
+        if used + need > budget:
+            break
+        used += need
+        n += 1
+    return n
+
+
+def card_fit(cards: list[Card], overflow: int) -> int:
+    """แสดงได้กี่ใบ — เติมจากบนลงล่างจนกว่าที่จะไม่พอ
+
+    เป็นการ *วัด* ไม่ใช่กฎที่เขียนไว้ตายตัวว่า "สองบรรทัดได้ใบเดียว" เพราะความสูงของ
+    กล่องบรรทัดมาจากไฟล์ฟอนต์ วันที่ thai.toml เพิ่มร่างที่สูงกว่าเดิม เลขนี้ต้องขยับตาม
+    เองโดยไม่มีใครต้องจำว่ามีกฎซ่อนอยู่ที่ไหนอีก
+
+    ลองสองรอบ เพราะที่ของบรรทัด "+N more" จะต้องกันไว้ก็ต่อเมื่อมีอะไรให้บอกจริงๆ —
+    กันไว้ตลอดแปลว่าการ์ดคู่ที่พอดีเป๊ะ (32 + 4 + 56 = 92) เสียใบที่สองไปให้บรรทัดที่
+    ไม่มีอะไรจะเขียน
+    """
+    n = _fit_cards(cards, CARD_BUDGET)
+    if n == len(cards) and overflow == 0:
+        return n
+    return _fit_cards(cards, CARD_BUDGET - L.card.more_h)
 # ความกว้างที่ข้อความมีจริง — ต้องตรงกับ `lv_obj_set_width(title, w - 18)` ใน ct_ui.c
 # ทั้งสองค่านี้คือที่มาของ `Text.Limit` ฝั่ง Swift (ดู `preview.py --limits`)
 CARD_TEXT_W = L.screen.width - L.card.pad * 2 - L.card.text_inset
@@ -342,33 +389,37 @@ def _card_mark(draw: ImageDraw.ImageDraw, shape: str, cx: int, cy: int,
 
 def _card(draw: ImageDraw.ImageDraw, c: Card, y: int) -> None:
     pad, w = L.card.pad, L.screen.width
+    h = card_h(c)
     accent, plate, inset, mark = _CARD_STYLE.get(c.kind, _CARD_INFO)
-    draw.rectangle([pad, y, w - pad - 1, y + CARD_H - 1], fill=quantize565(plate))
-    draw.rectangle([pad, y + inset, pad + L.card.rail_w - 1, y + CARD_H - 1 - inset],
+    draw.rectangle([pad, y, w - pad - 1, y + h - 1], fill=quantize565(plate))
+    draw.rectangle([pad, y + inset, pad + L.card.rail_w - 1, y + h - 1 - inset],
                    fill=quantize565(accent))
-    _card_mark(draw, mark, w - pad - L.card.mark_right, y + CARD_H // 2, accent, plate)
+    _card_mark(draw, mark, w - pad - L.card.mark_right, y + h // 2, accent, plate)
 
     tx = pad + 9
     # ขนาดฝั่งบอร์ดคือ 14/12 (montserrat กับฟอนต์ไทย) ฝั่ง PIL คือ 12/10 เพราะฟอนต์คนละตัว
-    # บรรทัดเดียวไม่ได้อยู่ที่เดิมแล้วเว้นล่างว่าง แต่ย้ายลงมากลางการ์ด — ต้องตรงกับ
+    # y คือขอบบนของตัวละติน ที่ว่างเหนือมันเป็นของวรรณยุกต์ไทย — ต้องตรงกับ
     # layout_cards() ใน firmware/main/ct_ui.c
+    line(draw, (tx, y + L.card.title_dy), c.title, pil=12, board=14,
+         fill=PAL.text, anchor="lt", max_w=CARD_TEXT_W)
     if not c.body:
-        line(draw, (tx, y + CARD_H // 2), c.title, pil=12, board=14,
-             fill=PAL.text, anchor="lm", max_w=CARD_TEXT_W)
         return
-    line(draw, (tx, y + 11), c.title, pil=12, board=14,
-          fill=PAL.text, anchor="lm", max_w=CARD_TEXT_W)
-    line(draw, (tx, y + 25), c.body, pil=10, board=12,
-          fill=PAL.text_dim, anchor="lm", max_w=CARD_TEXT_W)
+    line(draw, (tx, y + L.card.body_dy), c.body, pil=10, board=12,
+         fill=PAL.text_dim, anchor="lt", max_w=CARD_TEXT_W)
 
 
 def _cards(draw: ImageDraw.ImageDraw, cards: list[Card], overflow: int) -> None:
     y = L.card.top + L.card.pad
-    for c in cards[:CARD_MAX]:
+    n = card_fit(cards, overflow)
+    for c in cards[:n]:
         _card(draw, c, y)
-        y += CARD_H + CARD_GAP
+        y += card_h(c) + CARD_GAP
     # การ์ดที่ไม่ได้วาดต้องเหลือร่องรอย ไม่ใช่หายเงียบ — "ไม่มีอะไรค้างแล้ว" กับ
     # "ยังค้างอีกสองเรื่องแต่จอไม่พอ" คือสองสถานะที่ต้องแยกออกจากกันได้ในเหลือบเดียว
+    #
+    # นับสองชั้น: ที่ daemon ตัดทิ้งก่อนส่ง + ที่ส่งมาแล้วแต่จอไม่พอ · ชั้นหลังเพิ่งเป็นไป
+    # ได้ตอนความสูงการ์ดไม่เท่ากัน ถ้าลืมบวก ตัวเลขจะโกหกทันทีที่การ์ดสองบรรทัดมาสองใบ
+    overflow += len(cards) - n
     if overflow > 0:
         draw.text((L.screen.width - L.card.pad - 8, y + 1), f"+{overflow} more",
                   font=font(11), fill=quantize565(PAL.text_dim), anchor="rm")
@@ -578,7 +629,7 @@ def render(s: Screen, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     # ลำดับความสำคัญของพื้นที่ล่าง: การเตือน > โควตา > นาฬิกา
     # โควตาไม่เคยชนะ card เพราะ card คือสิ่งที่ต้องการการกระทำจากผู้ใช้
     if cards := s.shown_cards():
-        _cards(draw, cards, s.card_overflow or max(0, len(cards) - CARD_MAX))
+        _cards(draw, cards, s.card_overflow)
     elif usage := s.shown_usage():
         _usage(draw, usage)
     else:

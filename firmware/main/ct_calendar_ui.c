@@ -70,7 +70,7 @@ static lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font, uint16_t color, 
     lv_obj_set_style_text_font(l, font, 0);
     lv_obj_set_style_text_color(l, ct_color(color), 0);
     lv_label_set_text(l, "");
-    lv_obj_set_pos(l, x, y);
+    ct_label_set_pos(l, x, y);
     return l;
 }
 
@@ -123,7 +123,8 @@ void ct_calendar_ui_init(lv_obj_t *parent, const ct_calendar_t *frame, const boo
     lv_obj_set_style_text_font(s_date_sub, ct_font_text_12(), 0);
     lv_obj_set_style_text_color(s_date_sub, ct_color(CT_COL_TEXT_DIM), 0);
     lv_label_set_text(s_date_sub, "");
-    lv_obj_align(s_date_sub, LV_ALIGN_TOP_MID, 0, CT_CALENDAR_DATE_SUB_Y);
+    lv_obj_align(s_date_sub, LV_ALIGN_TOP_MID, 0,
+                 CT_CALENDAR_DATE_SUB_Y - ct_font_rise(ct_font_text_12()));
 
     ct_calendar_ui_redraw();
 }
@@ -190,7 +191,8 @@ void ct_calendar_ui_redraw(void)
         const char *sub = NULL;
         empty_lines(CT_CAL_EMPTY, &head, &sub);
         lv_label_set_text(s_date_sub, sub);
-        lv_obj_align(s_date_sub, LV_ALIGN_TOP_MID, 0, CT_CALENDAR_DATE_SUB_Y);
+        lv_obj_align(s_date_sub, LV_ALIGN_TOP_MID, 0,
+                 CT_CALENDAR_DATE_SUB_Y - ct_font_rise(ct_font_text_12()));
         lv_obj_remove_flag(s_date, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(s_date_sub, LV_OBJ_FLAG_HIDDEN);
     } else {

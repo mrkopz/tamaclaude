@@ -63,11 +63,11 @@ def render(c: Crypto, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     coins = c.coins[: L.crypto.rows] if c.has_frame else []
     if not coins:
         # ยังไม่เคยได้ข้อมูลของหน้านี้ ต้องมีหน้าตาของตัวเอง ห้ามเป็นจอเปล่า (ADR-0002)
-        screen.line(draw, (L.crypto.sym_x, L.crypto.empty_y + 7), "No coins yet",
-                    pil=12, board=14, fill=PAL.text, anchor="lm")
-        screen.line(draw, (L.crypto.sym_x, L.crypto.empty_sub_y + 6),
+        screen.line(draw, (L.crypto.sym_x, L.crypto.empty_y), "No coins yet",
+                    pil=12, board=14, fill=PAL.text, anchor="lt")
+        screen.line(draw, (L.crypto.sym_x, L.crypto.empty_sub_y),
                     "add coins in the mac app", pil=10, board=12,
-                    fill=PAL.text_dim, anchor="lm")
+                    fill=PAL.text_dim, anchor="lt")
         if c.has_frame:
             age.draw_age(draw, c.age, L.crypto.refresh_s)
         return img
@@ -75,16 +75,16 @@ def render(c: Crypto, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     text = PAL.text if c.connected else PAL.gray
     for i, coin in enumerate(coins):
         top = L.crypto.row_y + i * L.crypto.row_h
-        screen.line(draw, (L.crypto.sym_x, top + L.crypto.sym_dy + 7), coin.symbol,
-                    pil=12, board=14, fill=text, anchor="lm", max_w=L.crypto.sym_w)
+        screen.line(draw, (L.crypto.sym_x, top + L.crypto.sym_dy), coin.symbol,
+                    pil=12, board=14, fill=text, anchor="lt", max_w=L.crypto.sym_w)
         # ราคาชิดขวา หลักหน่วยของทุกแถวจึงเรียงตรงกัน และเทียบข้ามแถวได้ด้วยการกวาดตา
         draw.text((L.crypto.price_x + L.crypto.price_w, top + L.crypto.price_dy + 12),
                   coin.price, font=screen.font(L.crypto.price_font_pil),
                   fill=quantize565(text), anchor="rm")
 
-        screen.line(draw, (L.crypto.pct_x + L.crypto.pct_w, top + L.crypto.pct_dy + 7),
+        screen.line(draw, (L.crypto.pct_x + L.crypto.pct_w, top + L.crypto.pct_dy),
                     pct_text(coin.change), pil=12, board=14,
-                    fill=tone(coin.change, c.connected), anchor="rm")
+                    fill=tone(coin.change, c.connected), anchor="rt")
         draw_rects(draw, arrow(coin.change, c.connected), L.crypto.arrow_px,
                    L.crypto.arrow_x, top + L.crypto.arrow_dy)
 

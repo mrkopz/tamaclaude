@@ -24,6 +24,9 @@ class BitmapFont:
         self.line_height: int = data["line_height"]
         self.base_line: int = data["base_line"]
         self.ascent = self.line_height - self.base_line
+        # ที่ว่างเหนือตัวละตินที่กันไว้ให้วรรณยุกต์ไทย — เลย์เอาต์วางป้ายด้วยขอบบนของ
+        # ตัวละติน กล่องบรรทัดจึงเริ่มสูงกว่านั้นขึ้นไปเท่านี้ (ct_font_rise ฝั่ง C)
+        self.rise = self.ascent - data["host_ascent"]
         self._glyphs = data["glyphs"]
         self._cache: dict[str, Image.Image] = {}
 
@@ -50,8 +53,15 @@ class BitmapFont:
 
     def draw(self, draw: ImageDraw.ImageDraw, x: float, y: float, text: str,
              color: tuple[int, int, int]) -> None:
-        """วาดโดย (x, y) คือมุมซ้ายบนของบรรทัด — เหมือน lv_label ที่มุมซ้ายบน"""
+        """วาดโดย (x, y) คือมุมซ้ายบนของบรรทัด — เหมือน lv_label ที่มุมซ้ายบน
+
+        **หนีบที่ขอบบนล่างของบรรทัดเหมือน LVGL** — `lv_label.c:818` ตัดพื้นที่วาดด้วยกรอบ
+        ของ label แล้ว `lv_draw_label.c:409` ทิ้ง glyph ที่พ้นกรอบ ตอนที่ไฟล์นี้ยังไม่หนีบ
+        สระล่างที่ไม่มีที่อยู่จะ *ล้น* ทับการ์ดใบถัดไปในพรีวิว แต่ *หายทั้งตัว* บนบอร์ด —
+        บั๊กเดียวให้ภาพคนละแบบ แล้วลูป "เรนเดอร์ แล้วดู out/" ก็มองไม่เห็นสิ่งที่จะเกิดจริง
+        """
         base = y + self.ascent
+        top, bot = round(y), round(y) + self.line_height
         pen = x
         for ch in text:
             key = f"{ord(ch):04X}"
@@ -61,7 +71,12 @@ class BitmapFont:
             if g["w"] and g["h"]:
                 gx = round(pen) + g["ofs_x"]
                 gy = round(base) - g["ofs_y"] - g["h"]
-                draw.bitmap((gx, gy), self._mask(key, g), fill=color)
+                y0, y1 = max(gy, top), min(gy + g["h"], bot)
+                if y1 > y0:
+                    mask = self._mask(key, g)
+                    if (y0, y1) != (gy, gy + g["h"]):
+                        mask = mask.crop((0, y0 - gy, g["w"], y1 - gy))
+                    draw.bitmap((gx, y0), mask, fill=color)
             pen += g["adv"]
 
 

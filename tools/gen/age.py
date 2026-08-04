@@ -59,6 +59,6 @@ def draw_age(draw: ImageDraw.ImageDraw, secs: int, refresh_s: int,
     text = age_text(secs)
     if frozen is not None:
         text = f"{text}  -  {frozen}"
-    screen.line(draw, (L.page.age_x, L.page.age_y + 6),
+    screen.line(draw, (L.page.age_x, L.page.age_y),
                 f"STALE - {text}" if stale else text, pil=10, board=12,
-                fill=PAL.alert if stale else PAL.text_dim, anchor="lm")
+                fill=PAL.alert if stale else PAL.text_dim, anchor="lt")
