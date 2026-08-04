@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import bitmapfont, mascot, sky, thai
+from . import bitmapfont, mascot, pages, sky, thai, topbar
 from .config import L, PAL
 from .mascot import BODY
 from .props import BOX_X0, BOX_X1, BOX_Y1
@@ -155,8 +155,6 @@ class Screen:
     # แยกจาก connected ตั้งแต่ M2 เพราะ snapshot เดินทางมาทาง LAN ได้แล้ว: จอที่ข้อมูล
     # สดแต่ BLE ตายเป็นสภาพที่มีจริง และไอคอนต้องบอกให้ถูก
     ble: bool | None = None
-    # ที่อยู่บอร์ดบน LAN — ขึ้นแทนชื่อบนแถบเมื่อเหลือแต่ WiFi ซึ่งเป็นตอนเดียวที่ต้องใช้
-    ip: str = ""
 
     @property
     def ble_link(self) -> bool:
@@ -189,81 +187,6 @@ def _fit(draw: ImageDraw.ImageDraw, text: str, f: ImageFont.FreeTypeFont, max_w:
     while text and draw.textlength(text + ell, font=f) > max_w:
         text = text[:-1]
     return text + ell
-
-
-# ไอคอนลิงก์ — ต้องตรงกับ ICON_* ใน firmware/main/ct_ui.c เป๊ะ
-# BLE = แท่งไต่ขึ้น (ทางหลัก) · WiFi = คลื่นซ้อน (ทางสำรอง) · ขาด = ขีดเดียวจางๆ
-_ICON_BLE = [(0, 6, 3, 3), (4, 3, 3, 6), (8, 0, 3, 9)]
-_ICON_WIFI = [(0, 0, 11, 2), (2, 3, 7, 2), (4, 6, 3, 3)]
-_ICON_NONE = [(1, 4, 9, 2)]
-
-
-def _link_icon(draw: ImageDraw.ImageDraw, s: Screen) -> None:
-    if s.ble_link:
-        parts, col = _ICON_BLE, PAL.good
-    elif s.wifi:
-        parts, col = _ICON_WIFI, PAL.accent
-    else:
-        parts, col = _ICON_NONE, PAL.text_dim
-    x0 = L.screen.width - 6 - L.topbar.link_icon_w
-    y0 = (L.topbar.height - L.topbar.link_icon_h) // 2
-    for x, y, w, h in parts:
-        draw.rectangle([x0 + x, y0 + y, x0 + x + w - 1, y0 + y + h - 1],
-                       fill=quantize565(col))
-
-
-def _topbar(draw: ImageDraw.ImageDraw, s: Screen) -> None:
-    h = L.topbar.height
-    draw.rectangle([0, 0, L.screen.width - 1, h - 1], fill=quantize565(PAL.bg_slot))
-    dot = PAL.good if s.connected else PAL.gray
-    draw.rectangle([6, h // 2 - 3, 11, h // 2 + 2], fill=quantize565(dot))
-    # ป้ายบอกทาง ส่วนสีบอกว่าข้อมูลสดไหม — สองคำถามคนละอัน (ต้องตรงกับ ct_ui_set_link)
-    if s.ble_link:
-        label = "tamaclaude"
-    elif s.wifi and s.ip:
-        label = s.ip
-    else:
-        label = "no link"
-    draw.text((17, h // 2), label, font=font(11),
-              fill=quantize565(PAL.text if s.connected else PAL.text_dim), anchor="lm")
-    _link_icon(draw, s)
-    # นาฬิกาบนแถบโผล่เมื่อพื้นที่ล่างถูกยึดไป (card หรือ usage) — ไม่ใช่ "เมื่อมี card"
-    # อย่างเดิม เพราะตอนนี้มีผู้ยึดสองราย ถ้าเช็คแค่ card จะได้นาฬิกาซ้ำสองที่ในฉาก idle
-    # ไอคอนลิงก์จองขวาสุดไว้ถาวร ทุกอย่างบนแถบจึงเริ่มนับจากซ้ายของมัน
-    right = L.screen.width - 6 - L.topbar.link_icon_w - L.topbar.link_icon_gap
-    cards, usage = s.shown_cards(), s.shown_usage()
-    if cards or usage:
-        draw.text((right, h // 2), s.clock, font=font(12),
-                  fill=quantize565(PAL.text), anchor="rm")
-        right -= 38
-    if s.overflow:
-        draw.text((right, h // 2), f"+{s.overflow}", font=font(11),
-                  fill=quantize565(PAL.accent), anchor="rm")
-        right -= 26
-
-    # การ์ดยึดพื้นที่ล่างไปแล้ว แต่โควตาไม่ควรหายไปทั้งหมด — ย่อเหลือหน้าต่าง 5 ชม.
-    # อย่างเดียวมาไว้บนแถบ ไม่มีป้ายกำกับเพราะบนแถบมีค่าเดียว ไม่ต้องแยกว่าตัวไหน
-    # ไม่แสดงตอนไม่มีการ์ด เพราะแผงเต็มโชว์ตัวเลขเดียวกันอยู่แล้ว
-    if cards and usage:
-        u = usage[0]
-        col = usage_color(u.pct)
-        pct_text = "--%" if u.pct is None else f"{u.pct}%"
-        draw.text((right, h // 2), pct_text, font=font(11), fill=quantize565(col), anchor="rm")
-        right -= 30
-
-        # แถบสั้นให้เหลือบแล้วรู้ทันทีว่าเหลือเท่าไร โดยไม่ต้องอ่านตัวเลข
-        # สูง 6px บนแถบ 22px อ่านออก — ที่อ่านไม่ออกคือแถบบางในแผงเต็ม ไม่ใช่ตรงนี้
-        # กรอบขาวรอบราง — พื้นรางสีเดียวกับพื้นหลังจอ ทำให้ส่วนที่ยังไม่ถูกใช้กลืนหาย
-        # เห็นแต่ "ใช้ไปเท่าไร" ไม่เห็น "เหลือเท่าไร" กรอบตีขอบให้รู้ความยาวเต็ม
-        bw, bh = 34, 6
-        ox, oy = right - bw - 2, h // 2 - (bh + 2) // 2
-        draw.rectangle([ox, oy, ox + bw + 1, oy + bh + 1],
-                       fill=quantize565(PAL.bg), outline=quantize565(PAL.outline), width=1)
-        bx, by = ox + 1, oy + 1
-        if u.pct is not None:
-            fill_w = round(bw * min(max(u.pct, 0), 100) / 100)
-            if fill_w:
-                draw.rectangle([bx, by, bx + fill_w - 1, by + bh - 1], fill=quantize565(col))
 
 
 def slot_x(i: int, n: int) -> int:
@@ -530,6 +453,28 @@ def _idle_clock(draw: ImageDraw.ImageDraw, s: Screen) -> None:
                   fill=quantize565(PAL.text_dim), anchor="mm")
 
 
+def shows_idle_clock(s: Screen) -> bool:
+    """หน้านี้แสดงนาฬิกาตัวใหญ่เองไหม — แถบบนถามก่อนวาดนาฬิกาเล็กของมัน
+
+    ต้องตรงกับ `ct_ui_shows_clock` ใน firmware/main/ct_ui.c
+    """
+    return not s.shown_cards() and not s.shown_usage()
+
+
+def shows_usage_panel(s: Screen) -> bool:
+    """แผงโควตาเต็มโผล่อยู่ไหม — การ์ดชนะโควตาเสมอ (การ์ดต้องการการกระทำ)
+
+    ต้องตรงกับ `ct_ui_shows_usage` ใน firmware/main/ct_ui.c
+    """
+    return bool(s.shown_usage()) and not s.shown_cards()
+
+
+def _bar(s: Screen) -> topbar.Bar:
+    usage = s.shown_usage()
+    return topbar.Bar(clock=s.clock, ble=s.ble, wifi=s.wifi, overflow=s.overflow,
+                      has_usage=bool(usage), pct=usage[0].pct if usage else None)
+
+
 def render(s: Screen, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     img = Image.new("RGB", (L.screen.width, L.screen.height), quantize565(PAL.bg))
     draw = ImageDraw.Draw(img)
@@ -537,7 +482,8 @@ def render(s: Screen, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     # การถูกบังคือระยะลึก ไม่ใช่ของหาย และตอนไม่มี session (ซึ่งเป็นเกือบตลอดเวลา)
     # ฟ้าโล่งทั้งแถบอยู่แล้ว
     sky.draw(draw, s.clock, s.connected, cycle + phase)
-    _topbar(draw, s)
+    topbar.draw(draw, _bar(s), page=pages.LABELS["mascot"], connected=s.connected,
+                page_shows_clock=shows_idle_clock(s), page_shows_usage=shows_usage_panel(s))
     n = min(len(s.sessions), L.slots.count)
     if n == 0:
         # แถบ slot ที่ว่างเปล่าอ่านได้ว่า "อุปกรณ์ค้าง" — ให้มาสคอตเดินผ่านแทน

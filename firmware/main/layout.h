@@ -103,7 +103,7 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_PAGE_STALE_FACTOR         10
 #define CT_PAGE_MINI_UNIT_PX         1.5f
 #define CT_PAGE_MINI_RIGHT           10
-#define CT_PAGE_MINI_BOTTOM_Y        29
+#define CT_PAGE_MINI_BOTTOM_Y        236
 
 #define CT_WEATHER_PLACE_X           12
 #define CT_WEATHER_PLACE_Y           30
@@ -286,3 +286,13 @@ typedef enum {
     CT_PAGE_STOCKS       = 4,
     CT_PAGE_KIND_COUNT         = 5,
 } ct_page_kind_t;
+
+// ชื่อที่ขึ้นบนแถบบน — ผูกกับ enum ไม่ใช่ข้อมูลที่เดินทางมากับเฟรม หน้าที่ยังไม่เคย
+// ได้ข้อมูลจึงมีชื่ออยู่แล้ว และไม่มีไบต์ไหนถูกจ่ายบนสายให้สตริงที่ไม่เคยเปลี่ยน
+static const char *const ct_page_labels[CT_PAGE_KIND_COUNT] = {
+    "tamaclaude",
+    "weather",
+    "crypto",
+    "calendar",
+    "stocks",
+};

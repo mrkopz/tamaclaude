@@ -10,6 +10,7 @@ idf_component_register(
         "ct_paint.c"
         "ct_fonts.c"
         "ct_ui.c"
+        "ct_topbar.c"
         "ct_age.c"
         "ct_mini.c"
         "ct_weather.c"

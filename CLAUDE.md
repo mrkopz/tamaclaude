@@ -126,7 +126,7 @@ look at `out/`. It proves the *design*, not the C renderer.
   `screen.py`↔`ct_ui.c`, `weather.py`↔`ct_weather_ui.c`, `crypto.py`↔`ct_crypto_ui.c`,
   `stocks.py`↔`ct_stocks_ui.c`, `calendar.py`↔`ct_calendar_ui.c`,
   `trend.py`↔`ct_trend.c`, `age.py`↔`ct_age.c`,
-  `mini.py`↔`ct_mini.c`, `sky.py` folds into `ct_ui.c`.
+  `mini.py`↔`ct_mini.c`, `topbar.py`↔`ct_topbar.c`, `sky.py` folds into `ct_ui.c`.
   `pages.py` is the odd one out: it feeds `export_layout.py`, which generates `ct_page_kind_t`. A visual change means editing both
   sides; the Python side is where you iterate, the C side is the port.
 - **Assets are rect lists**, `{x, y, w, h, color}` in mascot-relative *unit* coordinates —
@@ -223,6 +223,11 @@ look at `out/`. It proves the *design*, not the C renderer.
   goes up. Deciding from the state itself yanks the screen back every snapshot for as long as a
   permission prompt sits unanswered, and never jumps for the second session that asks while the
   first is still waiting.
+- **The top bar belongs to every page, and never repeats what a page already shows bigger.**
+  It lives outside every page root (`ct_topbar.c` ↔ `gen/topbar.py`), built last so LVGL keeps
+  it on top. The mascot page answers `ct_ui_shows_clock`/`ct_ui_shows_usage` for itself — the
+  rule is in the bar, the fact is in the page. Get that backwards and the idle screen shows the
+  same clock twice.
 - **Page frames carry a data *age*, not a timestamp**, and the board counts on from there.
   A re-read with identical figures is still sent (the age is the difference); an age that is
   merely ticking is not a change.

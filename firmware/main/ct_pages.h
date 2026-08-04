@@ -67,7 +67,8 @@ int ct_pages_capability_json(char *out, int size);
 
 // สถานะลิงก์เป็นของทั้งเครื่อง ไม่ใช่ของหน้าใดหน้าหนึ่ง — โฮสต์ส่งต่อให้หน้าที่สนใจ
 void ct_pages_set_connected(bool connected);
-void ct_pages_set_link(bool ble, bool wifi, const char *ip);
+// ที่อยู่ของบอร์ดไม่ขึ้นจอแล้ว — มันอยู่ในหน้าตั้งค่าบน Mac ที่เดียว (DESIGN.md)
+void ct_pages_set_link(bool ble, bool wifi);
 
 // เดินเวลาไป `elapsed_ms` — นาฬิกาของทุกหน้าเดินที่นี่ ส่วนอนิเมชันเดินเฉพาะหน้าที่แสดงอยู่
 void ct_pages_tick(int elapsed_ms);

@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw
 
-from . import age, mini, screen, trend
+from . import age, mini, pages, screen, topbar, trend
 from .config import L, PAL
 from .render import draw_rects, quantize565
 
@@ -56,11 +56,15 @@ class Stocks:
     has_frame: bool = True
     # ท่าของมาสคอตจิ๋วมุมจอ — None = ไม่มี session เลย ซึ่งคือท่าหลับ
     mascot_state: str | None = None
+    # แถบบน — มาจาก snapshot ของหน้ามาสคอต ไม่ใช่จากเฟรมของหน้านี้ (`gen/topbar.py`)
+    bar: topbar.Bar = field(default_factory=topbar.Bar)
 
 
 def render(s: Stocks, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     img = Image.new("RGB", (L.screen.width, L.screen.height), quantize565(PAL.bg))
     draw = ImageDraw.Draw(img)
+    # หน้านี้ไม่เคยแสดงเวลาหรือโควตาเอง แถบจึงพูดครบเสมอ (ดู `topbar.draw`)
+    topbar.draw(draw, s.bar, page=pages.LABELS["stocks"], connected=s.connected)
     frozen = CLOSED if s.market_closed else None
 
     # มาสคอตอยู่แถบบนของทุกหน้า รวมหน้าที่ยังไม่เคยได้ข้อมูล — สถานะ session ไม่ได้ขึ้นกับ

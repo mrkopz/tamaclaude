@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw
 
-from . import age, mini, screen
+from . import age, mini, pages, screen, topbar
 from .config import L, PAL
 from .render import quantize565
 
@@ -59,11 +59,15 @@ class Calendar:
     has_frame: bool = True
     # ท่าของมาสคอตจิ๋วมุมจอ — None = ไม่มี session เลย ซึ่งคือท่าหลับ
     mascot_state: str | None = None
+    # แถบบน — มาจาก snapshot ของหน้ามาสคอต ไม่ใช่จากเฟรมของหน้านี้ (`gen/topbar.py`)
+    bar: topbar.Bar = field(default_factory=topbar.Bar)
 
 
 def render(c: Calendar, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     img = Image.new("RGB", (L.screen.width, L.screen.height), quantize565(PAL.bg))
     draw = ImageDraw.Draw(img)
+    # หน้านี้ไม่เคยแสดงเวลาหรือโควตาเอง แถบจึงพูดครบเสมอ (ดู `topbar.draw`)
+    topbar.draw(draw, c.bar, page=pages.LABELS["calendar"], connected=c.connected)
 
     # มาสคอตอยู่แถบบนของทุกหน้า รวมสภาพที่ไม่มีนัดให้แสดง — สถานะ session ไม่ได้ขึ้นกับ
     # ว่าหน้านี้อ่านปฏิทินได้หรือไม่

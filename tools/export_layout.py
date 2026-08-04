@@ -130,7 +130,13 @@ def build_header() -> str:
         f"    CT_PAGE_KIND_COUNT{'':<8} = {len(pages.PAGES)},",
         "} ct_page_kind_t;",
         "",
+        "// ชื่อที่ขึ้นบนแถบบน — ผูกกับ enum ไม่ใช่ข้อมูลที่เดินทางมากับเฟรม หน้าที่ยังไม่เคย",
+        "// ได้ข้อมูลจึงมีชื่ออยู่แล้ว และไม่มีไบต์ไหนถูกจ่ายบนสายให้สตริงที่ไม่เคยเปลี่ยน",
+        "static const char *const ct_page_labels[CT_PAGE_KIND_COUNT] = {",
     ]
+    for page in pages.PAGES:
+        out.append(f'    "{pages.LABELS[page]}",')
+    out += ["};", ""]
     return "\n".join(out)
 
 

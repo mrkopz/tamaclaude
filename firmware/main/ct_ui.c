@@ -50,27 +50,6 @@ typedef struct {
 static const ct_snapshot_t *s_frame;
 static bool s_connected = false;
 
-// แถบโควตาย่อบน topbar — ตรงกับ tools/gen/screen.py:_topbar
-#define USAGE_TOP_W 34
-#define USAGE_TOP_H 6
-
-// ทุกอย่างที่เกาะขอบขวาของแถบเริ่มนับจากตรงนี้ ไม่ใช่จากขอบจอ — ไอคอนลิงก์จองที่
-// ขวาสุดไว้ถาวร ค่าคงที่ตัวเดียวจึงต้องเลื่อนนาฬิกา "+N" และแถบโควตาไปพร้อมกัน
-#define TOPBAR_RIGHT (6 + CT_TOPBAR_LINK_ICON_W + CT_TOPBAR_LINK_ICON_GAP)
-
-// ไอคอนลิงก์เป็นรายการสี่เหลี่ยมเหมือนของอื่นทั้งจอ ไม่ใช่ glyph จากฟอนต์ —
-// ต้องตรงกับ tools/gen/screen.py:_link_icon เป๊ะทั้งพิกัดและสี
-typedef struct {
-    uint8_t x, y, w, h;
-} icon_rect_t;
-
-// BLE = แท่งไต่ขึ้น (ทางหลัก) · WiFi = คลื่นซ้อน (ทางสำรอง) · ขาด = ขีดเดียวจางๆ
-// สามรูปทรงคนละวงศ์ ไม่ใช่รูปเดียวคนละสี — จอนี้ถูกมองจากอีกฝั่งห้องเป็นหลัก
-static const icon_rect_t ICON_BLE[] = {{0, 6, 3, 3}, {4, 3, 3, 6}, {8, 0, 3, 9}};
-static const icon_rect_t ICON_WIFI[] = {{0, 0, 11, 2}, {2, 3, 7, 2}, {4, 6, 3, 3}};
-static const icon_rect_t ICON_NONE[] = {{1, 4, 9, 2}};
-#define LINK_ICON_PARTS 3
-
 // --- ฉากท้องฟ้า ---------------------------------------------------------------
 // ฟ้า 22..93 แล้วพื้นดินลงไปถึงก้นจอ — วาดในผืนเดียวหลังทุกอย่าง
 // ตรรกะทั้งหมดต้องตรงกับ tools/gen/sky.py
@@ -107,9 +86,6 @@ static float s_sky_hours = -1.0f;  // เวลาที่ใช้หาตำ
 static int s_cloud_shift = -1;     // เมฆเลื่อนไปกี่พิกเซลแล้ว ใช้ตัดสินว่าต้องวาดใหม่ไหม
 
 static lv_obj_t *s_stroll;  // มาสคอตเดินข้ามจอตอนไม่มี session — กินแถบ slot ทั้งแถบ
-static lv_obj_t *s_dot, *s_link, *s_clock_small, *s_overflow, *s_usage_top;
-static lv_obj_t *s_link_icon[LINK_ICON_PARTS];
-static lv_obj_t *s_usage_track, *s_usage_fill;
 static lv_obj_t *s_clock_big, *s_date;
 static lv_obj_t *s_card_more;  // "+N more" ใต้การ์ดใบล่างสุด
 static slot_t s_slots[CT_SLOTS_COUNT];
@@ -437,55 +413,6 @@ static void update_sky(void)
     }
 }
 
-static void build_topbar(lv_obj_t *scr)
-{
-    lv_obj_t *bar = plain_obj(scr, CT_SCREEN_WIDTH, CT_TOPBAR_HEIGHT);
-    lv_obj_set_pos(bar, 0, 0);
-    lv_obj_set_style_bg_color(bar, ct_color(CT_COL_BG_SLOT), 0);
-    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
-
-    s_dot = plain_obj(bar, 6, 6);
-    lv_obj_set_pos(s_dot, 6, CT_TOPBAR_HEIGHT / 2 - 3);
-    lv_obj_set_style_bg_opa(s_dot, LV_OPA_COVER, 0);
-
-    s_link = plain_label(bar, &lv_font_montserrat_12, CT_COL_TEXT);
-    lv_obj_align(s_link, LV_ALIGN_LEFT_MID, 17, 0);
-
-    // ไอคอนลิงก์: สามชิ้นพอสำหรับทุกรูปทรง ชิ้นที่เกินก็ซ่อนไป — สร้างครั้งเดียวแล้ว
-    // ขยับ ไม่ใช่สร้าง/ลบทุกครั้งที่ลิงก์เปลี่ยน ซึ่งบนจอที่กะพริบอยู่แล้วจะเห็นเป็นสะดุด
-    for (int i = 0; i < LINK_ICON_PARTS; i++) {
-        s_link_icon[i] = plain_obj(bar, 1, 1);
-        lv_obj_set_style_bg_opa(s_link_icon[i], LV_OPA_COVER, 0);
-        lv_obj_add_flag(s_link_icon[i], LV_OBJ_FLAG_HIDDEN);
-    }
-
-    s_clock_small = plain_label(bar, &lv_font_montserrat_12, CT_COL_TEXT);
-    lv_obj_align(s_clock_small, LV_ALIGN_RIGHT_MID, -TOPBAR_RIGHT, 0);
-
-    s_overflow = plain_label(bar, &lv_font_montserrat_12, CT_COL_ACCENT);
-    lv_obj_align(s_overflow, LV_ALIGN_RIGHT_MID, -(TOPBAR_RIGHT + 38), 0);
-
-    // โควตาย่อบนแถบ — โผล่เฉพาะตอนการ์ดยึดพื้นที่ล่างไป
-    // ไม่มีป้ายกำกับ ("5h") เพราะบนแถบมีค่าเดียว ไม่ต้องบอกว่าตัวไหน
-    // เอาพื้นที่นั้นไปทำแถบสั้นแทน ซึ่งเหลือบแล้วรู้ทันทีโดยไม่ต้องอ่านตัวเลข
-    s_usage_top = plain_label(bar, &lv_font_montserrat_12, CT_COL_GOOD);
-    lv_obj_add_flag(s_usage_top, LV_OBJ_FLAG_HIDDEN);
-
-    // กรอบขาวรอบราง — พื้นรางสีเดียวกับพื้นหลังจอ ทำให้ส่วนที่ยังไม่ถูกใช้กลืนหาย
-    // เห็นแต่ "ใช้ไปเท่าไร" ไม่เห็น "เหลือเท่าไร" กรอบตีขอบให้รู้ความยาวเต็ม
-    s_usage_track = plain_obj(bar, USAGE_TOP_W + 2, USAGE_TOP_H + 2);
-    lv_obj_set_style_bg_color(s_usage_track, ct_color(CT_COL_BG), 0);
-    lv_obj_set_style_bg_opa(s_usage_track, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(s_usage_track, 1, 0);
-    lv_obj_set_style_border_color(s_usage_track, ct_color(CT_COL_OUTLINE), 0);
-    lv_obj_set_style_border_opa(s_usage_track, LV_OPA_COVER, 0);
-    lv_obj_add_flag(s_usage_track, LV_OBJ_FLAG_HIDDEN);
-
-    s_usage_fill = plain_obj(s_usage_track, USAGE_TOP_W, USAGE_TOP_H);
-    lv_obj_set_style_bg_opa(s_usage_fill, LV_OPA_COVER, 0);
-    lv_obj_set_pos(s_usage_fill, 0, 0);
-}
-
 static void build_slots(lv_obj_t *scr)
 {
     for (int i = 0; i < CT_SLOTS_COUNT; i++) {
@@ -644,7 +571,6 @@ void ct_ui_init(lv_obj_t *parent, const ct_snapshot_t *frame)
 
     ct_fonts_init();  // ต้องมาก่อน build_* ทุกตัว — ป้ายถือ pointer ไปยังฟอนต์พวกนี้
     build_sky(scr);
-    build_topbar(scr);
     build_slots(scr);
     build_stroll(scr);
     build_cards(scr);
@@ -703,6 +629,19 @@ static bool usage_shown(void)
     return s_frame->has_usage && s_connected;
 }
 
+// สิ่งที่แถบบนถามก่อนวาดของของมัน — แถบไม่พูดซ้ำสิ่งที่หน้านี้แสดงใหญ่กว่าอยู่แล้ว
+// ต้องตรงกับ shows_idle_clock/shows_usage_panel ใน tools/gen/screen.py
+bool ct_ui_shows_clock(void)
+{
+    return shown_card_count() == 0 && !usage_shown();
+}
+
+bool ct_ui_shows_usage(void)
+{
+    // การ์ดชนะโควตาเสมอ — การ์ดคือสิ่งที่ต้องการการกระทำจากผู้ใช้
+    return usage_shown() && shown_card_count() == 0;
+}
+
 static void layout_cards(void)
 {
     int n = shown_card_count();
@@ -739,15 +678,13 @@ static void layout_cards(void)
     if (taken) {
         lv_obj_add_flag(s_clock_big, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(s_date, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(s_clock_small, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_remove_flag(s_clock_big, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(s_date, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_clock_small, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
-static uint16_t usage_color(int percent)
+uint16_t ct_ui_usage_color(int percent)
 {
     if (percent < 0) return CT_COL_TEXT_DIM;
     if (percent >= CT_USAGE_CRIT_PCT) return CT_COL_ALERT;
@@ -768,7 +705,7 @@ static uint16_t usage_bar_color(const ct_usage_t *u, int window)
         if (elapsed > window) elapsed = window;
         if ((int64_t)u->percent * window > (int64_t)elapsed * 100) return CT_COL_ALERT;
     }
-    return usage_color(u->percent);
+    return ct_ui_usage_color(u->percent);
 }
 
 // วินาทีที่เหลือ -> ข้อความสั้นที่สุดที่ยังบอกได้ว่าควรรีบไหม
@@ -791,50 +728,6 @@ static void usage_reset_text(const ct_usage_t *u, char *out, size_t cap)
             snprintf(out, cap, "Resets in %dm", m);
         }
     }
-}
-
-// โควตาย่อบนแถบตอนการ์ดยึดพื้นที่ล่าง — แสดงเฉพาะหน้าต่าง 5 ชม. ซึ่งเป็นตัวที่ขยับ
-// เร็วพอจะเปลี่ยนการตัดสินใจภายในวันเดียว ส่วน weekly รอดูตอนการ์ดหายไปได้
-static void layout_usage_topbar(void)
-{
-    bool show = usage_shown() && shown_card_count() > 0;
-    if (!show) {
-        lv_obj_add_flag(s_usage_top, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(s_usage_track, LV_OBJ_FLAG_HIDDEN);
-        return;
-    }
-    const ct_usage_t *u = &s_frame->usage[0];
-    uint16_t col = usage_color(u->percent);
-
-    if (u->percent < 0) {
-        lv_label_set_text(s_usage_top, "--%");
-    } else {
-        lv_label_set_text_fmt(s_usage_top, "%d%%", u->percent);
-    }
-    lv_obj_set_style_text_color(s_usage_top, ct_color(col), 0);
-
-    // หลบ "+N" เมื่อมันโผล่ ไม่งั้นทับกัน
-    int right = -(TOPBAR_RIGHT + 38 + (s_frame->overflow > 0 ? 26 : 0));
-    lv_obj_align(s_usage_top, LV_ALIGN_RIGHT_MID, right, 0);
-    // align จัดที่ *ขอบขวา* ของ track ให้เอง — ไม่ต้องหักความกว้างแถบออกอีก
-    // (ฝั่ง Pillow ต้องหักเองเพราะวาดจากมุมซ้ายบน) ตรงกับ tools/gen/screen.py:_topbar
-    lv_obj_align(s_usage_track, LV_ALIGN_RIGHT_MID, right - 30, 0);
-
-    if (u->percent < 0) {
-        lv_obj_add_flag(s_usage_fill, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        int pct = u->percent > 100 ? 100 : (u->percent < 0 ? 0 : u->percent);
-        int w = (USAGE_TOP_W * pct + 50) / 100;
-        if (w <= 0) {
-            lv_obj_add_flag(s_usage_fill, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_remove_flag(s_usage_fill, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_set_width(s_usage_fill, w);
-            lv_obj_set_style_bg_color(s_usage_fill, ct_color(col), 0);
-        }
-    }
-    lv_obj_remove_flag(s_usage_top, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(s_usage_track, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void layout_usage(void)
@@ -912,74 +805,20 @@ static void layout_usage(void)
 void ct_ui_redraw(void)
 {
     lv_label_set_text(s_clock_big, s_frame->clock);
-    lv_label_set_text(s_clock_small, s_frame->clock);
     lv_label_set_text(s_date, s_frame->date);
     lv_obj_align(s_clock_big, LV_ALIGN_TOP_MID, 0, CT_CARD_TOP + CT_CARD_HEIGHT / 2 - 32);
     lv_obj_align(s_date, LV_ALIGN_TOP_MID, 0, CT_CARD_TOP + CT_CARD_HEIGHT / 2 + 18);
-
-    if (s_frame->overflow > 0) {
-        lv_label_set_text_fmt(s_overflow, "+%d", s_frame->overflow);
-        lv_obj_remove_flag(s_overflow, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_add_flag(s_overflow, LV_OBJ_FLAG_HIDDEN);
-    }
 
     update_sky();
     layout_slots();
     layout_cards();
     layout_usage();
-    layout_usage_topbar();
-}
-
-void ct_ui_set_link(bool ble, bool wifi, const char *ip)
-{
-    const icon_rect_t *parts = ICON_NONE;
-    int count = 1;
-    uint16_t col = CT_COL_TEXT_DIM;
-    if (ble) {
-        parts = ICON_BLE;
-        count = 3;
-        col = CT_COL_GOOD;
-    } else if (wifi) {
-        parts = ICON_WIFI;
-        count = 3;
-        col = CT_COL_ACCENT;
-    }
-
-    // ป้ายข้างจุดพูดเรื่องเดียวกับไอคอน แต่ตอบคำถามที่ไอคอนตอบไม่ได้: "แล้วจะไปหามัน
-    // ที่ไหน" — Mac ที่หาบอร์ดไม่เจอผ่าน mDNS ต้องการเลขนี้ และนั่นคือตอนที่ BLE ตายพอดี
-    // (ตรงกับ _topbar ใน tools/gen/screen.py)
-    const char *label = "no link";
-    if (ble) {
-        label = "tamaclaude";
-    } else if (wifi && ip && ip[0]) {
-        label = ip;
-    }
-    lv_label_set_text(s_link, label);
-
-    const int x0 = CT_SCREEN_WIDTH - 6 - CT_TOPBAR_LINK_ICON_W;
-    const int y0 = (CT_TOPBAR_HEIGHT - CT_TOPBAR_LINK_ICON_H) / 2;
-    for (int i = 0; i < LINK_ICON_PARTS; i++) {
-        if (i >= count) {
-            lv_obj_add_flag(s_link_icon[i], LV_OBJ_FLAG_HIDDEN);
-            continue;
-        }
-        lv_obj_set_size(s_link_icon[i], parts[i].w, parts[i].h);
-        lv_obj_set_pos(s_link_icon[i], x0 + parts[i].x, y0 + parts[i].y);
-        lv_obj_set_style_bg_color(s_link_icon[i], ct_color(col), 0);
-        lv_obj_remove_flag(s_link_icon[i], LV_OBJ_FLAG_HIDDEN);
-    }
 }
 
 void ct_ui_set_connected(bool connected)
 {
     if (connected == s_connected) return;
     s_connected = connected;
-    lv_obj_set_style_bg_color(s_dot, ct_color(connected ? CT_COL_GOOD : CT_COL_GRAY), 0);
-    // ข้อความของป้ายเป็นของ `ct_ui_set_link` (มันรู้ว่าทางไหนใช้อยู่และ IP คืออะไร)
-    // ที่นี่เหลือแค่สี ซึ่งตอบคนละคำถาม: ตัวเลขบนจอยังสดอยู่ไหม
-    lv_obj_set_style_text_color(s_link,
-                                ct_color(connected ? CT_COL_TEXT : CT_COL_TEXT_DIM), 0);
     // นาฬิกาใหญ่หรี่เป็นเทาตอนหลุด — เวลาที่ค้างอยู่ยังอ่านได้ แต่ต้องไม่อ่านว่าเป็นตอนนี้
     // (ตรงกับ _idle_clock ใน tools/gen/screen.py)
     lv_obj_set_style_text_color(s_clock_big, ct_color(connected ? CT_COL_TEXT : CT_COL_GRAY), 0);
@@ -988,7 +827,6 @@ void ct_ui_set_connected(bool connected)
     // แผงโควตาเข้า/ออกตามลิงก์ และนาฬิกาใหญ่ต้องกลับลงมายึดพื้นที่ที่มันปล่อยไว้
     layout_cards();
     layout_usage();
-    layout_usage_topbar();
     for (int i = 0; i < CT_SLOTS_COUNT; i++) lv_obj_invalidate(s_slots[i].canvas);
     lv_obj_invalidate(s_stroll);
 }
@@ -1024,10 +862,6 @@ void ct_ui_tick(int elapsed_ms)
 // ยังเดินในหน่วยความจำของตัวโฮสต์ (ค่าที่ถูกตอนกลับมาต่อ) แต่ไม่มีอะไรให้วาด
 void ct_ui_redraw_usage(void)
 {
-    if (!usage_shown()) return;
-    if (shown_card_count() == 0) {
-        layout_usage();
-    } else {
-        layout_usage_topbar();
-    }
+    if (!usage_shown() || shown_card_count() > 0) return;
+    layout_usage();
 }

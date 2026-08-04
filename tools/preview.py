@@ -16,7 +16,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gen import calendar, crypto, mascot, screen, stocks, weather  # noqa: E402
+from gen import calendar, crypto, mascot, screen, stocks, topbar, weather  # noqa: E402
 from gen.config import L, PAL, REPO_DIR  # noqa: E402
 from gen.props import BOX_X0, BOX_X1, BOX_Y0, BOX_Y1  # noqa: E402
 from gen.render import quantize565, render_rects  # noqa: E402
@@ -151,12 +151,12 @@ SCENES: dict[str, screen.Screen] = {
         ],
     ),
     # BLE หลุด บอร์ดขึ้นเน็ตแล้วแต่ Mac ยังหาไม่เจอ — ข้อมูลบนจอตายเหมือน "offline"
-    # ต่างกันที่แถบบน ซึ่งบอกที่อยู่ให้ผู้ใช้เอาไปกรอกในหน้าตั้งค่าเมื่อ mDNS ไม่ผ่าน
+    # ต่างกันที่ไอคอนซึ่งเป็นคลื่น WiFi ส่วนป้ายซ้ายพูดว่า "no link" เหมือนกัน: ที่อยู่ของบอร์ด
+    # อยู่ในหน้าตั้งค่าบน Mac ที่เดียว ซึ่งคือที่ที่ผู้ใช้ต้องเอาไปกรอกอยู่แล้ว
     "wifi": screen.Screen(
         sessions=[screen.Session("tamaclaude", "idle", 0.0)],
         connected=False,
         wifi=True,
-        ip="192.168.1.42",
         cards=[screen.Card("tamaclaude", "Needs your answer", "alert")],
     ),
     # BLE หลุดแต่ snapshot ยังเดินทางมาทาง LAN — ข้อมูลสดทั้งจอ ไอคอนเป็นคลื่น WiFi
@@ -168,7 +168,6 @@ SCENES: dict[str, screen.Screen] = {
         connected=True,
         ble=False,
         wifi=True,
-        ip="192.168.1.42",
         usage=[
             screen.Usage("Current", SESSION_WINDOW, 43, 1 * 3600 + 40 * 60),
             screen.Usage("Weekly", WEEKLY_WINDOW, 8, 5 * 86400 + 8 * 3600),
@@ -211,7 +210,10 @@ WEATHER_SCENES: dict[str, weather.Weather] = {
                              high=33, low=26, code=95, age=12 * 60, mascot_state="alert"),
     # เก่าเกิน 10 เท่าของรอบดึง — ตัวเลขยังอ่านได้ แต่ต้องไม่มีใครเข้าใจว่ามันสด
     "stale": weather.Weather(place="Bangkok", temp=31, high=34, low=26, code=3,
-                             age=4 * 3600, mascot_state="thinking"),
+                             age=4 * 3600, mascot_state="thinking",
+                             # BLE ตายแต่ snapshot ยังมาทาง LAN — ไอคอนเป็นคลื่น ป้ายยังเป็นชื่อหน้า
+                             bar=topbar.Bar(clock="21:15", ble=False, wifi=True,
+                                            has_usage=True, pct=61)),
     # ยังไม่เคยได้เฟรมของหน้านี้เลย — ห้ามเป็นจอเปล่าหรือโครงว่าง (ADR-0002)
     "empty": weather.Weather(has_frame=False, mascot_state="idle"),
     # Mac หายไป: ตัวเลขค้างอยู่แต่ไม่มีใครรับรองแล้ว และมาสคอตจิ๋วหายไปทั้งตัว
@@ -237,7 +239,8 @@ CRYPTO_SCENES: dict[str, crypto.Crypto] = {
         crypto.Coin("BTC", "64230", 0),
         crypto.Coin("ETH", "3125", -152),
         crypto.Coin("XRP", "2.41", 3),
-    ], age=8, mascot_state="waiting"),
+    ], age=8, mascot_state="waiting",
+        bar=topbar.Bar(clock="17:04", overflow=3, has_usage=True, pct=92)),
     # เก่าเกิน 10 เท่าของรอบดึง — ราคายังอ่านได้ แต่ต้องไม่มีใครเข้าใจว่ามันสด
     "stale": crypto.Crypto(coins=[
         crypto.Coin("BTC", "64230", -21),
@@ -280,7 +283,7 @@ STOCK_SCENES: dict[str, stocks.Stocks] = {
         stocks.Stock("AAPL", "189.44", None),
         stocks.Stock("MSFT", "412.90", None),
         stocks.Stock("NVDA", "1204.55", None),
-    ], age=40),
+    ], age=40, bar=topbar.Bar(clock="06:20", has_usage=True, pct=None)),
     # ยังไม่เคยได้เฟรมของหน้านี้เลย — ห้ามเป็นจอเปล่าหรือโครงว่าง (ADR-0002)
     "empty": stocks.Stocks(has_frame=False),
     # Mac หายไป: ตัวเลขค้างอยู่แต่ไม่มีใครรับรองแล้ว ลูกศรยังบอกทิศได้โดยไม่ต้องมีสี
@@ -324,6 +327,23 @@ CALENDAR_SCENES: dict[str, calendar.Calendar] = {
         calendar.Appointment("Wed", "13:00", "Design review"),
     ], age=50 * 60, connected=False),
 }
+
+
+# แถบบนของหน้าย่อย — มาจาก snapshot ของหน้ามาสคอต ไม่ใช่จากเฟรมของหน้านั้น
+# ฉากส่วนใหญ่ใช้ใบเดียวกัน เพราะแถบไม่ใช่สิ่งที่ฉากเหล่านั้นทดสอบ ส่วนฉากที่ตั้ง `bar` เอง
+# คือฉากที่ตรวจตัวแถบตรงๆ: ลิงก์ที่วิ่งบน LAN · โควตาที่ไม่รู้ค่า · session ที่ล้นสามช่อง
+PAGE_BAR = topbar.Bar(clock="09:41", has_usage=True, pct=35)
+
+
+def _fill_bars() -> None:
+    blank = topbar.Bar()
+    for scenes in (WEATHER_SCENES, CRYPTO_SCENES, STOCK_SCENES, CALENDAR_SCENES):
+        for sc in scenes.values():
+            if sc.bar == blank:
+                sc.bar = PAGE_BAR
+
+
+_fill_bars()
 
 
 # ฉากตรวจท้องฟ้า — ไม่มี session เลย ซึ่งเป็นสภาพที่จอเป็นเกือบตลอดเวลา

@@ -12,6 +12,7 @@
 #include "ct_mini.h"
 #include "ct_stocks.h"
 #include "ct_stocks_ui.h"
+#include "ct_topbar.h"
 #include "ct_ui.h"
 #include "ct_weather.h"
 #include "ct_weather_ui.h"
@@ -107,6 +108,11 @@ void ct_pages_init(void)
     ct_stocks_ui_init(s_pages[CT_PAGE_STOCKS].root, &s_stocks,
                       &s_pages[CT_PAGE_STOCKS].has_frame);
 
+    // แถบบนอยู่นอกทุกหน้าและสร้างเป็นตัวสุดท้าย — LVGL เรียงชั้นตามลำดับสร้าง
+    // แถบจึงอยู่บนสุดเสมอ ไม่ว่าหน้าไหนจะขึ้นมา
+    ct_topbar_init(scr, &s_mascot);
+    ct_topbar_set_page(s_active);
+
     // หน้าที่แสดงอยู่คือหน้าเดียวที่ไม่ถูกซ่อน — การเปลี่ยนหน้าคือการย้ายธงใบนี้
     lv_obj_remove_flag(s_pages[s_active].root, LV_OBJ_FLAG_HIDDEN);
 }
@@ -117,6 +123,10 @@ void ct_pages_set_snapshot(const ct_snapshot_t *snap)
     s_pages[CT_PAGE_MASCOT].has_frame = true;
     // เฟรมของหน้าที่ไม่ได้แสดงอยู่ก็เก็บไว้เหมือนกัน แค่ไม่มีอะไรให้วาด (ADR-0002)
     if (s_active == CT_PAGE_MASCOT) ct_ui_redraw();
+    // แถบบนอ่าน snapshot ก้อนเดียวกันนี้ทุกหน้า — เวลา โควตา และจำนวน session ที่ล้น
+    // เปลี่ยนพร้อมกันเสมอ (ต้องมาหลัง ct_ui_redraw: กติกา "ไม่พูดซ้ำ" ถามหน้ามาสคอตว่า
+    // ตอนนี้มันแสดงอะไรอยู่)
+    ct_topbar_redraw();
     // มาสคอตจิ๋วบนหน้าอื่นอ่าน snapshot ก้อนเดียวกันนี้ — pose ที่รออนุญาตอยู่ต้องไม่
     // หายไปเพียงเพราะผู้ใช้กำลังดูหน้าอื่น
     if (s_active == CT_PAGE_WEATHER) ct_weather_ui_redraw();
@@ -202,6 +212,9 @@ int ct_pages_capability_json(char *out, int size)
 void ct_pages_set_connected(bool connected)
 {
     ct_ui_set_connected(connected);
+    // แถบบนเป็นของทุกหน้า จึงถูกบอกครั้งเดียวเหมือนมาสคอตจิ๋ว — และต้องมาหลังหน้ามาสคอต
+    // เพราะแผงโควตาของมันเพิ่งเข้า/ออกตามลิงก์ ซึ่งเป็นสิ่งที่แถบถามก่อนวาด
+    ct_topbar_set_connected(connected);
     // มาสคอตจิ๋วเป็นของทุกหน้า จึงถูกบอกครั้งเดียว ไม่ใช่หน้าละครั้ง
     ct_mini_set_connected(connected);
     ct_weather_ui_set_connected(connected);
@@ -210,9 +223,9 @@ void ct_pages_set_connected(bool connected)
     ct_stocks_ui_set_connected(connected);
 }
 
-void ct_pages_set_link(bool ble, bool wifi, const char *ip)
+void ct_pages_set_link(bool ble, bool wifi)
 {
-    ct_ui_set_link(ble, wifi, ip);
+    ct_topbar_set_link(ble, wifi);
 }
 
 // ตำแหน่งของหน้าในแผน หรือ -1 ถ้าไม่อยู่ในนั้น
@@ -248,6 +261,7 @@ static void switch_to(ct_page_kind_t kind)
     s_since_turn = 0;
 
     // หน้าที่เพิ่งขึ้นมาถือของที่อาจเก่ากว่าตอนที่มันถูกซ่อนไป — วาดใหม่ทั้งใบก่อนเสมอ
+    ct_topbar_set_page(s_active);
     if (s_active == CT_PAGE_MASCOT) {
         ct_ui_redraw();
     } else if (s_active == CT_PAGE_WEATHER) {
@@ -372,6 +386,7 @@ void ct_pages_tick(int elapsed_ms)
     if (second_passed && s_pages[CT_PAGE_MASCOT].has_frame) {
         ct_model_tick_usage(&s_mascot, 1);
         if (s_active == CT_PAGE_MASCOT) ct_ui_redraw_usage();
+        // แถบบนแสดงเปอร์เซ็นต์ล้วน ไม่มี countdown — วินาทีที่เดินไม่เปลี่ยนอะไรบนแถบ
     }
     // อายุข้อมูลเดินด้วยเหตุผลเดียวกัน และเป็นเหตุผลที่เฟรมพก *อายุ* มา ไม่ใช่เวลาสัมบูรณ์:
     // บอร์ดไม่มีนาฬิกาที่ตั้งเวลาไว้ แต่นับต่อจากเลขที่ได้มาได้เสมอ

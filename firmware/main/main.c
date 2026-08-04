@@ -287,7 +287,6 @@ static bool has_alert(const ct_snapshot_t *s)
 static void apply_pending(void)
 {
     ct_snapshot_t snap;
-    char ip[sizeof(s_ip)];
     char page_json[sizeof(s_pending_page)];
     ct_page_plan_t plan;
     int page_len = 0, page_kind = -1, forget_page = -1;
@@ -316,7 +315,6 @@ static void apply_pending(void)
     s_forget_page = -1;
     link = s_link;
     wifi = s_wifi_up;
-    memcpy(ip, s_ip, sizeof(ip));
     link_changed = s_link_changed;
     s_link_changed = false;
     backlight = s_pending_backlight;
@@ -336,7 +334,7 @@ static void apply_pending(void)
         // "สด" คือมีใครสักคนป้อน snapshot อยู่ ไม่ว่าจะทางไหน — จอที่ซ่อนการ์ดทิ้งทั้งที่
         // ข้อมูลกำลังไหลเข้ามาทาง LAN คือจอที่โกหกในทางกลับกัน
         ct_pages_set_connected(link || lan);
-        ct_pages_set_link(link, wifi, ip);
+        ct_pages_set_link(link, wifi);
     }
     // กติกามาก่อนเนื้อหาเสมอ ทั้งบนสายและตรงนี้ — หน้าที่เพิ่งถูกปิดต้องไม่ถูกวาดอีกหนึ่งครั้ง
     if (got_plan) {
@@ -408,7 +406,7 @@ void app_main(void)
     // ด้วย page rotation อย่างเดียวได้ครบทุกอย่าง ค่าที่คืนมาจึงเป็นข้อมูล ไม่ใช่เงื่อนไข
     ct_touch_init();
     ct_pages_set_connected(false);
-    ct_pages_set_link(false, false, NULL);
+    ct_pages_set_link(false, false);
 
     ct_ble_cbs_t cbs = {
         .on_state = on_state,
