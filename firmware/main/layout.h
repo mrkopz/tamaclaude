@@ -87,6 +87,15 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_ROTATION_SECONDS          20
 #define CT_ROTATION_HOLD_SECONDS     300
 
+#define CT_TOUCH_Z_MIN               200
+#define CT_TOUCH_Z_MAX               3000
+#define CT_TOUCH_PRESS_SAMPLES       2
+#define CT_TOUCH_COUNTS_PER_PX_H     11
+#define CT_TOUCH_COUNTS_PER_PX_V     14
+#define CT_TOUCH_SWIPE_MIN_PX        60
+#define CT_TOUCH_SWIPE_MAX_MS        1500
+#define CT_TOUCH_POLL_MS             50
+
 #define CT_PAGE_AGE_X                12
 #define CT_PAGE_AGE_Y                214
 #define CT_PAGE_STALE_FACTOR         10

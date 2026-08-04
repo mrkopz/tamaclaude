@@ -12,6 +12,7 @@
 #include "ct_mascot.h"
 #include "ct_model.h"
 #include "ct_pages.h"
+#include "ct_touch.h"
 #include "ct_wifi.h"
 #include "esp_log.h"
 #include "esp_system.h"
@@ -403,6 +404,9 @@ void app_main(void)
                            LV_DISPLAY_RENDER_MODE_PARTIAL);
 
     ct_pages_init();
+    // swipe เป็นส่วนเสริมที่ขาดได้ (ADR-0007) — บอร์ดรุ่นย่อยที่ไม่มีชิปสัมผัสเดินต่อ
+    // ด้วย page rotation อย่างเดียวได้ครบทุกอย่าง ค่าที่คืนมาจึงเป็นข้อมูล ไม่ใช่เงื่อนไข
+    ct_touch_init();
     ct_pages_set_connected(false);
     ct_pages_set_link(false, false, NULL);
 
@@ -430,6 +434,13 @@ void app_main(void)
     int since_heap = 0;
     while (1) {
         apply_pending();
+        // อ่านสัมผัสทุกลูป (ตัวมันจับจังหวะ poll เอง) ไม่ใช่ทุกเฟรม — การปัดต้องเปลี่ยนหน้า
+        // ทันทีโดยไม่รอ Mac และไม่รอจังหวะวาด
+        ct_swipe_t swipe = ct_touch_poll(step_ms);
+        if (swipe != CT_SWIPE_NONE) {
+            // ปัดซ้ายคือดันหน้าที่ดูอยู่ออกไปทางซ้ายเพื่อเปิดหน้าถัดไป เหมือนกองการ์ด
+            ct_pages_step(swipe == CT_SWIPE_LEFT);
+        }
         since_frame += step_ms;
         if (since_frame >= 60) {  // ~16 เฟรมต่อวินาที พอสำหรับอนิเมชันบล็อกสี่เหลี่ยม
             ct_pages_tick(since_frame);

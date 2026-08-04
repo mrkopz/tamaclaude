@@ -238,20 +238,28 @@ static void switch_to(ct_page_kind_t kind)
     }
 }
 
-// หน้าถัดไปตาม *ลำดับที่ผู้ใช้จัด* ไม่ใช่ลำดับของ enum
-static void turn_page(void)
+// เดินไปข้างหน้าหรือถอยหลังตาม *ลำดับที่ผู้ใช้จัด* ไม่ใช่ลำดับของ enum
+// คืน false เมื่อไม่มีหน้าอื่นให้ไป — มีหน้าเดียวที่พร้อมแสดงคือไม่มีอะไรให้หมุน
+static bool advance(bool forward)
 {
-    // หน้าที่แสดงอยู่อาจไม่อยู่ในแผนแล้ว — เริ่มนับจากหัวแผน ไม่ใช่จากตำแหน่งที่ไม่มีอยู่จริง
+    int n = s_plan.count;
+    if (n <= 0) return false;
+    // หน้าที่แสดงอยู่อาจไม่อยู่ในแผนแล้ว — หน้าแรกของแผนคือตัวเลือกแรก ไม่ใช่ตัวสุดท้าย
+    // จึงเริ่มนับที่ระยะ 0 ไม่ใช่ 1 (ระยะ 0 จากหน้าที่ยังอยู่ในแผนคือตัวมันเอง ซึ่งถูกข้าม)
     int at = index_in(&s_plan, s_active);
+    int first = at < 0 ? 0 : 1;
     if (at < 0) at = 0;
-    for (int i = 1; i <= s_plan.count; i++) {
-        ct_page_kind_t candidate = s_plan.order[(at + i) % s_plan.count];
-        if (in_rotation(candidate)) {
+    for (int i = first; i <= n; i++) {
+        // % ของ C คืนค่าลบเมื่อตัวตั้งเป็นลบ — บวก n ก่อนเสมอ ไม่งั้นการปัดกลับหลัง
+        // จากหน้าแรกจะอ่านนอกอาร์เรย์
+        int at_i = ((at + (forward ? i : -i)) % n + n) % n;
+        ct_page_kind_t candidate = s_plan.order[at_i];
+        if (candidate != s_active && in_rotation(candidate)) {
             switch_to(candidate);
-            return;
+            return true;
         }
     }
-    // มีหน้าเดียวที่พร้อมแสดง = ไม่มีอะไรให้หมุน
+    return false;
 }
 
 void ct_pages_set_plan(const ct_page_plan_t *plan)
@@ -304,11 +312,10 @@ bool ct_pages_parse_plan(const char *json, int len, ct_page_plan_t *out)
     return ok;
 }
 
-void ct_pages_show(ct_page_kind_t kind)
+void ct_pages_step(bool forward)
 {
-    if (kind < 0 || kind >= CT_PAGE_KIND_COUNT) return;
-    if (!in_rotation(kind)) return;  // หน้าที่ถูกปิดไม่มีทางถูกเรียกขึ้นมา แม้ด้วยมือ
-    switch_to(kind);
+    // ปัดแล้วไม่มีหน้าอื่นให้ไป = ไม่มีอะไรเกิดขึ้นเลย ไม่ใช่การยึดหน้าที่อยู่แล้วไว้ห้านาที
+    if (!advance(forward)) return;
     s_hold_left = s_plan.hold_ms;
 }
 
@@ -376,6 +383,8 @@ void ct_pages_tick(int elapsed_ms)
     s_since_turn += elapsed_ms;
     if (s_since_turn >= s_plan.rotation_ms) {
         s_since_turn = 0;
-        turn_page();
+        // รอบหมุนกลับเข้าที่ *หน้าถัดจากหน้าที่ผู้ใช้ปัดมา* ไม่ใช่ที่หน้ามาสคอต —
+        // การยึดที่ครบระยะคือรอบเดิมที่เดินต่อ ไม่ใช่การเริ่มรอบใหม่
+        advance(true);
     }
 }

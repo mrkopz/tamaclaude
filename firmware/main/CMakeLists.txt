@@ -21,6 +21,7 @@ idf_component_register(
         "ct_wifi.c"
         "ct_lan.c"
         "ct_led.c"
+        "ct_touch.c"
         "ct_font_thai_12.c"
         "ct_font_thai_14.c"
     INCLUDE_DIRS "."
