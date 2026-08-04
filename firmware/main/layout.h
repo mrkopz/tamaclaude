@@ -49,6 +49,8 @@
 #define CT_USAGE_CRIT_PCT            85
 
 #define CT_STROLL_SPEED_PX_S         34
+#define CT_STROLL_WARN_SPEED_PX_S    25
+#define CT_STROLL_CRIT_SPEED_PX_S    17
 #define CT_STROLL_PAUSE_S            2.5f
 #define CT_STROLL_PAD_PX             96
 

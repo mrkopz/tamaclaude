@@ -197,6 +197,18 @@ SCENES: dict[str, screen.Screen] = {
             screen.Usage("Weekly", WEEKLY_WINDOW, 48, 31 * 3600),
         ],
     ),
+    # ฉากเดียวกันตอนโควตาใกล้ตัน — คู่เทียบของ "empty" ที่พิสูจน์ว่าตัวละครรู้จักตัวเลข
+    # ใต้เท้ามัน: เดินช้าลงจาก 34 เหลือ 17 px/s และไม่มีท่าฉลองอยู่ในชุดท่าอีกต่อไป
+    # (เทียบสองภาพนี้เป็น GIF คู่กัน จังหวะเท้าคือสิ่งที่ต่าง ไม่ใช่แค่สีของแถบ)
+    "empty_hot": screen.Screen(
+        sessions=[],
+        clock="21:07",
+        date="Mon 27 Jul",
+        usage=[
+            screen.Usage("Current", SESSION_WINDOW, 92, 40 * 60),
+            screen.Usage("Weekly", WEEKLY_WINDOW, 88, 2 * 86400),
+        ],
+    ),
     # ทั้งสองใบเป็นของโปรเจกต์ที่มีมาสคอตอยู่บนจอ — การ์ดจึงเป็นสองประโยคตัวโต
     # ไม่มีชื่อโปรเจกต์โผล่ซ้ำสักตัว · ป้าย "x2" คือตัวที่ยกมือ (waiting) ชนะตัวที่กำลังค้นหา
     "waiting": screen.Screen(
@@ -466,15 +478,21 @@ def main() -> None:
     print(f"anim/*.gif            {len(mascot.all_states())} ไฟล์")
 
     for name, sc in SCENES.items():
-        img = screen.render(sc, 0.25)
+        # ฉากที่ไม่มี session ต้องสุ่มเวลาเอง: ที่ t=0 มาสคอตยังอยู่นอกจอทั้งตัว
+        # ภาพนิ่งเลยเคยออกมาเป็นฟ้าโล่ง ทั้งที่จอกำลังมีตัวละครเดินอยู่
+        # ภาพนิ่งหยุดกลางช่วงทำท่า ส่วน GIF เริ่มตอนตัวแตะขอบจอพอดี
+        tier = screen.stroll_tier(sc.shown_usage())
+        still = screen.stroll_still_t(tier) if not sc.sessions else 0.25
+        img = screen.render(sc, still % 1, int(still))
         img.save(OUT / f"screen_{name}.png")
         big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
         big.save(OUT / f"screen_{name}@{args.scale}x.png")
         # ฉากที่ไม่มี session ใช้ลูปยาวกว่า — เที่ยวเดินหนึ่งรอบกินเวลาหลายสิบวินาที
         # ถ้าตัดที่ 4 ลูปเหมือนฉากอื่นจะเห็นแค่มาสคอตขยับทีละไม่กี่พิกเซล
         loops = STROLL_LOOPS if not sc.sessions else LOOPS
+        t0 = int(screen.stroll_enter_t(tier)) if not sc.sessions else 0
         frames = [
-            screen.render(sc, (f % FRAMES) / FRAMES, f // FRAMES)
+            screen.render(sc, (f % FRAMES) / FRAMES, t0 + f // FRAMES)
             for f in range(FRAMES * loops)
         ]
         frames[0].save(OUT / f"screen_{name}.gif", save_all=True,
@@ -537,9 +555,10 @@ def main() -> None:
 
     for name, clock in SKY_CLOCKS.items():
         sc = sky_scene(clock)
-        # cycle 6 = จังหวะที่มาสคอตเดินมาถึงกลางจอพอดี — ที่ cycle 0 มันยังอยู่นอกจอ
+        # เวลาเดียวกับภาพนิ่งของฉากที่ไม่มี session — ที่ cycle 0 มาสคอตยังอยู่นอกจอ
         # แล้วภาพตรวจจะไม่มีสิ่งที่ต้องตรวจ (มาสคอตยืนบนพื้น + contrast กับฟ้า)
-        img = screen.render(sc, 0.25, 6)
+        still = screen.stroll_still_t()
+        img = screen.render(sc, still % 1, int(still))
         img.save(OUT / f"sky_{name}.png")
         big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
         big.save(OUT / f"sky_{name}@{args.scale}x.png")

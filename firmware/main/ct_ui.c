@@ -307,21 +307,82 @@ static void slot_draw_cb(lv_event_t *e)
 }
 
 // ท่าที่หยุดทำกลางทาง วนไปตามรอบ — ต้องตรงกับ STROLL_ACTS ใน tools/gen/screen.py
-static const ct_state_t STROLL_ACTS[] = {CT_STATE_CELEBRATE, CT_STATE_THINKING,
-                                         CT_STATE_SEARCHING, CT_STATE_WAITING};
+// ชุดท่าเปลี่ยนตามระดับโควตา ไม่ใช่แค่ความเร็ว (เหตุผลอยู่ฝั่ง Python)
+static const ct_state_t STROLL_ACTS_CALM[] = {CT_STATE_CELEBRATE, CT_STATE_THINKING,
+                                              CT_STATE_SEARCHING, CT_STATE_WAITING};
+static const ct_state_t STROLL_ACTS_WARN[] = {CT_STATE_THINKING, CT_STATE_SEARCHING,
+                                              CT_STATE_WAITING};
+static const ct_state_t STROLL_ACTS_CRIT[] = {CT_STATE_WAITING, CT_STATE_THINKING};
+static const ct_state_t *const STROLL_ACTS[] = {STROLL_ACTS_CALM, STROLL_ACTS_WARN,
+                                                STROLL_ACTS_CRIT};
+static const int STROLL_ACTS_N[] = {
+    (int)(sizeof(STROLL_ACTS_CALM) / sizeof(STROLL_ACTS_CALM[0])),
+    (int)(sizeof(STROLL_ACTS_WARN) / sizeof(STROLL_ACTS_WARN[0])),
+    (int)(sizeof(STROLL_ACTS_CRIT) / sizeof(STROLL_ACTS_CRIT[0])),
+};
+static const int STROLL_SPEED[] = {CT_STROLL_SPEED_PX_S, CT_STROLL_WARN_SPEED_PX_S,
+                                   CT_STROLL_CRIT_SPEED_PX_S};
 // ตำแหน่งหยุดเป็นสัดส่วนของเส้นทาง — วนคนละความยาวกับ ACTS เพื่อไม่ให้จับคู่ซ้ำ
 static const float STROLL_PAUSE_AT[] = {0.34f, 0.5f, 0.66f};
 #define STROLL_TRAVEL (CT_SCREEN_WIDTH + 2 * CT_STROLL_PAD_PX)
 
-// เวลาสัมบูรณ์ (วินาที) -> ท่า + x ของขอบซ้ายกรอบวาด
+// ระดับที่ใช้อยู่ + เวลาที่เที่ยวปัจจุบันเริ่ม — ระดับสลับได้เฉพาะตอนขึ้นเที่ยวใหม่
+// เพราะความเร็วที่เปลี่ยนกลางเที่ยวคือความยาวเที่ยวที่เปลี่ยน ซึ่งทำให้ตัวที่กำลังเดิน
+// กระโดดไปอีกตำแหน่งทันที · ฝั่ง preview เรนเดอร์ทีละฉากที่ tier คงที่อยู่แล้ว
+// สองฝั่งจึงให้ภาพเดียวกันเป๊ะ (t0 = trip * trip_s พอดีเมื่อ tier ไม่เปลี่ยน)
+static int s_stroll_tier = 0;
+static int s_stroll_trip = 0;
+static float s_stroll_t0 = 0.0f;
+
+static bool usage_shown(void);
+
+// ชุดท่าที่หยุดทำได้ — ต้องตรงกับ stroll_acts ใน tools/gen/screen.py
+// ตอนหลุดลิงก์ไม่มีอะไรให้ฉลอง จึงยืมชุดท่าของ crit (รอทั้งคู่) แต่ไม่ยืมความเร็ว:
+// การเดินช้าลงเป็นสารของโควตา ไม่ใช่ของลิงก์ที่หลุด
+static int stroll_acts_tier(int tier)
+{
+    return s_connected ? tier : 2;
+}
+
+// แถวโควตาที่อยู่บนจอ -> ระดับ — ต้องตรงกับ stroll_tier ใน tools/gen/screen.py
+static int stroll_tier(void)
+{
+    int worst = -1;
+    if (!usage_shown()) return 0;
+    for (int i = 0; i < CT_USAGE_ROWS; i++) {
+        int pct = s_frame->usage[i].percent;
+        // ไม่รู้ (<0) ไม่ใช่ศูนย์ และไม่ใช่เหตุให้ทำท่าเหนื่อย
+        if (pct > worst) worst = pct;
+    }
+    if (worst >= CT_USAGE_CRIT_PCT) return 2;
+    if (worst >= CT_USAGE_WARN_PCT) return 1;
+    return 0;
+}
+
+static float stroll_walk_s(int tier)
+{
+    return (float)STROLL_TRAVEL / (float)STROLL_SPEED[tier];
+}
+
+// เดินนาฬิกาของเที่ยวไปให้ทันเวลา แล้วรับระดับใหม่ตอนขึ้นเที่ยวเท่านั้น
+static void stroll_advance(float t)
+{
+    int want = stroll_tier();
+    float trip_s = stroll_walk_s(s_stroll_tier) + CT_STROLL_PAUSE_S;
+    while (t - s_stroll_t0 >= trip_s) {
+        s_stroll_t0 += trip_s;
+        s_stroll_trip++;
+        s_stroll_tier = want;
+        trip_s = stroll_walk_s(s_stroll_tier) + CT_STROLL_PAUSE_S;
+    }
+}
+
+// เวลาที่ผ่านไปในเที่ยวนี้ -> ท่า + x ของขอบซ้ายกรอบวาด
 // เที่ยวหนึ่ง = เดินจากนอกจอซ้ายไปนอกจอขวา โดยหยุดทำท่าหนึ่งครั้งกลางทาง
 // ต้องตรงกับ stroll_pose ใน tools/gen/screen.py
-static void stroll_pose(float t, ct_state_t *state, float *x)
+static void stroll_pose(float u, int trip, int tier, ct_state_t *state, float *x)
 {
-    const float walk_s = (float)STROLL_TRAVEL / (float)CT_STROLL_SPEED_PX_S;
-    const float trip_s = walk_s + CT_STROLL_PAUSE_S;
-    int trip = (int)floorf(t / trip_s);
-    float u = t - trip * trip_s;
+    const float walk_s = stroll_walk_s(tier);
     float hold_at = walk_s * STROLL_PAUSE_AT[trip % (int)(sizeof(STROLL_PAUSE_AT) /
                                                          sizeof(STROLL_PAUSE_AT[0]))];
     float walked;
@@ -330,13 +391,14 @@ static void stroll_pose(float t, ct_state_t *state, float *x)
         walked = u;
         *state = CT_STATE_ENTERING;
     } else if (u < hold_at + CT_STROLL_PAUSE_S) {
+        int a = stroll_acts_tier(tier);
         walked = hold_at;
-        *state = STROLL_ACTS[trip % (int)(sizeof(STROLL_ACTS) / sizeof(STROLL_ACTS[0]))];
+        *state = STROLL_ACTS[a][trip % STROLL_ACTS_N[a]];
     } else {
         walked = u - CT_STROLL_PAUSE_S;
         *state = CT_STATE_ENTERING;
     }
-    *x = -(float)CT_STROLL_PAD_PX + walked * CT_STROLL_SPEED_PX_S;
+    *x = -(float)CT_STROLL_PAD_PX + walked * STROLL_SPEED[tier];
 }
 
 static void stroll_draw_cb(lv_event_t *e)
@@ -350,7 +412,9 @@ static void stroll_draw_cb(lv_event_t *e)
 
     ct_state_t state;
     float x;
-    stroll_pose((float)s_cycle + s_phase, &state, &x);
+    float t = (float)s_cycle + s_phase;
+    stroll_advance(t);
+    stroll_pose(t - s_stroll_t0, s_stroll_trip, s_stroll_tier, &state, &x);
 
     const float px = CT_SLOTS_UNIT_PX;
     float foot = coords.y1 + CT_SLOTS_HEIGHT - CT_SLOTS_BASELINE_PAD;

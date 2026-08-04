@@ -273,39 +273,111 @@ def _slot(draw: ImageDraw.ImageDraw, i: int, sess: Session | None, s: Screen,
 
 
 # --- มาสคอตเดินเล่นตอนไม่มี session ------------------------------------------
+# ระดับที่มาสคอตเดินเล่นรับรู้ — ขั้นเดียวกับสีของแถบโควตา ไม่ใช่เกณฑ์ชุดที่สอง
+STROLL_CALM, STROLL_WARN, STROLL_CRIT = 0, 1, 2
 # ท่าที่หยุดทำกลางทาง วนไปตามรอบ — ต้องตรงกับ STROLL_ACTS ใน firmware/main/ct_ui.c
-STROLL_ACTS = ("celebrate", "thinking", "searching", "waiting")
+#
+# ชุดท่าเปลี่ยนตามระดับ ไม่ใช่แค่ความเร็ว: ท่าฉลองตอนโควตาเหลือน้อยอ่านเป็นการเยาะเย้ย
+# ไม่ใช่ความน่ารัก · ที่ crit เหลือสองท่าที่เป็นการ "รอ" ทั้งคู่ จึงไม่มีท่าไหนดูกระตือรือร้น
+# ห้ามใส่ sleeping: ท่านั่งหลับคือสารของ session ที่หลับอยู่ ไม่ใช่ของโควตาที่ใกล้หมด
+STROLL_ACTS = (
+    ("celebrate", "thinking", "searching", "waiting"),
+    ("thinking", "searching", "waiting"),
+    ("waiting", "thinking"),
+)
 # ตำแหน่งหยุดเป็นสัดส่วนของเส้นทาง — วนคนละความยาวกับ ACTS เพื่อไม่ให้จับคู่ซ้ำ
 STROLL_PAUSE_AT = (0.34, 0.5, 0.66)
 STROLL_TRAVEL = L.screen.width + 2 * L.stroll.pad_px
+STROLL_SPEED = (L.stroll.speed_px_s, L.stroll.warn_speed_px_s, L.stroll.crit_speed_px_s)
 
 
-def stroll_pose(t: float) -> tuple[str, float]:
+def stroll_acts(tier: int, connected: bool) -> tuple[str, ...]:
+    """ชุดท่าที่หยุดทำได้ — สองแกน ไม่ใช่แกนเดียว
+
+    ตอนหลุดลิงก์ไม่มีอะไรให้ฉลองและไม่มีอะไรให้ค้นหา ตัวเทาที่ยกแขนฉลองอยู่ใต้คำว่า
+    "no link" คือจอที่พูดสองเรื่องสวนทางกัน จึงยืมชุดท่าของ crit มาใช้ (รอทั้งคู่)
+    แต่ *ไม่* ยืมความเร็ว: การเดินช้าลงเป็นสารของโควตา ไม่ใช่ของลิงก์ที่หลุด
+
+    ต้องตรงกับ stroll_acts ใน firmware/main/ct_ui.c
+    """
+    return STROLL_ACTS[STROLL_CRIT] if not connected else STROLL_ACTS[tier]
+
+
+def stroll_tier(rows: list[Usage]) -> int:
+    """แถวโควตาที่อยู่บนจอ -> ระดับที่มาสคอตเดินด้วย
+
+    เอาแถวที่แย่ที่สุด ไม่ใช่แถวแรก — "เหลือที่ให้ทำงานอีกเท่าไร" คือหน้าต่างที่ตันก่อน
+    ไม่ว่ามันจะเป็นรายชั่วโมงหรือรายสัปดาห์
+    เปอร์เซ็นต์ที่ไม่รู้ (None) ไม่ใช่ศูนย์ และไม่ใช่เหตุให้ทำท่าเหนื่อย — มันคือ calm
+
+    ต้องตรงกับ stroll_tier ใน firmware/main/ct_ui.c
+    """
+    known = [u.pct for u in rows if u.pct is not None]
+    if not known:
+        return STROLL_CALM
+    worst = max(known)
+    if worst >= L.usage.crit_pct:
+        return STROLL_CRIT
+    if worst >= L.usage.warn_pct:
+        return STROLL_WARN
+    return STROLL_CALM
+
+
+def stroll_walk_s(tier: int) -> float:
+    """วินาทีที่ใช้เดินจนสุดเส้นทางหนึ่งเที่ยว (ไม่รวมช่วงหยุดทำท่า)"""
+    return STROLL_TRAVEL / STROLL_SPEED[tier]
+
+
+def stroll_pose(t: float, tier: int = STROLL_CALM,
+                connected: bool = True) -> tuple[str, float]:
     """เวลาสัมบูรณ์ (วินาที) -> (state, x ของขอบซ้ายกรอบวาด)
 
     เที่ยวหนึ่ง = เดินจากนอกจอซ้ายไปนอกจอขวา โดยหยุดทำท่าหนึ่งครั้งกลางทาง
+
+    `tier` คงที่ตลอดฟังก์ชันนี้โดยตั้งใจ: ความเร็วเปลี่ยน = ความยาวเที่ยวเปลี่ยน
+    ถ้าเปลี่ยนกลางเที่ยว ตัวที่กำลังเดินอยู่จะกระโดดไปอีกตำแหน่งทันที บอร์ดจึงสลับระดับ
+    เฉพาะตอนขึ้นเที่ยวใหม่ (ดู stroll_advance ใน ct_ui.c) ส่วน preview เรนเดอร์ทีละฉาก
+    ซึ่ง tier คงที่อยู่แล้ว ผลลัพธ์ทั้งสองฝั่งจึงตรงกันเป๊ะ
+
     ต้องตรงกับ stroll_pose ใน firmware/main/ct_ui.c
     """
-    walk_s = STROLL_TRAVEL / L.stroll.speed_px_s
+    speed = STROLL_SPEED[tier]
+    walk_s = stroll_walk_s(tier)
     trip_s = walk_s + L.stroll.pause_s
     trip = int(t // trip_s)
     u = t - trip * trip_s
     hold_at = walk_s * STROLL_PAUSE_AT[trip % len(STROLL_PAUSE_AT)]
+    acts = stroll_acts(tier, connected)
 
     if u < hold_at:
         walked = u
         state = "entering"
     elif u < hold_at + L.stroll.pause_s:
         walked = hold_at
-        state = STROLL_ACTS[trip % len(STROLL_ACTS)]
+        state = acts[trip % len(acts)]
     else:
         walked = u - L.stroll.pause_s
         state = "entering"
-    return state, -L.stroll.pad_px + walked * L.stroll.speed_px_s
+    return state, -L.stroll.pad_px + walked * speed
+
+
+def stroll_enter_t(tier: int = STROLL_CALM) -> float:
+    """เวลาที่ขอบซ้ายของกรอบวาดแตะขอบจอพอดี — จุดเริ่มที่ถูกของภาพเคลื่อนไหว"""
+    return L.stroll.pad_px / STROLL_SPEED[tier]
+
+
+def stroll_still_t(tier: int = STROLL_CALM) -> float:
+    """เวลาที่ควรใช้สุ่ม *ภาพนิ่ง* ของฉากที่ไม่มี session
+
+    ที่ t=0 มาสคอตยังอยู่นอกจอทั้งตัว ภาพนิ่งที่สุ่มตรงนั้นจึงเป็นฟ้าโล่ง — ซึ่งเป็น
+    คนละเรื่องกับสิ่งที่จอทำอยู่จริง และเคยถูกอ่านเป็น "หน้ามาสคอตที่ไม่มีมาสคอต"
+    กลางช่วงหยุดทำท่าคือเฟรมที่เป็นตัวแทนของทั้งเที่ยวที่สุด: ตัวอยู่กลางจอและกำลังพูด
+    """
+    return stroll_walk_s(tier) * STROLL_PAUSE_AT[0] + L.stroll.pause_s / 2
 
 
 def _stroll(draw: ImageDraw.ImageDraw, s: Screen, phase: float, cycle: int) -> None:
-    state, x = stroll_pose(cycle + phase)
+    state, x = stroll_pose(cycle + phase, stroll_tier(s.shown_usage()), s.connected)
     px = L.slots.unit_px
     foot_px = L.slots.top + L.slots.height - L.slots.baseline_pad
     ox = x - BOX_X0 * px
