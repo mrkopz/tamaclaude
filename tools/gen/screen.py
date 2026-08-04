@@ -300,11 +300,42 @@ CARD_TEXT_W = L.screen.width - L.card.pad * 2 - L.card.text_inset
 PROJECT_W = L.slots.width - L.slots.label_inset
 
 
+# ชนิดการ์ด -> (สีแถบ, สีพื้น, ระยะร่นหัวท้ายของแถบ, รูปทรงเครื่องหมาย)
+# สามแกนหลังไม่ใช่สี ทุกแกนชี้ทางเดียวกัน: alert ยาวสุด สว่างสุด ตัน · done สั้นสุด จมสุด เป็นขีด
+# ต้องตรงกับ card_style() ใน firmware/main/ct_ui.c
+_CARD_STYLE = {
+    "alert": (PAL.alert, PAL.bg_card_alert, L.card.rail_inset_alert, "solid"),
+    "done": (PAL.good, PAL.bg_card_done, L.card.rail_inset_done, "dash"),
+}
+_CARD_INFO = (PAL.accent, PAL.bg_slot, L.card.rail_inset_info, "hollow")
+
+
+def _card_mark(draw: ImageDraw.ImageDraw, shape: str, cx: int, cy: int,
+               col: str, plate: str) -> None:
+    """เครื่องหมายชิดขวา — บล็อกสี่เหลี่ยมตามภาษาเดียวกับมาสคอต ไม่ใช่ glyph จากฟอนต์
+
+    ฟอนต์บนบอร์ดมี charset จำกัดและทุกอย่างที่เป็นตัวอักษรต้องผ่าน Text.swift ก่อน
+    สัญลักษณ์สถานะจึงต้องเป็น rect ที่วาดเอง ไม่ใช่ตัวอักษรที่อาจถูกถอดทิ้งกลางทาง
+    """
+    m, st = L.card.mark, L.card.mark_stroke
+    h = m // 2
+    fill = quantize565(col)
+    if shape == "dash":
+        draw.rectangle([cx - h, cy - st // 2, cx + h - 1, cy + st // 2 - 1], fill=fill)
+        return
+    draw.rectangle([cx - h, cy - h, cx + h - 1, cy + h - 1], fill=fill)
+    if shape == "hollow":
+        draw.rectangle([cx - h + st, cy - h + st, cx + h - st - 1, cy + h - st - 1],
+                       fill=quantize565(plate))
+
+
 def _card(draw: ImageDraw.ImageDraw, c: Card, y: int) -> None:
     pad, w = L.card.pad, L.screen.width
-    draw.rectangle([pad, y, w - pad - 1, y + CARD_H - 1], fill=quantize565(PAL.bg_slot))
-    accent = {"alert": PAL.alert, "done": PAL.good}.get(c.kind, PAL.accent)
-    draw.rectangle([pad, y, pad + 2, y + CARD_H - 1], fill=quantize565(accent))
+    accent, plate, inset, mark = _CARD_STYLE.get(c.kind, _CARD_INFO)
+    draw.rectangle([pad, y, w - pad - 1, y + CARD_H - 1], fill=quantize565(plate))
+    draw.rectangle([pad, y + inset, pad + L.card.rail_w - 1, y + CARD_H - 1 - inset],
+                   fill=quantize565(accent))
+    _card_mark(draw, mark, w - pad - L.card.mark_right, y + CARD_H // 2, accent, plate)
 
     tx = pad + 9
     # ขนาดฝั่งบอร์ดคือ 14/12 (montserrat กับฟอนต์ไทย) ฝั่ง PIL คือ 12/10 เพราะฟอนต์คนละตัว
@@ -372,10 +403,6 @@ def usage_bar_color(u: Usage) -> str:
     return usage_color(u.pct)
 
 
-# สี pill แยกตามหน้าต่าง — สีคือสิ่งที่บอกว่ากำลังอ่านแถวไหนก่อนอ่านตัวอักษร
-_PILL_COLORS = {"Current": PAL.clay, "Weekly": PAL.good}
-
-
 def _usage_row(draw: ImageDraw.ImageDraw, u: Usage, y: int) -> None:
     pad, w = L.card.pad, L.screen.width
     x0, x1 = pad + 8, w - pad - 8
@@ -398,16 +425,19 @@ def _usage_row(draw: ImageDraw.ImageDraw, u: Usage, y: int) -> None:
     draw.text((x0 + big_w + 12, y + 14), txt, font=font(11),
               fill=quantize565(PAL.text_dim), anchor="lm")
 
-    # ป้ายชื่อหน้าต่างชิดขวา — สีคงที่ต่อหน้าต่าง ไม่ตามระดับการใช้
-    # ป้ายบอก *ว่านี่คือหน้าต่างไหน* ซึ่งไม่เคยเปลี่ยน การให้มันเปลี่ยนสีตาม %
-    # ทำให้แถวทั้งแถวเป็นสีเดียวตอนวิกฤต แล้วสีหยุดเป็นสัญญาณ กลายเป็นพื้นหลัง
+    # ป้ายชื่อหน้าต่างชิดขวา — ไม่มีสีของตัวเอง เส้นขอบบางกับตัวอักษรเท่านั้น
+    # ป้ายบอก *ว่านี่คือหน้าต่างไหน* ซึ่งไม่เคยเปลี่ยน จึงไม่ควรใช้สีเลย: ป้ายเขียว
+    # "Weekly" เคยนั่งอยู่เหนือแถบแดง 71% ห่างกัน 20px แล้วเขียวที่แปลว่า "ปลอดภัย"
+    # ทุกที่บนจอนี้ กลับแปลว่า "รายสัปดาห์" ตรงนี้ที่เดียว — เหลือบครั้งเดียวอ่านผิด
+    # สิ่งที่บอกว่ากำลังอ่านแถวไหนคือลำดับ (Current บน Weekly ล่าง) กับตัวอักษร
+    # ทั้งคู่มีอยู่แล้วและไม่ต้องแย่งช่องสัญญาณกับระดับการใช้
     fl = font(11)
     lw = draw.textlength(u.label, font=fl)
     px0 = x1 - lw - 14
     draw.rounded_rectangle([px0, y + 5, x1, y + 23], radius=9,
-                           fill=quantize565(_PILL_COLORS.get(u.label, PAL.gray_dark)))
+                           outline=quantize565(PAL.text_dim), width=1)
     draw.text(((px0 + x1) / 2, y + 14), u.label, font=fl,
-              fill=quantize565(PAL.ink), anchor="mm")
+              fill=quantize565(PAL.text), anchor="mm")
 
     # แถบ — รางต้องสว่างกว่าพื้นจอพอให้เห็นความยาวเต็มตอนใช้ไปน้อย
     bh = L.usage.bar_h
@@ -423,10 +453,16 @@ def _usage_row(draw: ImageDraw.ImageDraw, u: Usage, y: int) -> None:
 
     # ขีด pace — "ควรใช้ถึงไหนแล้ว" ตามเวลาที่ผ่านไปในหน้าต่าง
     # ขีดอยู่ขวาของเนื้อแถบ = ใช้ช้ากว่าเวลา · อยู่ซ้าย = ใช้เร็วเกินไป
+    # ตอนใช้เร็วเกินขีดหนาขึ้นเป็น 3px ด้วย — สีของแถวบอกไม่ได้เมื่อภาพเป็นขาวดำ
+    # (alert L 0.30 กับ good L 0.33 เทาเท่ากัน) ตำแหน่งขีดอย่างเดียวก็อ่านยากเมื่อ
+    # เกินไปนิดเดียว ความหนาจึงเป็นแกนที่สองที่ไม่พึ่งสีเลย
     if u.remaining is not None and u.remaining > 0:
         elapsed = max(0, min(u.window, u.window - u.remaining))
         mx = x0 + round((x1 - x0) * elapsed / u.window)
-        draw.rectangle([mx, by - 2, mx, by + bh + 1], fill=quantize565(PAL.outline))
+        over = u.pct is not None and u.window > 0 and u.pct * u.window > elapsed * 100
+        half = 1 if over else 0
+        draw.rectangle([mx - half, by - 2, mx + half, by + bh + 1],
+                       fill=quantize565(PAL.outline))
 
 
 def _usage(draw: ImageDraw.ImageDraw, rows: list[Usage]) -> None:

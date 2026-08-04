@@ -111,9 +111,9 @@ public enum Text {
 
         /// ป้ายชื่อโปรเจกต์ใต้มาสคอต — กว้าง 102px ฟอนต์บอร์ด 12
         public static let project = Cells(ascii: 14, thai: 12)
-        /// หัวการ์ด — กว้าง 290px ฟอนต์บอร์ด 14
-        public static let cardTitle = Cells(ascii: 34, thai: 32)
+        /// หัวการ์ด — กว้าง 278px ฟอนต์บอร์ด 14 (แคบลงจาก 290 ตอนกันที่ให้เครื่องหมายชนิดการ์ด)
+        public static let cardTitle = Cells(ascii: 32, thai: 30)
         /// เนื้อการ์ด — กว้างเท่ากัน ฟอนต์บอร์ด 12
-        public static let cardBody = Cells(ascii: 46, thai: 36)
+        public static let cardBody = Cells(ascii: 44, thai: 34)
     }
 }

@@ -24,7 +24,14 @@
 #define CT_CARD_HEIGHT               98
 #define CT_CARD_PAD                  6
 #define CT_CARD_MAX                  2
-#define CT_CARD_TEXT_INSET           18
+#define CT_CARD_TEXT_INSET           30
+#define CT_CARD_RAIL_W               3
+#define CT_CARD_RAIL_INSET_ALERT     0
+#define CT_CARD_RAIL_INSET_INFO      10
+#define CT_CARD_RAIL_INSET_DONE      15
+#define CT_CARD_MARK                 8
+#define CT_CARD_MARK_STROKE          2
+#define CT_CARD_MARK_RIGHT           8
 
 #define CT_USAGE_ROW_H               40
 #define CT_USAGE_GAP                 4
@@ -200,6 +207,8 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 // จานสีเป็น RGB565 ตามที่แผงจอกินจริง
 #define CT_COL_BG                    0x1081
 #define CT_COL_BG_SLOT               0x18A2
+#define CT_COL_BG_CARD_ALERT         0x28E3
+#define CT_COL_BG_CARD_DONE          0x1081
 #define CT_COL_CLAY                  0xDBAA
 #define CT_COL_CLAY_DARK             0xAAA7
 #define CT_COL_CLAY_SLEEP            0x7A26

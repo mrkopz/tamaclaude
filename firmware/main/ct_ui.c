@@ -28,6 +28,11 @@ typedef struct {
 typedef struct {
     lv_obj_t *box;
     lv_obj_t *accent;
+    // เครื่องหมายชิดขวา — ตัน (alert) · กลวง (info) · ขีด (done)
+    // กลวงคือ mark ที่มี mark_hole สีพื้นการ์ดวางทับกลาง ไม่ใช่กรอบที่วาดเอง
+    // เพราะ LVGL คิด border จากขอบนอกเข้ามา แล้วรูตรงกลางจะไม่ลงตัวที่ 8px
+    lv_obj_t *mark;
+    lv_obj_t *mark_hole;
     lv_obj_t *title;
     lv_obj_t *body;
 } card_t;
@@ -450,9 +455,16 @@ static void build_cards(lv_obj_t *scr)
         lv_obj_set_style_bg_color(box, ct_color(CT_COL_BG_SLOT), 0);
         lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
 
-        lv_obj_t *accent = plain_obj(box, 3, CARD_H);
+        lv_obj_t *accent = plain_obj(box, CT_CARD_RAIL_W, CARD_H);
         lv_obj_set_pos(accent, 0, 0);
         lv_obj_set_style_bg_opa(accent, LV_OPA_COVER, 0);
+
+        lv_obj_t *mark = plain_obj(box, CT_CARD_MARK, CT_CARD_MARK);
+        lv_obj_set_style_bg_opa(mark, LV_OPA_COVER, 0);
+        lv_obj_t *mark_hole = plain_obj(mark, CT_CARD_MARK - CT_CARD_MARK_STROKE * 2,
+                                        CT_CARD_MARK - CT_CARD_MARK_STROKE * 2);
+        lv_obj_set_pos(mark_hole, CT_CARD_MARK_STROKE, CT_CARD_MARK_STROKE);
+        lv_obj_set_style_bg_opa(mark_hole, LV_OPA_COVER, 0);
 
         lv_obj_t *title = plain_label(box, ct_font_text_14(), CT_COL_TEXT);
         lv_obj_set_width(title, w - CT_CARD_TEXT_INSET);
@@ -464,7 +476,7 @@ static void build_cards(lv_obj_t *scr)
         lv_label_set_long_mode(body, LV_LABEL_LONG_DOT);
         lv_obj_set_pos(body, 9, 20);
 
-        s_cards[i] = (card_t){box, accent, title, body};
+        s_cards[i] = (card_t){box, accent, mark, mark_hole, title, body};
         lv_obj_add_flag(box, LV_OBJ_FLAG_HIDDEN);
     }
 
@@ -481,8 +493,6 @@ static void build_cards(lv_obj_t *scr)
 static const char *const USAGE_LABELS[CT_USAGE_ROWS] = {"Current", "Weekly"};
 static const int USAGE_WINDOWS[CT_USAGE_ROWS] = {CT_USAGE_SESSION_WINDOW,
                                                  CT_USAGE_WEEKLY_WINDOW};
-// สี pill แยกตามหน้าต่าง — สีคือสิ่งที่บอกว่ากำลังอ่านแถวไหนก่อนอ่านตัวอักษร
-static const uint16_t USAGE_PILL_COLORS[CT_USAGE_ROWS] = {CT_COL_CLAY, CT_COL_GOOD};
 
 // y ของขอบบนแถว i — แผงเตี้ยกว่าพื้นที่ที่มี จึงจัดกลางแนวตั้ง ไม่ชิดบน
 // ต้องตรงกับ _usage ใน tools/gen/screen.py
@@ -505,14 +515,20 @@ static void build_usage(lv_obj_t *scr)
 
         // pill วาดด้วย obj โค้งมุม ไม่ใช่ label ที่มีพื้นหลัง เพราะต้องกำหนดความกว้าง
         // จากความยาวข้อความเองตอน build (ข้อความคงที่ ไม่เปลี่ยนตามข้อมูล)
+        //
+        // ป้ายไม่มีสีของตัวเอง เส้นขอบบางกับตัวอักษรเท่านั้น — ป้ายบอก *ว่านี่คือหน้าต่างไหน*
+        // ซึ่งไม่เคยเปลี่ยน ป้ายเขียว "Weekly" เคยนั่งอยู่เหนือแถบแดง 71% ห่างกัน 20px
+        // แล้วเขียวที่แปลว่า "ปลอดภัย" ทุกที่บนจอนี้ กลับแปลว่า "รายสัปดาห์" ตรงนี้ที่เดียว
+        // สิ่งที่บอกว่ากำลังอ่านแถวไหนคือลำดับ (Current บน Weekly ล่าง) กับตัวอักษร
         u->pill = plain_obj(scr, 62, 18);
-        lv_obj_set_style_bg_color(u->pill, ct_color(USAGE_PILL_COLORS[i]), 0);
-        lv_obj_set_style_bg_opa(u->pill, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_opa(u->pill, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(u->pill, 1, 0);
+        lv_obj_set_style_border_color(u->pill, ct_color(CT_COL_TEXT_DIM), 0);
+        lv_obj_set_style_border_opa(u->pill, LV_OPA_COVER, 0);
         lv_obj_set_style_radius(u->pill, 9, 0);
         lv_obj_set_pos(u->pill, USAGE_X1 - 62, y + 5);
 
-        // ตัวอักษรสีหมึกบนพื้น pill สว่าง — สีข้อความเดิมจมกับพื้นส้ม/เขียว
-        u->pill_text = plain_label(u->pill, &lv_font_montserrat_12, CT_COL_INK);
+        u->pill_text = plain_label(u->pill, &lv_font_montserrat_12, CT_COL_TEXT);
         lv_label_set_text(u->pill_text, USAGE_LABELS[i]);
         lv_obj_center(u->pill_text);
 
@@ -608,12 +624,29 @@ static void layout_slots(void)
     }
 }
 
-static uint16_t card_accent(ct_card_kind_t kind)
+// ชนิดการ์ด -> สามแกนที่ไม่ใช่สี ทุกแกนชี้ทางเดียวกัน
+// alert: แถบยาวสุด พื้นสว่างสุด เครื่องหมายตัน · done: แถบสั้นสุด พื้นจมสุด เป็นขีด
+// สีอย่างเดียวไม่พอ — alert (L 0.30) กับ good (L 0.33) เทาเท่ากันเมื่อภาพเป็นขาวดำ
+// ต้องตรงกับ _CARD_STYLE ใน tools/gen/screen.py
+typedef struct {
+    uint16_t accent;
+    uint16_t plate;
+    int rail_inset;
+    enum { MARK_SOLID, MARK_HOLLOW, MARK_DASH } mark;
+} card_style_t;
+
+static card_style_t card_style(ct_card_kind_t kind)
 {
     switch (kind) {
-        case CT_CARD_ALERT: return CT_COL_ALERT;
-        case CT_CARD_DONE: return CT_COL_GOOD;
-        default: return CT_COL_ACCENT;
+        case CT_CARD_ALERT:
+            return (card_style_t){CT_COL_ALERT, CT_COL_BG_CARD_ALERT,
+                                  CT_CARD_RAIL_INSET_ALERT, MARK_SOLID};
+        case CT_CARD_DONE:
+            return (card_style_t){CT_COL_GOOD, CT_COL_BG_CARD_DONE,
+                                  CT_CARD_RAIL_INSET_DONE, MARK_DASH};
+        default:
+            return (card_style_t){CT_COL_ACCENT, CT_COL_BG_SLOT,
+                                  CT_CARD_RAIL_INSET_INFO, MARK_HOLLOW};
     }
 }
 
@@ -651,8 +684,29 @@ static void layout_cards(void)
             continue;
         }
         const ct_card_t *c = &s_frame->cards[i];
-        lv_obj_remove_flag(s_cards[i].box, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_style_bg_color(s_cards[i].accent, ct_color(card_accent(c->kind)), 0);
+        const card_t *cd = &s_cards[i];
+        card_style_t st = card_style(c->kind);
+        lv_obj_remove_flag(cd->box, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_bg_color(cd->box, ct_color(st.plate), 0);
+        lv_obj_set_style_bg_color(cd->accent, ct_color(st.accent), 0);
+        lv_obj_set_pos(cd->accent, 0, st.rail_inset);
+        lv_obj_set_height(cd->accent, CARD_H - st.rail_inset * 2);
+
+        // ขีด (done) คือ mark ตัวเดิมที่ถูกบีบให้เตี้ยลงเหลือความหนาของขอบ
+        // ไม่ใช่ obj คนละตัว — ตำแหน่งกลางแนวตั้งจึงคำนวณจากความสูงจริงเสมอ
+        int mh = st.mark == MARK_DASH ? CT_CARD_MARK_STROKE : CT_CARD_MARK;
+        int mw = CT_SCREEN_WIDTH - CT_CARD_PAD * 2;
+        lv_obj_set_height(cd->mark, mh);
+        lv_obj_set_pos(cd->mark, mw - CT_CARD_MARK_RIGHT - CT_CARD_MARK / 2,
+                       (CARD_H - mh) / 2);
+        lv_obj_set_style_bg_color(cd->mark, ct_color(st.accent), 0);
+        if (st.mark == MARK_HOLLOW) {
+            lv_obj_set_style_bg_color(cd->mark_hole, ct_color(st.plate), 0);
+            lv_obj_remove_flag(cd->mark_hole, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(cd->mark_hole, LV_OBJ_FLAG_HIDDEN);
+        }
+
         lv_label_set_text(s_cards[i].title, c->title);
         lv_label_set_text(s_cards[i].body, c->body);
     }
@@ -784,8 +838,16 @@ static void layout_usage(void)
             if (elapsed < 0) elapsed = 0;
             if (elapsed > USAGE_WINDOWS[i]) elapsed = USAGE_WINDOWS[i];
             int y = usage_row_y(i) + 26;
+            // ใช้เร็วเกินเวลา = ขีดหนา 3px แทน 1px — สีของแถวบอกไม่ได้เมื่อภาพเป็นขาวดำ
+            // (alert L 0.30 กับ good L 0.33 เทาเท่ากัน) และตำแหน่งขีดอย่างเดียวก็อ่านยาก
+            // เมื่อเกินไปนิดเดียว ความหนาจึงเป็นแกนที่สองที่ไม่พึ่งสีเลย
+            bool over = u->percent != CT_USAGE_UNKNOWN &&
+                        (int64_t)u->percent * USAGE_WINDOWS[i] > (int64_t)elapsed * 100;
+            int half = over ? 1 : 0;
+            lv_obj_set_width(row->pace, half * 2 + 1);
             lv_obj_set_pos(row->pace,
-                           USAGE_X0 + (int)((int64_t)USAGE_W * elapsed / USAGE_WINDOWS[i]), y);
+                           USAGE_X0 + (int)((int64_t)USAGE_W * elapsed / USAGE_WINDOWS[i]) - half,
+                           y);
             lv_obj_remove_flag(row->pace, LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_obj_add_flag(row->pace, LV_OBJ_FLAG_HIDDEN);
