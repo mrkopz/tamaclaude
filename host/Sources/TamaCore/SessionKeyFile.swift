@@ -8,39 +8,21 @@ import Foundation
 ///
 /// อ่านกลับมาทาง `UsagePoll.readKey` ตัวเดิมเสมอ — กฎว่าอะไรคือไฟล์ที่ใช้ได้มีสำเนาเดียว
 public enum SessionKeyFile {
-    /// เขียน key ทับของเดิมแบบ mode 600 ตั้งแต่วินาทีแรกที่ไฟล์มีตัวตน
-    ///
-    /// สร้างไฟล์ชั่วคราวด้วยสิทธิ์ 600 แล้วค่อย rename ทับ ไม่ใช่เขียนก่อนแล้ว `chmod`
-    /// ทีหลัง — ช่วงระหว่างสองคำสั่งนั้นคือช่วงที่ credential เปิดให้คนอื่นอ่าน
-    public static func write(_ raw: String, to url: URL = Paths.sessionKey) throws {
-        let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else {
-            throw UsagePoll.Failure(
-                message: "the session key is empty — paste the claude.ai sessionKey cookie",
-                code: UsagePoll.Failure.unusableKeyFile)
-        }
-        let dir = url.deletingLastPathComponent()
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    /// ประโยคของความลับใบนี้ — กติกาว่าอะไรคือไฟล์ที่ใช้ได้อยู่ที่ `SecretFile` ที่เดียว
+    /// ร่วมกับ key ของ Finnhub ต่างกันแค่คำที่บอกผู้ใช้ว่าต้องไปเอาอะไรมาจากไหน
+    static let wording = SecretFile.Wording(
+        noun: "session key",
+        missing: "set one from the TamaClaude gear menu, or paste the claude.ai sessionKey "
+            + "cookie into that file and `chmod 600` it",
+        empty: "paste the claude.ai sessionKey cookie into it")
 
-        let tmp = dir.appendingPathComponent(".\(url.lastPathComponent).tamaclaude.tmp")
-        try? FileManager.default.removeItem(at: tmp)
-        guard FileManager.default.createFile(
-            atPath: tmp.path, contents: Data(key.utf8), attributes: [.posixPermissions: 0o600])
-        else {
-            throw UsagePoll.Failure(
-                message: "could not write \(url.path)",
-                code: UsagePoll.Failure.unusableKeyFile)
-        }
-        // `replaceItemAt` คัดลอกสิทธิ์ของไฟล์เดิมกลับมาได้ — ไฟล์ 644 ที่ผู้ใช้เคยสร้างเอง
-        // จะยังเป็น 644 ต่อไปทั้งที่เพิ่งเขียนใหม่ จึงลบทิ้งแล้ว rename ตรงๆ แทน
-        try? FileManager.default.removeItem(at: url)
+    /// เขียน key ทับของเดิมแบบ mode 600 ตั้งแต่วินาทีแรกที่ไฟล์มีตัวตน
+    public static func write(_ raw: String, to url: URL = Paths.sessionKey) throws {
         do {
-            try FileManager.default.moveItem(at: tmp, to: url)
-        } catch {
-            try? FileManager.default.removeItem(at: tmp)
+            try SecretFile.write(raw, to: url, wording: wording)
+        } catch let problem as SecretFile.Problem {
             throw UsagePoll.Failure(
-                message: "could not write \(url.path)",
-                code: UsagePoll.Failure.unusableKeyFile)
+                message: problem.message, code: UsagePoll.Failure.unusableKeyFile)
         }
     }
 

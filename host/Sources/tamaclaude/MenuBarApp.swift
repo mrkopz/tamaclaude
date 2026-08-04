@@ -43,6 +43,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var starter: SessionStarter!
     private var weather: WeatherService!
     private var crypto: CryptoService!
+    private var stocks: StocksService!
     private var calendar: CalendarService!
     /// หน้าที่บอร์ดประกาศว่ารู้จัก — ว่างคือ firmware ที่ยังไม่รู้จักการประกาศ
     private var boardPages: [PageKind] = []
@@ -174,6 +175,11 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         crypto.onFrame = { [weak self] frame, observedAt in
             self?.daemon.submit(frame, observedAt: observedAt)
         }
+        stocks = StocksService(
+            settings: StockSettings.load(), fetch: StocksFetch.urlSession())
+        stocks.onFrame = { [weak self] frame, observedAt in
+            self?.daemon.submit(frame, observedAt: observedAt)
+        }
         // ปฏิทินอ่านจากเครื่องนี้เอง ไม่ใช่จากเน็ต (ADR-0005) — ท่อหลังจากนั้นเป็นท่อเดิม
         calendar = CalendarService(
             settings: CalendarSettings.load(), source: EventKitCalendars())
@@ -209,9 +215,13 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             self.poller.tick()
             if self.pages.isOn(.weather) { self.weather.tick() }
             if self.pages.isOn(.crypto) { self.crypto.tick() }
+            if self.pages.isOn(.stocks) { self.stocks.tick() }
             if self.pages.isOn(.calendar) { self.calendar.tick() }
             // แถวโควตาที่ daemon อ่านไว้แล้ว ไม่ใช่การอ่านไฟล์รอบที่สองทุกวินาที
             self.starter.tick(usage: self.usage)
+            // สถานะของหน้าหุ้นเปลี่ยนเองได้ระหว่างที่ผู้ใช้มองอยู่ (key ถูกปฏิเสธ ตลาดปิด
+            // สัญลักษณ์ที่หาไม่เจอ) — หน้าต่างที่เปิดค้างไว้ต้องไม่โชว์ประโยคของเมื่อครู่
+            if self.prefs.isShowing { self.showStocks() }
         }
     }
 
@@ -265,6 +275,8 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         window.onWeather = { [weak self] settings in self?.chooseWeather(settings) }
         window.onPages = { [weak self] settings in self?.choosePages(settings) }
         window.onCrypto = { [weak self] settings in self?.chooseCrypto(settings) }
+        window.onStocks = { [weak self] settings in self?.chooseStocks(settings) }
+        window.onFinnhubKey = { [weak self] in self?.setFinnhubKey() }
         window.onCalendar = { [weak self] settings in self?.chooseCalendar(settings) }
         window.onCalendarAccess = { [weak self] in self?.askCalendarAccess() }
         return window
@@ -284,6 +296,49 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         crypto.update(settings)
         if pages.isOn(.crypto) { crypto.tick() }
         showCrypto()
+    }
+
+    /// ผู้ใช้แก้ watchlist ของหน้าหุ้น — เก็บลง `UserDefaults` แล้วให้ตัวที่ดึงข้อมูลรู้ทันที
+    private func chooseStocks(_ settings: StockSettings) {
+        settings.save()
+        stocks.update(settings)
+        if pages.isOn(.stocks) { stocks.tick() }
+        showStocks()
+    }
+
+    /// ช่องกรอกแบบปิดบังตัวอักษร แล้วแอปเขียนไฟล์ mode 600 ให้เอง — กติกาเดียวกับ
+    /// `sessionKey` แม้ key นี้จะเล็กกว่ามาก: กฎที่มีข้อยกเว้นคือกฎที่ไม่มีใครจำได้ว่า
+    /// ใช้กับใบไหน · key ไม่เคยถูกใส่กลับเข้าช่องกรอกและไม่เคยโผล่ในข้อความไหน
+    private func setFinnhubKey() {
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        field.placeholderString = "API key from finnhub.io"
+
+        let a = NSAlert()
+        a.messageText = "Set the Finnhub API key"
+        a.informativeText =
+            "finnhub.io → sign up (free) → Dashboard → API key.\n"
+            + "TamaClaude stores it readable only by you, and the board never sees it."
+        a.accessoryView = field
+        a.addButton(withTitle: "Save")
+        a.addButton(withTitle: "Cancel")
+        // แอปไม่มีหน้าต่าง ช่องกรอกจึงไม่ได้โฟกัสเอง ผู้ใช้จะพิมพ์ลงที่ว่าง
+        NSApp.activate(ignoringOtherApps: true)
+        a.window.initialFirstResponder = field
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+
+        do {
+            try FinnhubKeyFile.write(field.stringValue)
+        } catch let problem as SecretFile.Problem {
+            alert("Could not save the Finnhub key", problem.message)
+            return
+        } catch {
+            alert("Could not save the Finnhub key", "\(error)")
+            return
+        }
+        // ตั้ง key ใหม่แล้วกลับมายิงเองทันที ไม่ต้องปิดเปิดแอป
+        stocks.keyWasSet()
+        if pages.isOn(.stocks) { stocks.tick() }
+        showStocks()
     }
 
     /// ผู้ใช้ติ๊กปฏิทินที่ให้ขึ้นจอ — เก็บลง `UserDefaults` แล้วให้ตัวที่อ่านรู้ทันที
@@ -320,12 +375,17 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             crypto.restart()
             crypto.tick()
         }
+        if !wasOn.contains(.stocks) && pages.isOn(.stocks) {
+            stocks.restart()
+            stocks.tick()
+        }
         if !wasOn.contains(.calendar) && pages.isOn(.calendar) {
             calendar.restart()
             calendar.tick()
         }
         showWeather()
         showCrypto()
+        showStocks()
         showCalendar()
     }
 
@@ -351,6 +411,14 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             crypto.settings, status: crypto.status,
             supported: boardPages.isEmpty || boardPages.contains(.crypto),
             on: pages.isOn(.crypto))
+    }
+
+    private func showStocks() {
+        prefs.showStocks(
+            stocks.settings, status: stocks.status, hasKey: FinnhubKeyFile.isUsable(),
+            keyRejected: stocks.keyRejected,
+            supported: boardPages.isEmpty || boardPages.contains(.stocks),
+            on: pages.isOn(.stocks))
     }
 
     private func showCalendar() {
@@ -386,6 +454,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         prefs.showPages(pages)
         showWeather()
         showCrypto()
+        showStocks()
         showCalendar()
         prefs.show()
         // ถามสถานะซ้ำเสมอ: บอร์ดรายงานตอนมันเปลี่ยน ซึ่งอาจเป็นก่อนที่หน้าต่างนี้จะมีตัวตน
@@ -416,6 +485,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             daemon.announce(kinds)
             showWeather()
             showCrypto()
+            showStocks()
             showCalendar()
             return
         }

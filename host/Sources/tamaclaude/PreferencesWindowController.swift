@@ -33,6 +33,11 @@ final class PreferencesWindowController: NSWindowController {
     var onPages: ((PageSettings) -> Void)?
     /// watchlist ของหน้าคริปโตเปลี่ยน — ทั้งก้อนเสมอ ไม่ใช่ "เพิ่มตัวนี้" ทีละคำสั่ง
     var onCrypto: ((CryptoSettings) -> Void)?
+    /// watchlist ของหน้าหุ้นเปลี่ยน — ทั้งก้อนเหมือนคริปโต
+    var onStocks: ((StockSettings) -> Void)?
+    /// ผู้ใช้กดตั้ง key ของ Finnhub — ช่องกรอกแบบปิดบังเด้งจากฝั่ง `MenuBarApp`
+    /// ด้วยเหตุผลเดียวกับ `sessionKey`: หน้าต่างนี้ไม่เคยแตะไฟล์เอง
+    var onFinnhubKey: (() -> Void)?
     /// ปฏิทินที่ผู้ใช้ติ๊กให้ขึ้นจอเปลี่ยน — ทั้งก้อนเหมือน watchlist
     var onCalendar: ((CalendarSettings) -> Void)?
     /// ผู้ใช้กดขอสิทธิ์ปฏิทิน — กล่องของระบบเด้งจากฝั่ง `MenuBarApp` ไม่ใช่จากที่นี่
@@ -79,6 +84,17 @@ final class PreferencesWindowController: NSWindowController {
     /// ค่าที่หน้าต่างกำลังแสดงอยู่ — ปุ่มทุกปุ่มแก้ของก้อนนี้แล้วส่งออกทั้งก้อน
     private var crypto = CryptoSettings()
 
+    // --- Stocks --------------------------------------------------------------
+    /// รูปเดียวกับแท็บ Crypto ทุกส่วน บวกปุ่ม key — หน้าหุ้นเป็นหน้าเดียวที่ต้องมี
+    /// credential ของผู้ใช้ก่อนถึงจะมีตัวเลขให้ดู
+    private let symbolList = NSStackView()
+    private let symbolField = NSTextField()
+    private let addSymbolButton = NSButton(title: "Add", target: nil, action: nil)
+    private let stocksStatus = NSTextField(labelWithString: "")
+    private let stockKeyLabel = NSTextField(labelWithString: "")
+    private var stocksOn = true
+    private var stocks = StockSettings()
+
     // --- Calendar ------------------------------------------------------------
     /// รายการปฏิทินเป็นติ๊ก ไม่ใช่ช่องพิมพ์: ผู้ใช้ไม่ได้ตั้งชื่อปฏิทินเอง เขาเลือกจากที่
     /// macOS sync มาให้ (ADR-0005) และชื่อที่พิมพ์ผิดจะกลายเป็นหน้าที่ว่างโดยไม่บอกอะไร
@@ -120,6 +136,9 @@ final class PreferencesWindowController: NSWindowController {
 
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    /// หน้าต่างเปิดอยู่ไหม — ตัวเรียกใช้ตัดสินว่าควรป้อนสถานะที่ขยับเองเข้ามาซ้ำหรือเปล่า
+    var isShowing: Bool { window?.isVisible == true }
+
     func show() {
         // ปกติแอปนี้ไม่มีหน้าต่างเลย (`.accessory`) การเปิดหน้าตั้งค่าจึงต้องดึงแอปขึ้นมา
         // หน้าสุดเอง ไม่งั้นหน้าต่างโผล่หลังหน้าต่างของแอปอื่นแล้วดูเหมือนกดปุ่มไม่ติด
@@ -148,6 +167,11 @@ final class PreferencesWindowController: NSWindowController {
         cryptoTab.label = "Crypto"
         cryptoTab.view = pad(buildCrypto())
         tabs.addTabViewItem(cryptoTab)
+
+        let stocksTab = NSTabViewItem(identifier: "stocks")
+        stocksTab.label = "Stocks"
+        stocksTab.view = pad(buildStocks())
+        tabs.addTabViewItem(stocksTab)
 
         let calendarTab = NSTabViewItem(identifier: "calendar")
         calendarTab.label = "Calendar"
@@ -432,6 +456,90 @@ final class PreferencesWindowController: NSWindowController {
         }
     }
 
+    /// watchlist ของหน้าหุ้น — เพิ่ม ลบ จัดลำดับ เพดานห้าตัว และ key ของผู้ใช้
+    ///
+    /// key อยู่ในแท็บนี้ ไม่ใช่แท็บ General ที่ `sessionKey` อยู่: มันเป็นของหน้านี้หน้าเดียว
+    /// และคนที่มาตั้งค่าหน้าหุ้นคือคนที่กำลังจะเจอว่าต้องมีมัน
+    private func buildStocks() -> NSView {
+        symbolList.orientation = .vertical
+        symbolList.alignment = .leading
+        symbolList.spacing = 4
+
+        symbolField.placeholderString = "Symbol (e.g. AAPL)"
+        symbolField.target = self
+        symbolField.action = #selector(addSymbol)
+        symbolField.widthAnchor.constraint(equalToConstant: 180).isActive = true
+
+        addSymbolButton.target = self
+        addSymbolButton.action = #selector(addSymbol)
+        addSymbolButton.bezelStyle = .rounded
+
+        let key = NSButton(title: "Set Finnhub key…", target: self,
+                           action: #selector(setFinnhubKey))
+        key.bezelStyle = .rounded
+
+        for label in [stocksStatus, stockKeyLabel] {
+            label.font = .systemFont(ofSize: 11)
+            label.textColor = .secondaryLabelColor
+        }
+
+        let entry = NSStackView(views: [symbolField, addSymbolButton])
+        entry.orientation = .horizontal
+        entry.spacing = 6
+
+        let hint = NSTextField(wrappingLabelWithString:
+            "Quotes come from Finnhub with your own key, so the quota spent is yours — get a "
+            + "free one at finnhub.io. The key is stored readable only by you and never leaves "
+            + "this Mac. Five symbols at most: Finnhub answers one symbol per request, and "
+            + "nothing is asked at all outside US market hours, when prices do not move. "
+            + "The free plan covers US listings only.")
+        hint.font = .systemFont(ofSize: 11)
+        hint.textColor = .secondaryLabelColor
+
+        let stack = NSStackView(views: [
+            symbolList,
+            entry,
+            stocksStatus,
+            separator(),
+            key,
+            stockKeyLabel,
+            separator(),
+            hint,
+        ])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 10
+        hint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        return stack
+    }
+
+    /// วาดรายการหุ้นใหม่ทั้งแถบ — เหตุผลเดียวกับรายการหน้าและ watchlist ของคริปโต
+    private func rebuildSymbolList() {
+        for view in symbolList.arrangedSubviews { view.removeFromSuperview() }
+        for (index, symbol) in stocks.symbols.enumerated() {
+            let label = NSTextField(labelWithString: symbol)
+            label.widthAnchor.constraint(equalToConstant: 140).isActive = true
+
+            let up = NSButton(title: "▲", target: self, action: #selector(moveSymbolUp))
+            let down = NSButton(title: "▼", target: self, action: #selector(moveSymbolDown))
+            let remove = NSButton(title: "Remove", target: self, action: #selector(removeSymbol))
+            for button in [up, down, remove] {
+                button.bezelStyle = .rounded
+                button.tag = index
+                button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+            }
+            up.isEnabled = stocksOn && index > 0
+            down.isEnabled = stocksOn && index < stocks.symbols.count - 1
+            remove.isEnabled = stocksOn
+            label.textColor = stocksOn ? .labelColor : .disabledControlTextColor
+
+            let row = NSStackView(views: [label, up, down, remove])
+            row.orientation = .horizontal
+            row.spacing = 4
+            symbolList.addArrangedSubview(row)
+        }
+    }
+
     /// ปฏิทินใบไหนได้ขึ้นจอบ้าง — ติ๊กทีละใบ พร้อมปุ่มขอสิทธิ์ตอนที่ยังไม่มี
     ///
     /// ไม่มีปุ่ม "เลือกทั้งหมด": จอนี้วางให้คนอื่นเห็นได้ การเปิดทุกใบด้วยการกดครั้งเดียว
@@ -659,6 +767,49 @@ final class PreferencesWindowController: NSWindowController {
         }
     }
 
+    func showStocks(
+        _ settings: StockSettings, status: String?, hasKey: Bool, keyRejected: Bool,
+        supported: Bool, on: Bool
+    ) {
+        stocks = settings
+        stocksOn = on
+        rebuildSymbolList()
+        let room = settings.symbols.count < StockSettings.maxSymbols
+        symbolField.isEnabled = on && room
+        addSymbolButton.isEnabled = on && room
+
+        // บรรทัดใต้ปุ่มเป็นทางเดียวที่ผู้ใช้รู้ว่า key เข้าไหม — ช่องกรอกปิดบังตัวอักษร
+        // และไม่เคยถูกเติมกลับ (กติกาเดียวกับ `sessionKey`)
+        if keyRejected {
+            stockKeyLabel.stringValue = "Finnhub refused this key — paste a new one."
+            stockKeyLabel.textColor = .systemRed
+        } else if hasKey {
+            stockKeyLabel.stringValue = "A key is stored, readable only by you."
+            stockKeyLabel.textColor = .secondaryLabelColor
+        } else {
+            stockKeyLabel.stringValue = "No key yet — get a free one at finnhub.io."
+            stockKeyLabel.textColor = .secondaryLabelColor
+        }
+
+        // เหตุผลที่หน้านี้ยังไม่ขึ้นจอมีได้ห้าอย่าง และผู้ใช้แก้ได้คนละแบบ: firmware เก่า
+        // (ต้องแฟลช) · ยังไม่มี key (ไปเอามา) · ยังไม่ใส่สัญลักษณ์ (ใส่) · เต็มเพดานแล้ว
+        // (ลบก่อน) · ดึงไม่สำเร็จหรือตลาดปิด (ซึ่ง `StocksService` เป็นคนพูด)
+        if !supported {
+            stocksStatus.stringValue =
+                "The board's firmware does not know this page yet — flash it to use it."
+        } else if let status {
+            stocksStatus.stringValue = status
+        } else if on && !hasKey {
+            stocksStatus.stringValue = "Add a Finnhub key to start."
+        } else if on && !settings.isUsable {
+            stocksStatus.stringValue = "Add a symbol to start."
+        } else if settings.symbols.count >= StockSettings.maxSymbols {
+            stocksStatus.stringValue = "Five symbols is the most this page shows."
+        } else {
+            stocksStatus.stringValue = ""
+        }
+    }
+
     func showCalendar(
         _ settings: CalendarSettings, available: [CalendarInfo], access: CalendarAccess,
         status: String?, supported: Bool, on: Bool
@@ -839,6 +990,36 @@ final class PreferencesWindowController: NSWindowController {
         rebuildCoinList()
         onCrypto?(crypto)
     }
+
+    @objc private func addSymbol() {
+        // ช่องถูกล้างเฉพาะตอนที่สัญลักษณ์เข้าไปจริง — คำที่ถูกปฏิเสธ (ซ้ำ หรือเต็มแล้ว)
+        // ต้องยังอยู่ให้ผู้ใช้เห็นว่าเขาพิมพ์อะไรไป พร้อมเหตุผลในบรรทัดสถานะ
+        guard stocks.add(symbolField.stringValue) else { return }
+        symbolField.stringValue = ""
+        emitStocks()
+    }
+
+    @objc private func removeSymbol(_ sender: NSButton) {
+        stocks.remove(sender.tag)
+        emitStocks()
+    }
+
+    @objc private func moveSymbolUp(_ sender: NSButton) { moveSymbol(sender, by: -1) }
+    @objc private func moveSymbolDown(_ sender: NSButton) { moveSymbol(sender, by: 1) }
+
+    private func moveSymbol(_ sender: NSButton, by step: Int) {
+        stocks.move(sender.tag, by: step)
+        emitStocks()
+    }
+
+    /// วาดรายการใหม่ทันทีแล้วค่อยบอกออกไป — สถานะที่เหลือ `MenuBarApp` ป้อนกลับมาเอง
+    /// ผ่าน `showStocks` เหมือนทุกอย่างที่นี่
+    private func emitStocks() {
+        rebuildSymbolList()
+        onStocks?(stocks)
+    }
+
+    @objc private func setFinnhubKey() { onFinnhubKey?() }
 
     @objc private func setSessionKey() { onSetSessionKey?() }
     @objc private func installHooks() { onInstallHooks?() }

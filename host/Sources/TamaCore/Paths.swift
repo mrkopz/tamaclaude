@@ -26,6 +26,13 @@ public enum Paths {
         stateDir.appendingPathComponent("session-key")
     }
 
+    /// key ของ Finnhub สำหรับหน้าหุ้น — กติกาไฟล์เดียวกับ `sessionKey` (mode 600,
+    /// ไม่ผ่าน argv, ไม่ผ่าน env, ไม่ลง log) แม้จะเป็น credential ที่เล็กกว่ามาก:
+    /// มันคือโควตาของผู้ใช้ และกฎที่มีข้อยกเว้นคือกฎที่ไม่มีใครจำได้ว่าใช้กับใบไหน
+    public static var finnhubKey: URL {
+        stateDir.appendingPathComponent("finnhub-key")
+    }
+
     /// กุญแจปิดผนึกเฟรมบน LAN — 32 ไบต์เป็น hex, mode 600 เหมือน `sessionKey`
     /// คนละอย่างกับ `sessionKey` โดยสิ้นเชิง: อันนี้เปิดได้แค่ช่องคุยกับบอร์ด (`LanKey`)
     public static var lanKey: URL {

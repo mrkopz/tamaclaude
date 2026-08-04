@@ -26,6 +26,7 @@ Claude Code hooks --> tamaclaude --hook --> Unix socket --> daemon --> BLE GATT 
 
 Open-Meteo --> WeatherService (every 15 min) --> page frame --> the same two paths
 CoinGecko  --> CryptoService  (every 60 s)  --> page frame --> the same two paths
+Finnhub    --> StocksService  (every 60 s, only while the US market is open)
 
 Claude Code statusline --> ~/.tamaclaude/statusline.sh --.
                                                           >--> ~/.claude/.statusline-usage-cache
@@ -115,7 +116,8 @@ look at `out/`. It proves the *design*, not the C renderer.
 - **`tools/gen/*.py` ↔ `firmware/main/ct_*.c`** — deliberate parallel ports, file for file:
   `props.py`↔`ct_props.c`, `mascot.py`↔`ct_mascot.c`, `rects.py`↔`ct_rects.c`,
   `screen.py`↔`ct_ui.c`, `weather.py`↔`ct_weather_ui.c`, `crypto.py`↔`ct_crypto_ui.c`,
-  `age.py`↔`ct_age.c`, `sky.py` folds into `ct_ui.c`.
+  `stocks.py`↔`ct_stocks_ui.c`, `trend.py`↔`ct_trend.c`, `age.py`↔`ct_age.c`,
+  `sky.py` folds into `ct_ui.c`.
   `pages.py` is the odd one out: it feeds `export_layout.py`, which generates `ct_page_kind_t`. A visual change means editing both
   sides; the Python side is where you iterate, the C side is the port.
 - **Assets are rect lists**, `{x, y, w, h, color}` in mascot-relative *unit* coordinates —
@@ -133,7 +135,9 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/Weather.swift` | the weather page frame + the Open-Meteo payloads, as pure functions over bytes |
 | `TamaCore/WeatherService.swift` | the weather settings and the fetch schedule — fed `tick(now:)`, owns no timer |
 | `TamaCore/Crypto.swift` | the crypto page frame + the CoinGecko payloads — the squeeze never cuts a symbol |
-| `TamaCore/CryptoService.swift` | the watchlist (5 max) and its 60 s round — the shape a stock page will borrow |
+| `TamaCore/CryptoService.swift` | the watchlist (5 max) and its 60 s round — the shape the stock page borrows |
+| `TamaCore/Stocks.swift` | the stocks page frame + the Finnhub payloads + what "the market is open" means |
+| `TamaCore/StocksService.swift` | the watchlist (5 max), the user's key, and a round that stops at the closing bell |
 | `TamaCore/Calendar.swift` | the calendar page frame + the appointment-to-rows converter, as pure functions |
 | `TamaCore/CalendarService.swift` | which calendars may show, the 5 min round, and what the page says when it cannot read |
 | `TamaCore/EventKitCalendars.swift` | the only file that touches EventKit — read-only, and thin enough to have nothing to test |
@@ -154,7 +158,8 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/UsagePoller.swift` | when to poll and what the last poll said — fed `tick(now:)`, owns no timer |
 | `TamaCore/SessionStarter.swift` | when the app may open a session of its own — same shape, plus the guards and what locks it |
 | `TamaCore/ChildOutput.swift` | what a child process said, drained off its pipe without blocking it |
-| `TamaCore/SessionKeyFile.swift` | writes `~/.tamaclaude/session-key` so it is mode 600 from birth |
+| `TamaCore/SecretFile.swift` | the one rule for a secret on disk: mode 600 from birth, refused if anyone else can read it |
+| `TamaCore/SessionKeyFile.swift` | writes `~/.tamaclaude/session-key` through that rule |
 | `TamaCore/SessionKeyState.swift` | what the settings window says under the key button — saved is not the same as accepted |
 | `TamaCore/{Hook,Statusline}Installer.swift` | writes into `~/.claude/settings.json` |
 | `TamaCore/Paths.swift` | the `~/.tamaclaude` paths + `Log` (`settings.json` belongs to `HookInstaller`) |
@@ -191,6 +196,10 @@ look at `out/`. It proves the *design*, not the C renderer.
 - **The `sessionKey` is a full-account credential.** File only (`~/.tamaclaude/session-key`,
   mode 600), never argv, never env, never logged, re-read every poll. Not the Keychain: the
   adhoc signature changes cdhash on every build, so the item would prompt on every upgrade.
+  The Finnhub key (`~/.tamaclaude/finnhub-key`) follows the same rule through `SecretFile`
+  even though it is a smaller credential — a rule with an exception is a rule nobody
+  remembers which file it applies to. It rides in a query string, so a quote URL is itself a
+  secret: log it through `StocksSource.describe` or not at all.
 - **`-v` and `-psn_*` are not modes.** LaunchServices appends `-psn_0_12345`; an app that
   rejects unknown args dies on double-click.
 - **`PageKind` is a three-way contract**: `Pages.swift`, `firmware/main/ct_pages.h`, and

@@ -37,44 +37,14 @@ public enum UsagePoll {
     /// อ่านใหม่ทุกรอบ ไม่เก็บไว้ในหน่วยความจำ: key หมดอายุได้ และวิธีแก้ต้องเป็นแค่
     /// การ paste ทับไฟล์ ไม่ใช่การไล่หาโปรเซสมารีสตาร์ท
     public static func readKey(at url: URL) throws -> String {
-        // ตรวจสิทธิ์ของไฟล์ปลายทาง ไม่ใช่ของ symlink — `attributesOfItem` ไม่ตาม link
-        // และ symlink มีสิทธิ์ 0o755 เสมอ ผู้ใช้ที่ link ไฟล์ 600 มาไว้ตรงนี้จะโดนปฏิเสธ
-        // พร้อมคำแนะนำ `chmod` ที่แก้อะไรไม่ได้เลย
-        let target = url.resolvingSymlinksInPath()
-        guard FileManager.default.fileExists(atPath: target.path) else {
-            throw Failure(
-                message: "no session key at \(url.path) — "
-                    + "set one from the TamaClaude gear menu, or paste the claude.ai sessionKey "
-                    + "cookie into that file and `chmod 600` it",
-                code: Failure.unusableKeyFile)
+        do {
+            return try SecretFile.read(at: url, wording: SessionKeyFile.wording)
+        } catch {
+            // ทุกอาการของไฟล์ที่ใช้ไม่ได้เป็น exit code เดียวกัน — ผู้เรียกแยกแค่ว่า
+            // "ผู้ใช้ต้องไปแตะไฟล์" กับ "ปลายทางปฏิเสธ key" ส่วนรายละเอียดอยู่ในประโยค
+            let problem = (error as? SecretFile.Problem)?.message ?? "\(error)"
+            throw Failure(message: problem, code: Failure.unusableKeyFile)
         }
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: target.path),
-            let mode = (attrs[.posixPermissions] as? NSNumber)?.uint16Value
-        else {
-            throw Failure(
-                message: "cannot read the permissions of \(url.path)",
-                code: Failure.unusableKeyFile)
-        }
-        // 0o077 = สิทธิ์ของ group และ other ทั้งหมด — บิตใดติดก็แปลว่า credential
-        // เต็มบัญชีนี้ไม่ได้เป็นของเจ้าของไฟล์คนเดียวแล้ว
-        guard mode & 0o077 == 0 else {
-            throw Failure(
-                message: "\(url.path) is readable by other users; run `chmod 600 \(url.path)`",
-                code: Failure.unusableKeyFile)
-        }
-        // อ่านไม่ออกกับว่างเปล่าเป็นคนละอาการ วิธีแก้จึงคนละอย่าง — ข้อความต้องแยกกัน
-        guard let text = try? String(contentsOf: target, encoding: .utf8) else {
-            throw Failure(
-                message: "\(url.path) is not readable text", code: Failure.unusableKeyFile)
-        }
-        let key = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else {
-            throw Failure(
-                message: "\(url.path) is empty — "
-                    + "paste the claude.ai sessionKey cookie into it",
-                code: Failure.unusableKeyFile)
-        }
-        return key
     }
 
     /// org หนึ่งอันจาก `/organizations` — id ที่ validate แล้ว กับชื่อไว้โชว์ในเมนู

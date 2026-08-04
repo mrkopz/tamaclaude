@@ -10,6 +10,7 @@ public enum PageKind: Int, Codable, CaseIterable, Sendable {
     case weather = 1
     case crypto = 2
     case calendar = 3
+    case stocks = 4
 
     /// ชื่อที่ผู้ใช้เห็นในรายการหน้า — อยู่ที่นี่เพราะหน้าตั้งค่าไม่ควรมีตารางแปลชื่อของตัวเอง
     /// ที่ต้องไล่แก้ทุกครั้งที่เพิ่มหน้าใหม่
@@ -19,6 +20,7 @@ public enum PageKind: Int, Codable, CaseIterable, Sendable {
         case .weather: return "Weather"
         case .crypto: return "Crypto"
         case .calendar: return "Calendar"
+        case .stocks: return "Stocks"
         }
     }
 }

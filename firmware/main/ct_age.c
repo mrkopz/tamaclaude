@@ -47,3 +47,13 @@ void ct_age_show(lv_obj_t *label, int secs, int refresh_s)
     }
     lv_obj_set_style_text_color(label, ct_color(stale ? CT_COL_ALERT : CT_COL_TEXT_DIM), 0);
 }
+
+void ct_age_show_frozen(lv_obj_t *label, int secs, const char *why)
+{
+    char text[40];
+    ct_age_text(text, sizeof(text), secs);
+    char line[80];
+    snprintf(line, sizeof(line), "%s  -  %s", text, why);
+    lv_label_set_text(label, line);
+    lv_obj_set_style_text_color(label, ct_color(CT_COL_TEXT_DIM), 0);
+}

@@ -29,9 +29,18 @@ def is_stale(secs: int, refresh_s: int) -> bool:
     return secs > refresh_s * L.page.stale_factor
 
 
-def draw_age(draw: ImageDraw.ImageDraw, secs: int, refresh_s: int) -> None:
-    stale = is_stale(secs, refresh_s)
+def draw_age(draw: ImageDraw.ImageDraw, secs: int, refresh_s: int,
+             frozen: str | None = None) -> None:
+    """`frozen` = เหตุผลที่ตัวเลขชุดนี้ *ควร* ค้าง เช่น "market closed"
+
+    หน้าที่รู้ว่าข้อมูลของมันหยุดโดยชอบธรรมต้องไม่ตะโกนว่า stale: ราคาหุ้นตอนตีสองเก่า
+    สิบชั่วโมงเป็นเรื่องปกติ ส่วนราคาคริปโตที่เก่าสิบชั่วโมงคือท่อพัง คำว่า stale จึงต้อง
+    หมายถึงอย่างหลังเสมอ ไม่งั้นมันจะกลายเป็นคำที่ผู้ใช้เรียนรู้ที่จะมองข้าม
+    """
+    stale = is_stale(secs, refresh_s) and frozen is None
     text = age_text(secs)
+    if frozen is not None:
+        text = f"{text}  -  {frozen}"
     screen.line(draw, (L.page.age_x, L.page.age_y + 6),
                 f"STALE - {text}" if stale else text, pil=10, board=12,
                 fill=PAL.alert if stale else PAL.text_dim, anchor="lm")

@@ -141,6 +141,28 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_CRYPTO_EMPTY_SUB_Y        104
 #define CT_CRYPTO_REFRESH_S          60
 
+#define CT_STOCKS_ROWS               5
+#define CT_STOCKS_ROW_Y              30
+#define CT_STOCKS_ROW_H              35
+#define CT_STOCKS_SYM_X              12
+#define CT_STOCKS_SYM_W              76
+#define CT_STOCKS_PRICE_X            92
+#define CT_STOCKS_PRICE_W            118
+#define CT_STOCKS_PCT_X              244
+#define CT_STOCKS_PCT_W              64
+#define CT_STOCKS_PRICE_FONT         24
+#define CT_STOCKS_PRICE_FONT_PIL     22
+#define CT_STOCKS_SYM_DY             10
+#define CT_STOCKS_PRICE_DY           5
+#define CT_STOCKS_PCT_DY             10
+#define CT_STOCKS_ARROW_DY           10
+#define CT_STOCKS_ARROW_X            220
+#define CT_STOCKS_ARROW_PX           4
+#define CT_STOCKS_ARROW_GRID         4
+#define CT_STOCKS_EMPTY_Y            80
+#define CT_STOCKS_EMPTY_SUB_Y        104
+#define CT_STOCKS_REFRESH_S          60
+
 #define CT_CALENDAR_ROWS             4
 #define CT_CALENDAR_ROW_Y            32
 #define CT_CALENDAR_ROW_H            44
@@ -259,5 +281,6 @@ typedef enum {
     CT_PAGE_WEATHER      = 1,
     CT_PAGE_CRYPTO       = 2,
     CT_PAGE_CALENDAR     = 3,
-    CT_PAGE_KIND_COUNT         = 4,
+    CT_PAGE_STOCKS       = 4,
+    CT_PAGE_KIND_COUNT         = 5,
 } ct_page_kind_t;

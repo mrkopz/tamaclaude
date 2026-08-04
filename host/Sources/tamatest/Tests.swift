@@ -2219,20 +2219,20 @@ func runAllTests() {
         equal(settings.isOn(.mascot), true, "the mascot page cannot be turned off")
         settings.setOn(.weather, false)
         equal(
-            settings.plan.order, [.mascot, .crypto, .calendar],
+            settings.plan.order, [.mascot, .crypto, .calendar, .stocks],
             "a page that is off is not in the plan at all")
         settings.setOn(.weather, true)
         equal(
-            settings.plan.order, [.mascot, .weather, .crypto, .calendar],
+            settings.plan.order, [.mascot, .weather, .crypto, .calendar, .stocks],
             "and comes back where it was")
 
         settings.move(.weather, by: -1)
         equal(
-            settings.order, [.weather, .mascot, .crypto, .calendar],
+            settings.order, [.weather, .mascot, .crypto, .calendar, .stocks],
             "arranging moves one step, not to the end")
         settings.move(.weather, by: -1)
         equal(
-            settings.order, [.weather, .mascot, .crypto, .calendar],
+            settings.order, [.weather, .mascot, .crypto, .calendar, .stocks],
             "and stops at the edge instead of wrapping")
 
         // ค่าที่บีบแล้วต้องบีบตั้งแต่ตอนสร้าง ไม่ใช่ตอนส่ง — หน้าต่างแสดงค่าที่เก็บจริง
@@ -2240,7 +2240,7 @@ func runAllTests() {
         equal(PageSettings(rotation: 1, hold: 99_999).hold, 3600, "so is a hold that never ends")
         equal(
             PageSettings(order: [.weather, .weather]).order,
-            [.weather, .mascot, .crypto, .calendar],
+            [.weather, .mascot, .crypto, .calendar, .stocks],
             "a stored order that lost a page or repeated one is repaired, not obeyed")
 
         let store = UserDefaults(suiteName: "tamatest.pages")!
@@ -2277,7 +2277,7 @@ func runAllTests() {
         equal(first.count, 1, "once it says it knows about pages, the rules are sent")
         equal(
             String(decoding: first[0], as: UTF8.self),
-            #"{"h":600,"j":0,"pl":[0,1,2,3],"r":30}"#,
+            #"{"h":600,"j":0,"pl":[0,1,2,3,4],"r":30}"#,
             "keys are sorted and the marker is 'pl', so a snapshot is still a snapshot")
         equal(hub.drain(now: t0 + 1).count, 0, "and not repeated every second afterwards")
 
@@ -2290,7 +2290,7 @@ func runAllTests() {
         let both = hub.drain(now: t0 + 2)
         equal(both.count, 2, "new rules and a new frame travel in the same round")
         equal(
-            String(decoding: both[0], as: UTF8.self), #"{"h":300,"j":1,"pl":[0,2,3],"r":20}"#,
+            String(decoding: both[0], as: UTF8.self), #"{"h":300,"j":1,"pl":[0,2,3,4],"r":20}"#,
             "the rules go first, and a page the user turned off is simply not in them")
 
         hub.forgetSent()
@@ -2587,6 +2587,394 @@ func runAllTests() {
             expect(false, "an empty watchlist asks nobody anything")
         }
         blank.tick(now: t0)
+    }
+
+    suite("a stock frame gives up its percentages before it gives up a symbol") {
+        let quotes = [
+            StockQuote(symbol: "AAPL", price: 189.44, change: -2.13),
+            StockQuote(symbol: "MSFT", price: 412.9, change: 1.1),
+            StockQuote(symbol: "NVDA", price: 1204.55, change: 3.04),
+            StockQuote(symbol: "TSLA", price: 177.02, change: -15.24),
+            StockQuote(symbol: "BRK.B", price: 412.1, change: 0),
+        ]
+        let frame = StocksFrame(quotes: quotes, age: 42)
+        let data = try frame.encoded()
+        expect(data.count <= Wire.maxPayload, "a page frame travels alone (got \(data.count)B)")
+
+        let text = String(decoding: data, as: UTF8.self)
+        equal(
+            text,
+            #"{"a":42,"c":[{"d":-21,"p":"189.44","s":"AAPL"},{"d":11,"p":"412.90","s":"MSFT"},"#
+                + #"{"d":30,"p":"1204.55","s":"NVDA"},{"d":-152,"p":"177.02","s":"TSLA"},"#
+                + #"{"d":0,"p":"412.10","s":"BRK.B"}],"g":4}"#,
+            "keys are sorted, prices carry the cents the market trades in, and 4 names the page")
+
+        let back = try JSONDecoder().decode(StocksFrame.self, from: data)
+        equal(back.quotes.map(\.symbol), ["AAPL", "MSFT", "NVDA", "TSLA", "BRK.B"], "round trips")
+        equal(back.quotes[0].change, -2.1, "the percentage travels as tenths, not as a float")
+        equal(back.marketClosed, false, "an open market is the absence of a key, not a zero")
+
+        // ขั้นแรกคือทศนิยม ตัวเลขหยาบขึ้นแต่ยังเป็นราคาที่ใช้ตัดสินใจได้
+        let tight = try frame.encoded(maxBytes: data.count - 3)
+        let trimmed = try JSONDecoder().decode(StocksFrame.self, from: tight)
+        equal(
+            trimmed.quotes.map(\.symbol), ["AAPL", "MSFT", "NVDA", "TSLA", "BRK.B"],
+            "a frame three bytes over loses cents, not symbols")
+
+        // ขั้นที่สองคือคอลัมน์เปอร์เซ็นต์ทั้งคอลัมน์ — ก่อนแถวและก่อนสัญลักษณ์เสมอ
+        let noPct = try frame.encoded(maxBytes: 160)
+        expect(noPct.count <= 160, "and it does fit what it was given")
+        let poor = String(decoding: noPct, as: UTF8.self)
+        expect(!poor.contains("\"d\""), "the percentages are what go, not the names")
+        equal(
+            try JSONDecoder().decode(StocksFrame.self, from: noPct).quotes.map(\.symbol),
+            ["AAPL", "MSFT", "NVDA", "TSLA", "BRK.B"],
+            "every symbol is still spelled out in full")
+
+        // ขั้นสุดท้ายคือแถว — และแถวที่เหลือยังมีสัญลักษณ์เต็มทุกตัว
+        let hard = try frame.encoded(maxBytes: 80)
+        expect(hard.count <= 80, "a hard ceiling is still obeyed")
+        let few = try JSONDecoder().decode(StocksFrame.self, from: hard)
+        expect(few.quotes.count < 5, "something had to go")
+        equal(
+            few.quotes.map(\.symbol),
+            Array(["AAPL", "MSFT", "NVDA", "TSLA", "BRK.B"].prefix(few.quotes.count)),
+            "what is left is the head of the list")
+
+        do {
+            _ = try frame.encoded(maxBytes: 8)
+            expect(false, "a ceiling smaller than an empty frame is refused")
+        } catch {
+            equal(error as? StocksError, .frameTooLong, "and says so instead of sending rubbish")
+        }
+
+        // ตลาดปิดเดินทางเป็นคีย์ของตัวเอง — บอร์ดต้องแยก "ค้างเพราะตลาดปิด" ออกจาก
+        // "ค้างเพราะท่อพัง" ได้โดยไม่ต้องรู้ปฏิทินตลาดเอง
+        let shut = try StocksFrame(quotes: [quotes[0]], age: 9, marketClosed: true).encoded()
+        equal(
+            String(decoding: shut, as: UTF8.self),
+            #"{"a":9,"c":[{"d":-21,"p":"189.44","s":"AAPL"}],"g":4,"k":1}"#,
+            "a closed market says so on the wire")
+        equal(
+            try JSONDecoder().decode(StocksFrame.self, from: shut).marketClosed, true,
+            "and it round trips")
+    }
+
+    suite("the stock watchlist is capped at five and keeps the order the user gave it") {
+        var settings = StockSettings(
+            symbols: ["aapl", "MSFT", "AAPL", "  ", "nvda", "tsla", "spy", "qqq"])
+        equal(
+            settings.symbols, ["AAPL", "MSFT", "NVDA", "TSLA", "SPY"],
+            "five at most, no blanks, upper case as the market writes them, and no repeats")
+
+        expect(!settings.add("qqq"), "a full list refuses the sixth")
+        equal(settings.symbols.count, 5, "and stays five")
+        settings.remove(4)
+        expect(settings.add("qqq"), "with room again it takes one")
+        equal(
+            settings.symbols, ["AAPL", "MSFT", "NVDA", "TSLA", "QQQ"],
+            "at the end, where it was put")
+        expect(!settings.add("aapl"), "a symbol already on the list is not added twice")
+
+        settings.move(0, by: 1)
+        equal(
+            settings.symbols, ["MSFT", "AAPL", "NVDA", "TSLA", "QQQ"], "a symbol moves one step")
+        settings.move(0, by: -1)
+        equal(settings.symbols, ["MSFT", "AAPL", "NVDA", "TSLA", "QQQ"], "and stops at the edge")
+
+        // เพดานเดียวกันต้องบังคับตอนอ่านค่าเก่าด้วย ไม่ใช่แค่ตอนผู้ใช้กดปุ่ม
+        equal(
+            StocksFrame(quotes: (0..<9).map {
+                StockQuote(symbol: "S\($0)", price: 1, change: 0)
+            }).quotes.count, StockSettings.maxSymbols,
+            "and the frame refuses to carry more than the page can show")
+    }
+
+    suite("what finnhub says becomes a row, and rubbish stays rubbish") {
+        let quote = Data(
+            """
+            {"c":189.44,"d":-4.12,"dp":-2.134,"h":191.0,"l":188.2,"o":190.0,"pc":193.56,
+             "t":1582641000}
+            """.utf8)
+        equal(
+            try StocksSource.quote(symbol: "aapl", from: quote),
+            StockQuote(symbol: "AAPL", price: 189.44, change: -2.134),
+            "the symbol is upper case even when the user typed it in lower")
+
+        // หุ้นที่เพิ่งเข้าตลาดวันนี้ยังไม่มีราคาปิดครั้งก่อนให้เทียบ — ราคายังจริงและต้องขึ้นจอ
+        equal(
+            try StocksSource.quote(
+                symbol: "IPO", from: Data(#"{"c":31.5,"dp":null,"pc":0}"#.utf8)).change, 0,
+            "a missing percentage is flat, not a broken payload")
+
+        // สัญลักษณ์ที่ไม่มีอยู่ไม่ได้ตอบ 404 แต่ตอบศูนย์ทั้งก้อน — ศูนย์คู่นี้ไม่ใช่ราคาที่ตก
+        do {
+            _ = try StocksSource.quote(
+                symbol: "NOPE", from: Data(#"{"c":0,"d":null,"dp":null,"pc":0}"#.utf8))
+            expect(false, "a quote of nothing is not a stock")
+        } catch {
+            equal(
+                error as? StocksError, .noSuchSymbol,
+                "and it is not the same as a broken reply")
+        }
+
+        for broken in ["", "not json at all", "{}", #"{"d":1}"#, "[]"] {
+            do {
+                _ = try StocksSource.quote(symbol: "AAPL", from: Data(broken.utf8))
+                expect(false, "a payload with no price is refused: \(broken)")
+            } catch {
+                equal(error as? StocksError, .badPayload, "and says so plainly")
+            }
+        }
+
+        // key เดินทางใน query — ที่เดียวที่มันปรากฏได้ และห้ามหลุดเข้า log
+        let url = StocksSource.quoteURL(symbol: " aapl ", token: "sk-secret")!
+        expect(url.query?.contains("symbol=AAPL") == true, "one request asks about one symbol")
+        expect(url.query?.contains("token=sk-secret") == true, "with the user's own key")
+        let said = StocksSource.describe(url)
+        expect(said.contains("symbol=AAPL"), "what we may write down still says what we asked")
+        expect(!said.contains("sk-secret"), "and never carries the key itself")
+        expect(
+            StocksSource.quoteURL(symbol: "AAPL", token: "") == nil,
+            "and nothing is asked without a key")
+    }
+
+    // เพดานห้าสัญลักษณ์คืองบ ไม่ใช่ความสวยงาม: หนึ่งคำขอต่อหนึ่งสัญลักษณ์ต่อหนึ่งนาที
+    // การยิงตอนตลาดปิดคือการเผาโควตาของผู้ใช้เพื่อรับตัวเลขชุดเดิม
+    suite("the market is open when new york is, and nothing is asked while it is shut") {
+        func at(_ text: String) -> Date {
+            let f = DateFormatter()
+            // en_US_POSIX ไม่ใช่ locale ของเครื่อง — เครื่องที่ตั้งเป็นไทยอ่าน "2024" เป็น
+            // พ.ศ. แล้ววันในสัปดาห์จะเลื่อนไปคนละวัน ซึ่งเป็นสิ่งที่เทสต์นี้วัดพอดี
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.calendar = Calendar(identifier: .gregorian)
+            f.dateFormat = "yyyy-MM-dd HH:mm"
+            f.timeZone = MarketHours.exchange
+            return f.date(from: text)!
+        }
+        // 2024-06-10 คือวันจันทร์ · 2024-06-15 คือวันเสาร์
+        expect(!MarketHours.isOpen(at("2024-06-10 09:29")), "a minute before the bell is shut")
+        expect(MarketHours.isOpen(at("2024-06-10 09:30")), "the bell opens it")
+        expect(MarketHours.isOpen(at("2024-06-10 15:59")), "and it stays open all session")
+        expect(!MarketHours.isOpen(at("2024-06-10 16:00")), "the close is shut, not open")
+        expect(!MarketHours.isOpen(at("2024-06-10 03:00")), "the small hours are shut")
+        expect(!MarketHours.isOpen(at("2024-06-15 12:00")), "so is saturday noon")
+        expect(!MarketHours.isOpen(at("2024-06-16 12:00")), "and sunday noon")
+        // เวลาเป็นของตลาด ไม่ใช่ของผู้ใช้ — คนที่นั่งอยู่กรุงเทพต้องได้หน้าต่างเดียวกัน
+        expect(
+            MarketHours.isOpen(Date(timeIntervalSince1970: 1_718_026_200)),
+            "10 Jun 2024 13:30 UTC is 09:30 in new york, wherever the user is sitting")
+
+        var asked = 0
+        let service = StocksService(
+            settings: StockSettings(symbols: ["AAPL"]), interval: 60, key: { "sk-secret" }
+        ) { _, done in
+            asked += 1
+            done(.success(Data(#"{"c":189.44,"dp":-2.1,"pc":193.5}"#.utf8)))
+        }
+        var frames: [StocksFrame] = []
+        service.onFrame = { frame, _ in frames.append(frame) }
+
+        // เปิดแอปตอนตีสาม: ยิงหนึ่งรอบเพราะยังไม่มีอะไรบนจอเลย แล้วเงียบจนตลาดเปิด
+        // หน้าที่เขียนว่า "ยังไม่มีหุ้น" ทั้งที่ผู้ใช้ใส่ไว้แล้วคือหน้าที่บอกเหตุผลผิด
+        let shut = at("2024-06-10 03:00")
+        service.tick(now: shut)
+        equal(asked, 1, "a page with nothing on it yet gets the last close, once")
+        equal(frames.last?.marketClosed, true, "and it says the figures are not moving")
+        service.tick(now: shut + 3600)
+        equal(asked, 1, "after that the shut market costs no quota at all")
+        equal(frames.count, 1, "and the board is not written to again")
+
+        let open = at("2024-06-10 09:30")
+        service.tick(now: open)
+        equal(asked, 2, "the bell starts the round")
+        equal(frames.last?.quotes.map(\.symbol), ["AAPL"], "and the page gets a frame")
+        equal(frames.last?.marketClosed, false, "which does not claim the market is shut")
+
+        service.tick(now: open + 59)
+        equal(asked, 2, "nothing happens between rounds")
+        service.tick(now: open + 60)
+        equal(asked, 3, "one request per symbol per round")
+
+        // ระฆังปิด: บอกบอร์ดครั้งเดียวว่าตัวเลขค้างเพราะอะไร แล้วเงียบ
+        let closing = at("2024-06-10 16:00")
+        service.tick(now: closing)
+        equal(asked, 3, "the close stops the asking")
+        equal(frames.count, 4, "and the board is told once why the figures stopped moving")
+        equal(frames.last?.marketClosed, true, "with the reason attached to the figures")
+        equal(
+            frames.last?.quotes.map(\.symbol), ["AAPL"],
+            "the last figures of the session stay on the page")
+        service.tick(now: closing + 3600)
+        equal(frames.count, 4, "and it is not repeated every second until monday")
+        expect(
+            service.status?.contains("closed") == true,
+            "the settings window can say why the page is not moving")
+    }
+
+    suite("the stock page needs a key of the user's own, and says so when it is refused") {
+        var replies: [Result<Data, Error>] = []
+        var asked: [String] = []
+        var token = "sk-good"
+        var keyError: Error?
+        let service = StocksService(
+            settings: StockSettings(symbols: ["AAPL", "MSFT"]), interval: 60,
+            key: {
+                if let keyError { throw keyError }
+                return token
+            }
+        ) { url, done in
+            let symbol = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "symbol" }?.value ?? "?"
+            asked.append(symbol)
+            done(replies.isEmpty ? .success(Data(#"{"c":1,"dp":0,"pc":1}"#.utf8))
+                : replies.removeFirst())
+        }
+        var frames: [StocksFrame] = []
+        service.onFrame = { frame, _ in frames.append(frame) }
+
+        // 2024-06-10 13:35 UTC = 09:35 ที่นิวยอร์ก ตลาดเปิด
+        let open = Date(timeIntervalSince1970: 1_718_026_500)
+
+        // ไม่มี key = ไม่มีอะไรให้ยิง แต่ต้องบอกผู้ใช้ ไม่ใช่ปล่อยหน้าค้างเงียบๆ
+        keyError = SecretFile.Problem(message: "no Finnhub key at ~/.tamaclaude/finnhub-key")
+        service.tick(now: open)
+        equal(asked.count, 0, "with no key nothing is asked")
+        expect(service.status?.contains("no Finnhub key") == true, "and the window says why")
+
+        keyError = nil
+        service.tick(now: open + 60)
+        equal(asked, ["AAPL", "MSFT"], "with a key every symbol is asked about, one by one")
+        equal(frames.count, 1, "and the page gets one frame for the whole watchlist")
+        equal(service.status, nil, "and the complaint is taken down with it")
+
+        // key ที่ถูกปฏิเสธจะถูกปฏิเสธทั้งห้าคำขอ — หยุดทั้งรอบ อย่าเผาที่เหลือ
+        asked = []
+        token = "sk-stale"
+        replies = [.failure(StocksError.keyRejected)]
+        service.tick(now: open + 120)
+        equal(asked, ["AAPL"], "a refused key stops the round at the first request")
+        equal(frames.count, 1, "the figures already on the page are left standing")
+        expect(service.keyRejected, "and the window can tell a bad key from a bad network")
+        expect(
+            service.status?.contains("key") == true,
+            "with a sentence that points at the key, not at the network")
+
+        // และรอบถัดไปก็ไม่เกิดเลย — key ที่ถูกปฏิเสธจะถูกปฏิเสธเหมือนเดิมทุกนาที
+        // การยิงต่อคือการเผาโควตาของผู้ใช้เพื่อรับคำตอบที่รู้อยู่แล้ว
+        service.tick(now: open + 180)
+        service.tick(now: open + 240)
+        equal(asked, ["AAPL"], "a key already refused is not spent on again")
+
+        // ผู้ใช้วาง key ใหม่ — รอบถัดไปต้องเกิดเดี๋ยวนี้ ไม่ใช่เมื่อครบนาที
+        asked = []
+        token = "sk-good"
+        service.keyWasSet()
+        expect(!service.keyRejected, "a new key is innocent until it is refused")
+        service.tick(now: open + 121)
+        equal(asked, ["AAPL", "MSFT"], "and it is tried at once, not a minute later")
+        equal(frames.count, 2, "so the page comes back without the user waiting")
+
+        // สัญลักษณ์ที่พิมพ์ผิดต้องไม่กันทั้ง watchlist และต้องไม่ถูกถามซ้ำทุกนาทีตลอดไป
+        var lookups: [String] = []
+        let typo = StocksService(
+            settings: StockSettings(symbols: ["AAPL", "NOPE"]), interval: 60,
+            key: { "sk-good" }
+        ) { url, done in
+            let symbol = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "symbol" }?.value ?? "?"
+            lookups.append(symbol)
+            let found = symbol == "AAPL"
+            let reply = found
+                ? #"{"c":189.44,"dp":1.0,"pc":187.0}"# : #"{"c":0,"dp":null,"pc":0}"#
+            done(.success(Data(reply.utf8)))
+        }
+        var typoFrames: [StocksFrame] = []
+        typo.onFrame = { frame, _ in typoFrames.append(frame) }
+        typo.tick(now: open)
+        equal(lookups, ["AAPL", "NOPE"], "both are asked about once")
+        equal(typoFrames.last?.quotes.map(\.symbol), ["AAPL"], "the one that exists still shows")
+        expect(
+            typo.status?.contains("NOPE") == true,
+            "and the one that does not is named, not dropped in silence")
+        typo.tick(now: open + 60)
+        equal(lookups, ["AAPL", "NOPE", "AAPL"], "a symbol that matches nothing is not re-asked")
+
+        // "หน้านี้เปิดอยู่ไหม" เป็นคำถามของ `PageSettings` ไม่ใช่ของที่นี่
+        let blank = StocksService(settings: StockSettings(), interval: 60, key: { "sk" }) {
+            _, _ in expect(false, "an empty watchlist asks nobody anything")
+        }
+        blank.tick(now: open)
+    }
+
+    suite("the finnhub key file is refused unless only its owner can read it") {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("fh-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // แอปเป็นคนเขียน ผู้ใช้แค่วางค่าลงช่อง — ไฟล์ต้องเป็น 600 ตั้งแต่วินาทีแรก
+        let url = dir.appendingPathComponent("finnhub-key")
+        try FinnhubKeyFile.write("  fh-secret\n", to: url)
+        equal(try FinnhubKeyFile.read(at: url), "fh-secret", "it comes back trimmed")
+        equal(
+            (try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions]
+                as? NSNumber)?.int16Value, 0o600,
+            "written readable only by its owner, without the user running chmod")
+
+        // ไฟล์ที่ผู้ใช้เคยสร้างเองแบบ 644 ต้องกลายเป็น 600 ตอนแอปเขียนทับ ไม่ใช่คงสิทธิ์เดิม
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o644], ofItemAtPath: url.path)
+        try FinnhubKeyFile.write("fh-second", to: url)
+        equal(
+            (try FileManager.default.attributesOfItem(atPath: url.path)[.posixPermissions]
+                as? NSNumber)?.int16Value, 0o600,
+            "overwriting a loose file tightens it, it does not inherit what was there")
+        expect(FinnhubKeyFile.isUsable(at: url), "and the key is usable")
+
+        // credential ที่คนอื่นบนเครื่องอ่านได้ไม่ใช่ของเราคนเดียวแล้ว — บิตเดียวก็พอ
+        for mode in [0o640, 0o604, 0o644, 0o660, 0o666] {
+            try FileManager.default.setAttributes(
+                [.posixPermissions: mode], ofItemAtPath: url.path)
+            expect(
+                !FinnhubKeyFile.isUsable(at: url),
+                "mode \(String(mode, radix: 8)) is readable by someone else")
+        }
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600], ofItemAtPath: url.path)
+
+        // ข้อความต้องบอกวิธีแก้ และต้องไม่พา key ติดออกไปด้วย
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o644], ofItemAtPath: url.path)
+        do {
+            _ = try FinnhubKeyFile.read(at: url)
+            expect(false, "a 644 key file must be refused, not read")
+        } catch let problem as SecretFile.Problem {
+            expect(problem.message.contains("chmod 600"), "the message says how to fix it")
+            expect(!problem.message.contains("fh-second"), "and never carries the key itself")
+        }
+
+        let missing = dir.appendingPathComponent("nothing-here")
+        do {
+            _ = try FinnhubKeyFile.read(at: missing)
+            expect(false, "a file that is not there is not a key")
+        } catch let problem as SecretFile.Problem {
+            expect(problem.message.contains("finnhub.io"), "a missing file says where to get one")
+        }
+        do {
+            try FinnhubKeyFile.write("   ", to: missing)
+            expect(false, "whitespace is not a key")
+        } catch let problem as SecretFile.Problem {
+            expect(problem.message.contains("empty"), "and saving it says so")
+        }
+        expect(
+            !FileManager.default.fileExists(atPath: missing.path),
+            "a refused key leaves no file behind")
+
+        // ไฟล์สองใบนี้เป็นคนละความลับ และไม่เคยปนกัน
+        expect(
+            Paths.finnhubKey != Paths.sessionKey,
+            "the stock key is not the claude.ai credential and does not share its file")
     }
 
     suite("a calendar frame fits one mtu and never cuts the when off an appointment") {

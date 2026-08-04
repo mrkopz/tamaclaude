@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gen import calendar, crypto, mascot, screen, weather  # noqa: E402
+from gen import calendar, crypto, mascot, screen, stocks, weather  # noqa: E402
 from gen.config import L, PAL, REPO_DIR  # noqa: E402
 from gen.props import BOX_X0, BOX_X1, BOX_Y0, BOX_Y1  # noqa: E402
 from gen.render import quantize565, render_rects  # noqa: E402
@@ -251,6 +251,44 @@ CRYPTO_SCENES: dict[str, crypto.Crypto] = {
 }
 
 
+# หน้าหุ้น — โครงเดียวกับหน้าคริปโต บวกสิ่งที่หุ้นมีแต่คริปโตไม่มี: ตลาดที่ปิดได้
+# ฉากถูกเลือกให้ครบสิ่งที่ต้องตัดสินด้วยตา: ขึ้น ลง นิ่งในจอเดียว · ตลาดปิดที่ต้องไม่อ่าน
+# ว่าท่อพัง · เฟรมที่ถูกบีบจนไม่มีคอลัมน์เปอร์เซ็นต์ · หน้าที่ยังไม่เคยได้ข้อมูล · ลิงก์หลุด
+STOCK_SCENES: dict[str, stocks.Stocks] = {
+    "full": stocks.Stocks(rows=[
+        stocks.Stock("AAPL", "189.44", -21),
+        stocks.Stock("MSFT", "412.90", 11),
+        stocks.Stock("NVDA", "1204.55", 30),
+        stocks.Stock("TSLA", "177.02", -152),
+        stocks.Stock("BRK.B", "412.10", 0),
+    ], age=25),
+    # สองตัวต้องดูเหมือน watchlist สองตัว ไม่ใช่ห้าตัวที่หายไปสาม
+    "short": stocks.Stocks(rows=[
+        stocks.Stock("AAPL", "189.44", 3),
+        stocks.Stock("SPY", "534.21", -8),
+    ], age=8),
+    # ตลาดปิด: ราคาเก่าเป็นชั่วโมงคือเรื่องปกติ บรรทัดล่างต้องอธิบาย ไม่ใช่ตะโกนว่า stale
+    "closed": stocks.Stocks(rows=[
+        stocks.Stock("AAPL", "189.44", -21),
+        stocks.Stock("MSFT", "412.90", 11),
+        stocks.Stock("NVDA", "1204.55", 30),
+    ], age=11 * 3600, market_closed=True),
+    # เฟรมที่ถูกบีบจนต้องทิ้งคอลัมน์เปอร์เซ็นต์ — ราคายังครบ ทิศทางหายไปทั้งหน้า
+    "no_pct": stocks.Stocks(rows=[
+        stocks.Stock("AAPL", "189.44", None),
+        stocks.Stock("MSFT", "412.90", None),
+        stocks.Stock("NVDA", "1204.55", None),
+    ], age=40),
+    # ยังไม่เคยได้เฟรมของหน้านี้เลย — ห้ามเป็นจอเปล่าหรือโครงว่าง (ADR-0002)
+    "empty": stocks.Stocks(has_frame=False),
+    # Mac หายไป: ตัวเลขค้างอยู่แต่ไม่มีใครรับรองแล้ว ลูกศรยังบอกทิศได้โดยไม่ต้องมีสี
+    "offline": stocks.Stocks(rows=[
+        stocks.Stock("AAPL", "189.44", -21),
+        stocks.Stock("MSFT", "412.90", 11),
+    ], age=45 * 60, connected=False),
+}
+
+
 # หน้าปฏิทิน — ใบเดียวที่อ่านข้อมูลจากเครื่องเอง ไม่ใช่จากเน็ต (ADR-0005)
 # ฉากถูกเลือกให้ครบสิ่งที่ต้องตัดสินด้วยตา: ชื่อนัดภาษาไทยที่มีวรรณยุกต์เหนือสระบน ·
 # ชื่อที่ยาวจนถูกตัด · นัดทั้งวันที่ไม่มีเวลา · ทุกสภาพที่ไม่มีนัดให้แสดง · ลิงก์หลุด
@@ -359,6 +397,14 @@ def main() -> None:
         big.save(OUT / f"crypto_{name}@{args.scale}x.png")
     # ไม่มี GIF: หน้านี้ไม่มีอะไรขยับเลย (ไม่มีมาสคอตจิ๋ว) นอกจากบรรทัดอายุที่เดินทีละวินาที
     print(f"crypto_*.png          {len(CRYPTO_SCENES)} ฉาก  (320x240)")
+
+    for name, s_ in STOCK_SCENES.items():
+        img = stocks.render(s_)
+        img.save(OUT / f"stocks_{name}.png")
+        big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
+        big.save(OUT / f"stocks_{name}@{args.scale}x.png")
+    # ไม่มี GIF ด้วยเหตุผลเดียวกับหน้าคริปโต — ไม่มีอะไรบนหน้านี้ขยับนอกจากบรรทัดอายุ
+    print(f"stocks_*.png          {len(STOCK_SCENES)} ฉาก  (320x240)")
 
     for name, c in CALENDAR_SCENES.items():
         img = calendar.render(c)

@@ -5,6 +5,7 @@
 #include "ct_fonts.h"
 #include "ct_paint.h"
 #include "ct_rects.h"
+#include "ct_trend.h"
 #include "layout.h"
 
 static const ct_crypto_t *s_frame;
@@ -24,38 +25,9 @@ static lv_obj_t *s_empty;
 static lv_obj_t *s_empty_sub;
 
 // --- ขึ้นกับลง -----------------------------------------------------------------
-// สีอย่างเดียวไม่พอ: ตาบอดสีแดง-เขียวคือคนกลุ่มใหญ่ที่สุดที่ *ต้อง* แยกกำไรกับขาดทุนออก
-// โดยไม่อ่านตัวเลข รูปทรงจึงเป็นตัวบอกหลัก ส่วนสีเป็นตัวช่วยที่สอง
-// ต้องตรงกับ tone() และ arrow() ใน tools/gen/crypto.py
-
-// สีของแถวหนึ่ง — ทั้งลูกศรและตัวเลขเปอร์เซ็นต์อ่านจากที่เดียวกัน ไม่งั้นสองอย่างที่อยู่
-// ติดกันจะเถียงกันเองได้เมื่อมีใครแก้ทางใดทางหนึ่ง
-static uint16_t tone(int change, bool connected)
-{
-    if (!connected) return CT_COL_GRAY;
-    if (change > 0) return CT_COL_GOOD;
-    if (change < 0) return CT_COL_ALERT;
-    return CT_COL_TEXT_DIM;
-}
-
-static void build_arrow(ct_rects_t *out, int change, bool connected)
-{
-    ct_rects_reset(out);
-    uint16_t color = tone(change, connected);
-
-    if (change == 0) {
-        // นิ่งคือขีดเดียว ไม่ใช่ลูกศรแบนๆ — สามเหลี่ยมที่ชี้ไปไหนไม่ได้อ่านเป็นลูกศรเสีย
-        ct_rects_add(out, 0.5f, 1.75f, 3.0f, 0.5f, color);
-        return;
-    }
-    // สามขั้น กว้างขึ้นไปทางฐาน — ที่ 16px ขั้นละ 4px ยังอ่านเป็นสามเหลี่ยม
-    for (int i = 0; i < 3; i++) {
-        float w = 1.0f + i * 1.0f;
-        float x = 2.0f - w / 2.0f;
-        float y = change > 0 ? 0.5f + i * 1.0f : 3.5f - i * 1.0f - 1.0f;
-        ct_rects_add(out, x, y, w, 1.0f, color);
-    }
-}
+// กติกาทั้งชุด (สี ลูกศร ข้อความเปอร์เซ็นต์) อยู่ที่ `ct_trend` ที่เดียว เพราะหน้าหุ้นบอก
+// ทิศทางด้วยกติกาเดียวกันเป๊ะ — ลูกศรที่ชี้คนละแบบระหว่างสองหน้าคือจอที่ต้องอ่านสองครั้ง
+// เพื่อรู้เรื่องเดียวกัน
 
 static void arrow_draw_cb(lv_event_t *e)
 {
@@ -68,7 +40,7 @@ static void arrow_draw_cb(lv_event_t *e)
     lv_obj_get_coords(obj, &coords);
 
     ct_rects_t rects;
-    build_arrow(&rects, s_frame->rows[index].change, s_connected);
+    ct_trend_arrow(&rects, s_frame->rows[index].change, s_connected);
     ct_paint_rects(layer, &rects, coords.x1, coords.y1, CT_CRYPTO_ARROW_PX);
 }
 
@@ -134,18 +106,6 @@ void ct_crypto_ui_init(lv_obj_t *parent, const ct_crypto_t *frame, const bool *h
     ct_crypto_ui_redraw();
 }
 
-// เปอร์เซ็นต์คูณสิบ -> ข้อความที่มีเครื่องหมายเสมอ — "+1.1%" กับ "1.1%" ต่างกันตรงที่
-// อันหลังต้องอ่านสีหรือลูกศรก่อนถึงจะรู้ว่าขึ้นหรือลง
-static void pct_text(char *out, size_t cap, int change)
-{
-    int whole = change / 10;
-    int tenth = change % 10;
-    if (tenth < 0) tenth = -tenth;
-    const char *sign = change > 0 ? "+" : (change < 0 ? "-" : "");
-    if (whole < 0) whole = -whole;
-    lv_snprintf(out, cap, "%s%d.%d%%", sign, whole, tenth);
-}
-
 void ct_crypto_ui_redraw(void)
 {
     bool have = *s_has_frame;
@@ -171,10 +131,11 @@ void ct_crypto_ui_redraw(void)
         lv_label_set_text(row->sym, data->sym);
         lv_label_set_text(row->price, data->price);
         char text[16];
-        pct_text(text, sizeof(text), data->change);
+        ct_trend_pct_text(text, sizeof(text), data->change);
         lv_label_set_text(row->pct, text);
 
-        lv_obj_set_style_text_color(row->pct, ct_color(tone(data->change, s_connected)), 0);
+        lv_obj_set_style_text_color(
+            row->pct, ct_color(ct_trend_tone(data->change, s_connected)), 0);
         // ราคาที่ไม่มีใครรับรองแล้วเป็นเทา เหมือนอุณหภูมิบนหน้าอากาศ — ตัวเลขยังอ่านได้
         // แต่ต้องไม่อ่านว่าเป็นตอนนี้
         lv_obj_set_style_text_color(row->price,

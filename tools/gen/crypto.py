@@ -10,10 +10,14 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw
 
-from . import age, screen
+from . import age, screen, trend
 from .config import L, PAL
-from .rects import Rect, RectList
 from .render import draw_rects, quantize565
+
+# ทิศทางขึ้น/ลงเป็นกติกาของทุกหน้า watchlist ไม่ใช่ของหน้านี้ — อยู่ที่ `trend` ที่เดียว
+tone = trend.tone
+arrow = trend.arrow
+pct_text = trend.pct_text
 
 
 @dataclass(slots=True)
@@ -28,50 +32,6 @@ class Coin:
     price: str
     # เปอร์เซ็นต์คูณสิบ เหมือนที่เดินทางบนสาย
     change: int
-
-
-def tone(change: int, connected: bool = True) -> str:
-    """สีของแถวหนึ่ง — ทั้งลูกศรและตัวเลขเปอร์เซ็นต์อ่านจากที่เดียวกัน
-
-    ต้องตรงกับ tone() ใน ct_crypto_ui.c
-    """
-    if not connected:
-        return PAL.gray
-    if change > 0:
-        return PAL.good
-    if change < 0:
-        return PAL.alert
-    return PAL.text_dim
-
-
-def arrow(change: int, connected: bool = True) -> RectList:
-    """ลูกศรขึ้น/ลง — ต้องตรงกับ build_arrow() ใน ct_crypto_ui.c
-
-    สีอย่างเดียวไม่พอ: ตาบอดสีแดง-เขียวคือคนกลุ่มใหญ่ที่สุดที่ *ต้อง* แยกกำไรกับขาดทุน
-    ออกโดยไม่อ่านตัวเลข รูปทรงจึงเป็นตัวบอกหลัก ส่วนสีเป็นตัวช่วยที่สอง
-    """
-    color = tone(change, connected)
-
-    if change == 0:
-        # นิ่งคือขีดเดียว ไม่ใช่ลูกศรแบนๆ — สามเหลี่ยมที่ชี้ไปไหนไม่ได้อ่านเป็นลูกศรเสีย
-        return [Rect(0.5, 1.75, 3.0, 0.5, color)]
-    out: RectList = []
-    for i in range(3):
-        w = 1.0 + i
-        x = 2.0 - w / 2.0
-        y = 0.5 + i if change > 0 else 3.5 - i - 1.0
-        out.append(Rect(x, y, w, 1.0, color))
-    return out
-
-
-def pct_text(change: int) -> str:
-    """เปอร์เซ็นต์คูณสิบ -> ข้อความที่มีเครื่องหมายเสมอ
-
-    "+1.1%" กับ "1.1%" ต่างกันตรงที่อันหลังต้องอ่านสีหรือลูกศรก่อนถึงจะรู้ว่าขึ้นหรือลง
-    ต้องตรงกับ pct_text() ใน ct_crypto_ui.c
-    """
-    sign = "+" if change > 0 else ("-" if change < 0 else "")
-    return f"{sign}{abs(change) // 10}.{abs(change) % 10}%"
 
 
 @dataclass(slots=True)
