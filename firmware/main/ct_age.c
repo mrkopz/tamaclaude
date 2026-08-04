@@ -19,6 +19,22 @@ void ct_age_text(char *out, size_t cap, int secs)
     }
 }
 
+void ct_age_gap_text(char *out, size_t cap, int secs)
+{
+    if (secs < 0) secs = 0;
+    // วินาทีโผล่เฉพาะนาทีแรก: ต่ำกว่านั้นคือการหลุดสั้นๆ ที่ต่อกลับเองได้ ตัวเลขที่เดินทีละ
+    // วินาทีบอกว่ามันเพิ่งเกิด ซึ่งเป็นคนละเรื่องกับ "หายไปตั้งแต่เมื่อวาน"
+    if (secs < 60) {
+        snprintf(out, cap, "%ds", secs);
+    } else if (secs < 3600) {
+        snprintf(out, cap, "%dm", secs / 60);
+    } else if (secs < 86400) {
+        snprintf(out, cap, "%dh %02dm", secs / 3600, (secs % 3600) / 60);
+    } else {
+        snprintf(out, cap, "%dd %dh", secs / 86400, (secs % 86400) / 3600);
+    }
+}
+
 bool ct_age_is_stale(int secs, int refresh_s) { return secs > refresh_s * CT_PAGE_STALE_FACTOR; }
 
 lv_obj_t *ct_age_label(lv_obj_t *parent)

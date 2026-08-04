@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import bitmapfont, mascot, pages, sky, thai, topbar
+from . import age, bitmapfont, mascot, pages, sky, thai, topbar
 from .config import L, PAL
 from .mascot import BODY
 from .props import BOX_X0, BOX_X1, BOX_Y1
@@ -155,6 +155,10 @@ class Screen:
     # แยกจาก connected ตั้งแต่ M2 เพราะ snapshot เดินทางมาทาง LAN ได้แล้ว: จอที่ข้อมูล
     # สดแต่ BLE ตายเป็นสภาพที่มีจริง และไอคอนต้องบอกให้ถูก
     ble: bool | None = None
+    # หลุดลิงก์มากี่วินาทีแล้ว — บอร์ดนับเองด้วยนาฬิกาของตัวเอง (ct_pages.c) ไม่ได้มาจาก
+    # host ด้วยเหตุผลเดียวกับ countdown ของโควตา: ตอนที่ตัวเลขนี้มีความหมายที่สุดคือ
+    # ตอนที่ไม่มีใครส่งอะไรมาให้แล้ว · ไม่มีความหมายเมื่อ connected
+    offline_s: int = 0
 
     @property
     def ble_link(self) -> bool:
@@ -475,22 +479,54 @@ def _usage(draw: ImageDraw.ImageDraw, rows: list[Usage]) -> None:
         y += L.usage.row_h + L.usage.gap
 
 
+# เวลาที่ยังไม่เคย sync — ตรงกับค่าที่ ct_model_init ใส่ไว้ให้ `clock`
+CLOCK_UNKNOWN = "--:--"
+
+
+def last_seen_text(s: Screen) -> str:
+    """เวลาสุดท้ายที่ยังรับรองได้ พูดเป็นอดีตกาล — ต้องตรงกับ last_seen_text ใน ct_ui.c
+
+    บอร์ดที่เพิ่งบูตและยังไม่เคยได้ snapshot ไม่มีเวลาให้อ้างถึงเลย ("--:--" คือค่านั้น)
+    "since --:--" คือการอ้างถึงเวลาที่ไม่มีอยู่ — สภาพนั้นมีชื่อของมันเอง
+    """
+    if not s.clock or s.clock == CLOCK_UNKNOWN:
+        return "no contact yet"
+    return f"since {s.clock} {s.date}".rstrip()
+
+
 def _idle_clock(draw: ImageDraw.ImageDraw, s: Screen) -> None:
     """ไม่มีอะไรต้องเตือน = ให้พื้นที่นี้ทำหน้าที่นาฬิกาตั้งโต๊ะแทน
 
     นี่คือสิ่งที่จอเป็นอยู่เกือบตลอดเวลา ถ้าปล่อยว่างจะดูเหมือนอุปกรณ์พัง
+
+    **ตอนหลุดลิงก์ไม่มีนาฬิกา** — เวลาไม่ได้เดินต่อบนบอร์ด เลข 46pt ที่ค้างจึงเป็น
+    คำโกหกที่ตัวใหญ่ที่สุดบนจอ และการหรี่เป็นเทาไม่ช่วย: มันยังอ่านว่า "ตอนนี้" อยู่ดี
+    ที่เดียวกันตกเป็นของสิ่งเดียวที่บอร์ดยังยืนยันได้เอง คือหลุดมานานเท่าไร ส่วนเวลาเดิม
+    ถอยลงไปอยู่บรรทัดล่างในรูปอดีตกาล — ด้วยเหตุผลเดียวกับที่ฟ้าหายไปทั้งผืน
     """
     cx = L.screen.width // 2
     cy = L.card.top + L.card.height // 2
-    draw.text((cx, cy - 8), s.clock, font=font(46),
-              fill=quantize565(PAL.text if s.connected else PAL.gray), anchor="mm")
-    if s.date:
-        draw.text((cx, cy + 26), s.date, font=font(12),
-                  fill=quantize565(PAL.text_dim), anchor="mm")
+    if s.connected:
+        big, caption = s.clock, s.date
+        big_col, caption_col = PAL.text, PAL.text_dim
+    else:
+        big, caption = age.gap_text(s.offline_s), last_seen_text(s)
+        # ลำดับความสว่างยังเป็นของเดิม (ตัวใหญ่สว่างกว่าตัวเล็ก) แค่ถอยลงมาพร้อมกัน
+        # หนึ่งขั้นจากสีของข้อมูลสด · บรรทัดล่างที่ยังเป็น text_dim เท่าเดิมเคยสว่างกว่า
+        # ตัวใหญ่ที่หรี่แล้ว ซึ่งอ่านเป็น "วันที่คือของสด เวลาคือของค้าง" ที่ผิดทั้งคู่
+        big_col, caption_col = PAL.text_dim, PAL.gray
+    draw.text((cx, cy - 8), big, font=font(46), fill=quantize565(big_col), anchor="mm")
+    if caption:
+        draw.text((cx, cy + 26), caption, font=font(12),
+                  fill=quantize565(caption_col), anchor="mm")
 
 
 def shows_idle_clock(s: Screen) -> bool:
-    """หน้านี้แสดงนาฬิกาตัวใหญ่เองไหม — แถบบนถามก่อนวาดนาฬิกาเล็กของมัน
+    """หน้านี้ยึดเวลาไว้เองไหม — แถบบนถามก่อนวาดนาฬิกาเล็กของมัน
+
+    ตอนหลุดลิงก์บล็อกกลางจอไม่ใช่นาฬิกาอีกแล้ว แต่ยังพูดถึงเวลาล่าสุดอยู่ ("since 14:32")
+    คำตอบจึงยังเป็น True — ไม่งั้น "14:32" เดิมจะโผล่สองที่พร้อมกัน อันหนึ่งเป็นอดีตกาล
+    อีกอันเป็นเลขลอยๆ บนแถบ
 
     ต้องตรงกับ `ct_ui_shows_clock` ใน firmware/main/ct_ui.c
     """

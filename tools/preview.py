@@ -137,13 +137,15 @@ SCENES: dict[str, screen.Screen] = {
         cards=[screen.Card("tamaclaude", "Build finished, 0 warnings", "done")],
     ),
     # มีทั้งการ์ดและตัวเลขโควตาค้างอยู่ในมือ แต่ต้องไม่ขึ้นจอสักอย่าง — หลุดลิงก์แล้ว
-    # ไม่มีใครรับรองว่ายังจริง เหลือนาฬิกาที่หรี่เป็นเทาบอกว่าเป็นเวลาล่าสุดที่รู้
+    # ไม่มีใครรับรองว่ายังจริง รวมถึงตัวนาฬิกาเอง กลางจอจึงเหลือระยะเวลาที่หลุด
+    # (บอร์ดนับเอง) กับเวลาล่าสุดที่เคยได้ยิน พูดเป็นอดีตกาล
     "offline": screen.Screen(
         sessions=[
             screen.Session("tamaclaude", "idle", 0.0),
             screen.Session("docs", "idle", 0.5),
         ],
         connected=False,
+        offline_s=4 * 60,
         cards=[screen.Card("tamaclaude", "Needs your answer", "alert")],
         usage=[
             screen.Usage("Current", SESSION_WINDOW, 43, 1 * 3600 + 40 * 60),
@@ -157,7 +159,17 @@ SCENES: dict[str, screen.Screen] = {
         sessions=[screen.Session("tamaclaude", "idle", 0.0)],
         connected=False,
         wifi=True,
+        offline_s=3 * 3600 + 12 * 60,
         cards=[screen.Card("tamaclaude", "Needs your answer", "alert")],
+    ),
+    # เพิ่งแฟลชเสร็จ ยังไม่เคยจับคู่กับ Mac เลย — จอแรกที่ผู้ใช้ใหม่เห็น ไม่มีเวลาให้อ้างถึง
+    # และตัวเลขที่เดินคือเวลาตั้งแต่เสียบไฟ ซึ่งเป็นคำตอบที่ถูกของ "รออะไรอยู่"
+    "cold": screen.Screen(
+        sessions=[],
+        connected=False,
+        clock=screen.CLOCK_UNKNOWN,
+        date="",
+        offline_s=48,
     ),
     # BLE หลุดแต่ snapshot ยังเดินทางมาทาง LAN — ข้อมูลสดทั้งจอ ไอคอนเป็นคลื่น WiFi
     "lan": screen.Screen(

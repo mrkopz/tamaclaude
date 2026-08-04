@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "ct_age.h"
 #include "ct_color.h"
 #include "ct_fonts.h"
 #include "ct_mascot.h"
@@ -54,6 +55,8 @@ typedef struct {
 // (ที่เก็บต้องอยู่กับตัวโฮสต์เพราะเฟรมของหน้าที่ไม่ได้แสดงอยู่ก็ต้องรอดและนาฬิกาต้องเดินต่อ)
 static const ct_snapshot_t *s_frame;
 static bool s_connected = false;
+// หลุดลิงก์มากี่วินาทีแล้ว — นับที่ `ct_pages` (นาฬิกาทุกเรือนเดินที่นั่น) ส่งเข้ามาที่นี่
+static int s_offline_s;
 
 // --- ฉากท้องฟ้า ---------------------------------------------------------------
 // ฟ้า 22..93 แล้วพื้นดินลงไปถึงก้นจอ — วาดในผืนเดียวหลังทุกอย่าง
@@ -738,6 +741,49 @@ static void layout_cards(void)
     }
 }
 
+// เวลาสุดท้ายที่ยังรับรองได้ พูดเป็นอดีตกาล — ต้องตรงกับ last_seen_text ใน gen/screen.py
+static void last_seen_text(char *out, size_t cap)
+{
+    // บอร์ดที่เพิ่งบูตและยังไม่เคยได้ snapshot ไม่มีเวลาให้อ้างถึงเลย ("--:--" คือค่าที่
+    // ct_model_init ใส่ไว้) "since --:--" คือการอ้างถึงเวลาที่ไม่มีอยู่ — สภาพนั้นมีชื่อของมันเอง
+    if (s_frame->clock[0] == '\0' || strcmp(s_frame->clock, "--:--") == 0) {
+        snprintf(out, cap, "no contact yet");
+    } else if (s_frame->date[0] == '\0') {
+        snprintf(out, cap, "since %s", s_frame->clock);
+    } else {
+        snprintf(out, cap, "since %s %s", s_frame->clock, s_frame->date);
+    }
+}
+
+// บล็อกกลางจอตอนไม่มีอะไรต้องเตือน — ต้องตรงกับ _idle_clock ใน tools/gen/screen.py
+//
+// **ตอนหลุดลิงก์ไม่มีนาฬิกา** เวลาไม่ได้เดินต่อบนบอร์ด เลข 48pt ที่ค้างจึงเป็นคำโกหก
+// ที่ตัวใหญ่ที่สุดบนจอ และการหรี่เป็นเทาไม่ช่วย: มันยังอ่านว่า "ตอนนี้" อยู่ดี ที่เดียวกัน
+// ตกเป็นของสิ่งเดียวที่บอร์ดยังยืนยันได้เอง คือหลุดมานานเท่าไร ส่วนเวลาเดิมถอยลงไป
+// อยู่บรรทัดล่างในรูปอดีตกาล — ด้วยเหตุผลเดียวกับที่ฟ้าหายไปทั้งผืน
+//
+// สองบรรทัดเปลี่ยนสีพร้อมกันเสมอ: บรรทัดล่างที่ยังเป็น TEXT_DIM เท่าเดิมจะสว่างกว่า
+// ตัวใหญ่ที่หรี่แล้ว ซึ่งอ่านเป็น "วันที่คือของสด เวลาคือของค้าง" ที่ผิดทั้งคู่
+static void layout_idle_clock(void)
+{
+    char big[24];
+    char caption[CT_CLOCK_LEN + CT_DATE_LEN + 8];
+    if (s_connected) {
+        snprintf(big, sizeof(big), "%s", s_frame->clock);
+        snprintf(caption, sizeof(caption), "%s", s_frame->date);
+    } else {
+        ct_age_gap_text(big, sizeof(big), s_offline_s);
+        last_seen_text(caption, sizeof(caption));
+    }
+    lv_obj_set_style_text_color(s_clock_big, ct_color(s_connected ? CT_COL_TEXT : CT_COL_TEXT_DIM),
+                                0);
+    lv_obj_set_style_text_color(s_date, ct_color(s_connected ? CT_COL_TEXT_DIM : CT_COL_GRAY), 0);
+    lv_label_set_text(s_clock_big, big);
+    lv_label_set_text(s_date, caption);
+    lv_obj_align(s_clock_big, LV_ALIGN_TOP_MID, 0, CT_CARD_TOP + CT_CARD_HEIGHT / 2 - 32);
+    lv_obj_align(s_date, LV_ALIGN_TOP_MID, 0, CT_CARD_TOP + CT_CARD_HEIGHT / 2 + 18);
+}
+
 uint16_t ct_ui_usage_color(int percent)
 {
     if (percent < 0) return CT_COL_TEXT_DIM;
@@ -866,11 +912,7 @@ static void layout_usage(void)
 
 void ct_ui_redraw(void)
 {
-    lv_label_set_text(s_clock_big, s_frame->clock);
-    lv_label_set_text(s_date, s_frame->date);
-    lv_obj_align(s_clock_big, LV_ALIGN_TOP_MID, 0, CT_CARD_TOP + CT_CARD_HEIGHT / 2 - 32);
-    lv_obj_align(s_date, LV_ALIGN_TOP_MID, 0, CT_CARD_TOP + CT_CARD_HEIGHT / 2 + 18);
-
+    layout_idle_clock();
     update_sky();
     layout_slots();
     layout_cards();
@@ -881,9 +923,8 @@ void ct_ui_set_connected(bool connected)
 {
     if (connected == s_connected) return;
     s_connected = connected;
-    // นาฬิกาใหญ่หรี่เป็นเทาตอนหลุด — เวลาที่ค้างอยู่ยังอ่านได้ แต่ต้องไม่อ่านว่าเป็นตอนนี้
-    // (ตรงกับ _idle_clock ใน tools/gen/screen.py)
-    lv_obj_set_style_text_color(s_clock_big, ct_color(connected ? CT_COL_TEXT : CT_COL_GRAY), 0);
+    // บล็อกกลางจอสลับเรื่องที่พูดทั้งก้อน ไม่ใช่แค่เปลี่ยนสี — ดู layout_idle_clock
+    layout_idle_clock();
     update_sky();  // หลุดลิงก์ = ฉากหายทั้งผืน clock ที่ค้างอยู่ไม่ใช่เวลาจริงอีกต่อไป
     layout_slots();
     // แผงโควตาเข้า/ออกตามลิงก์ และนาฬิกาใหญ่ต้องกลับลงมายึดพื้นที่ที่มันปล่อยไว้
@@ -891,6 +932,18 @@ void ct_ui_set_connected(bool connected)
     layout_usage();
     for (int i = 0; i < CT_SLOTS_COUNT; i++) lv_obj_invalidate(s_slots[i].canvas);
     lv_obj_invalidate(s_stroll);
+}
+
+// วาดใหม่เฉพาะตอนข้อความเปลี่ยนจริง — หลังนาทีแรกตัวเลขนี้เปลี่ยนนาทีละครั้ง แต่ตัวโฮสต์
+// บอกมาทุกวินาที การ set_text ด้วยข้อความเดิมคือการ invalidate ป้าย 48pt ทิ้งเปล่าๆ
+void ct_ui_set_offline_secs(int secs)
+{
+    s_offline_s = secs;
+    if (s_connected) return;  // ตัวเลขนี้ไม่มีที่บนจอตราบใดที่ยังมีคนป้อน snapshot อยู่
+    char big[24];
+    ct_age_gap_text(big, sizeof(big), secs);
+    if (strcmp(big, lv_label_get_text(s_clock_big)) == 0) return;
+    layout_idle_clock();
 }
 
 void ct_ui_tick(int elapsed_ms)
