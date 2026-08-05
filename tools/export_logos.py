@@ -36,6 +36,7 @@ import sys
 import tempfile
 import tomllib
 from pathlib import Path
+from xml.etree import ElementTree
 
 from PIL import Image
 
@@ -80,42 +81,88 @@ DIM_OPA = 153
 # ไม่มี backend ตัวไหนเป็นเงื่อนไขของการ *build* firmware หรือรัน preview — มันจำเป็น
 # เฉพาะตอน export ซึ่งเกิดตอนเพิ่มเหรียญเท่านั้น (แบบเดียวกับที่ export_thai_font.py
 # ต้องมีไฟล์ Sarabun อยู่) เครื่องที่แค่ดึงโค้ดมาคอมไพล์จึงไม่ต้องลงอะไรเลย
-def _resvg(svg: Path, px: int, out: Path) -> bool:
+def _resvg(svg: Path, size: tuple[int, int], out: Path) -> bool:
     exe = shutil.which("resvg")
     if not exe:
         return False
-    subprocess.run([exe, "--width", str(px), "--height", str(px), str(svg), str(out)],
+    w, h = size
+    subprocess.run([exe, "--width", str(w), "--height", str(h), str(svg), str(out)],
                    check=True, capture_output=True)
     return True
 
 
-def _rsvg_convert(svg: Path, px: int, out: Path) -> bool:
+def _rsvg_convert(svg: Path, size: tuple[int, int], out: Path) -> bool:
     exe = shutil.which("rsvg-convert")
     if not exe:
         return False
-    subprocess.run([exe, "-w", str(px), "-h", str(px), "-o", str(out), str(svg)],
+    w, h = size
+    subprocess.run([exe, "-w", str(w), "-h", str(h), "-o", str(out), str(svg)],
                    check=True, capture_output=True)
     return True
 
 
-def _cairosvg(svg: Path, px: int, out: Path) -> bool:
+def _cairosvg(svg: Path, size: tuple[int, int], out: Path) -> bool:
     try:
         import cairosvg  # noqa: PLC0415
     except ImportError:
         return False
-    cairosvg.svg2png(url=str(svg), write_to=str(out), output_width=px, output_height=px)
+    w, h = size
+    cairosvg.svg2png(url=str(svg), write_to=str(out), output_width=w, output_height=h)
     return True
 
 
 BACKENDS = (("resvg", _resvg), ("rsvg-convert", _rsvg_convert), ("cairosvg", _cairosvg))
 
 
+def svg_box(svg: Path) -> tuple[float, float]:
+    """ขนาดของต้นฉบับ — `viewBox` ก่อน แล้วค่อย width/height
+
+    ต้องรู้ให้ได้ ไม่มีค่าตั้งต้น: logo ที่เดาสัดส่วนผิดคือ logo ที่ยืด ซึ่งเป็นสิ่งที่
+    ฟังก์ชันนี้มีไว้กัน · ตัวอักษรของหน่วย ("px", "pt") ถูกตัดทิ้ง เพราะภาพที่ raster
+    ออกมาถูกกำหนดขนาดด้วยตัวเลขจากที่นี่อยู่แล้ว หน่วยของต้นฉบับไม่มีความหมายต่อ
+    *สัดส่วน* ซึ่งเป็นสิ่งเดียวที่เอาไปใช้
+    """
+    root = ElementTree.parse(svg).getroot()
+    if box := root.get("viewBox"):
+        nums = box.replace(",", " ").split()
+        if len(nums) == 4:
+            return float(nums[2]), float(nums[3])
+    def _len(v: str | None) -> float | None:
+        if not v:
+            return None
+        digits = "".join(ch for ch in v if ch.isdigit() or ch in ".-")
+        return float(digits) if digits else None
+    w, h = _len(root.get("width")), _len(root.get("height"))
+    if w and h:
+        return w, h
+    raise SystemExit(f"{svg.name}: ไม่มี viewBox และไม่มี width/height — บอกสัดส่วนไม่ได้")
+
+
+def fit_box(box: tuple[float, float], px: int) -> tuple[int, int]:
+    """สัดส่วนต้นฉบับ -> ขนาดที่ใหญ่ที่สุดซึ่งยังอยู่ในกรอบ px x px"""
+    w, h = box
+    if w >= h:
+        return px, max(1, round(px * h / w))
+    return max(1, round(px * w / h)), px
+
+
 def rasterize(svg: Path, px: int) -> Image.Image:
-    """SVG -> ภาพ RGBA ขนาด px x px ที่บีบสีเป็น RGB565 แล้ว"""
+    """SVG -> ภาพ RGBA ขนาด px x px ที่บีบสีเป็น RGB565 แล้ว
+
+    **วาดตามสัดส่วนเดิมแล้วค่อยวางกลางกรอบ ไม่ใช่ยืดให้เต็ม** — logo ที่ไม่ใช่ 1:1 มีจริง
+    และเยอะ (NFLX สูงเกือบสองเท่าของกว้าง, META กว้างเกือบเท่าครึ่งของสูง) ตัวอักษร N ของ
+    Netflix ที่ถูกบีบให้เตี้ยลงครึ่งหนึ่งอ่านออกว่าเป็นของที่วาดผิด ไม่ใช่ของที่จอหยาบ
+    ซึ่งเป็นความแตกต่างที่ผู้ใช้เห็นก่อนอย่างอื่นทั้งหมดบนหน้า watchlist
+
+    กรอบยังเป็นจัตุรัสเสมอ: ช่องบนบอร์ดกับใน `ct_logos.c` เป็นจัตุรัส และรูปที่กว้างไม่เท่ากัน
+    ในคอลัมน์เดียวกันแปลว่าตัวหนังสือข้างๆ ขยับตามรูป · ส่วนที่เหลือเป็นอัลฟา 0 ซึ่งไม่กิน
+    ที่เพิ่มแม้แต่ไบต์เดียว (RGB565A8 จ่ายเต็มกรอบอยู่แล้วไม่ว่าจะวาดอะไรลงไป)
+    """
+    w, h = fit_box(svg_box(svg), px)
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "o.png"
         for name, fn in BACKENDS:
-            if fn(svg, px, out):
+            if fn(svg, (w, h), out):
                 break
         else:
             raise SystemExit(
@@ -124,10 +171,12 @@ def rasterize(svg: Path, px: int) -> Image.Image:
                 "  brew install librsvg\n"
                 "  brew install cairo && pip install cairosvg")
         img = Image.open(out).convert("RGBA")
-    if img.size != (px, px):
-        # backend ที่ไม่เคารพ --width จะทำให้ stride ฝั่ง C ผิดโดยที่คอมไพล์ผ่าน
-        raise SystemExit(f"{svg.name}: backend คืนขนาด {img.size} ไม่ใช่ {px}x{px}")
-    return quantize565(img)
+    if img.size != (w, h):
+        # backend ที่ไม่เคารพขนาดที่สั่งจะทำให้ stride ฝั่ง C ผิดโดยที่คอมไพล์ผ่าน
+        raise SystemExit(f"{svg.name}: backend คืนขนาด {img.size} ไม่ใช่ {w}x{h}")
+    canvas = Image.new("RGBA", (px, px), (0, 0, 0, 0))
+    canvas.paste(img, ((px - w) // 2, (px - h) // 2))
+    return quantize565(canvas)
 
 
 def quantize565(img: Image.Image) -> Image.Image:
