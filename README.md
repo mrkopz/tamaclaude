@@ -76,6 +76,15 @@ claude.ai.
 | ![usage](docs/images/screen_usage.gif) | ![usage hot](docs/images/screen_usage_hot.gif) | ![usage unknown](docs/images/screen_usage_unknown.gif) |
 | The current 5-hour window and the weekly one. | Near the limit; the tick marks your pace against the clock. | `--`, never a guess, when no number has arrived. |
 
+**The same bar, top and bottom**
+
+Every page wears the same top bar — the page you are on, the current quota, the clock, and
+whether the snapshot is arriving over Bluetooth or Wi-Fi — and never repeats what the page
+below it already shows bigger. The foot carries the page pips: they say which page you are
+on, and the lit one drains as the rotation clock runs down, so "where am I" and "how long
+until it moves" are one row rather than two. The four data pages also keep a mini mascot down
+there, so you can still see what your sessions are doing while you read the weather.
+
 **The other pages**
 
 The screen holds five pages now — the mascot, weather, crypto, stocks, and your calendar.
@@ -88,22 +97,33 @@ If you would rather it stayed put, turn the round off in **Settings ▸ Screen**
 only ever changes when you swipe it. The board still jumps to the mascot when a session needs
 you — and then goes back to the page you left it on, instead of stranding you there.
 
-Every page says how old its figures are, because a Mac that sleeps freezes every number on
-the screen. The weather page keeps a shrunken mascot in its corner as well, so you can still
-see what your sessions are doing; the crypto, stocks, and calendar pages fill that corner
-with their first row instead:
-
-| Live | Long stale | Never arrived |
+| Weather | Crypto | Stocks |
 |:--|:--|:--|
-| ![weather](docs/images/weather_rain.gif) | ![stale](docs/images/weather_stale.gif) | ![no weather](docs/images/weather_empty.gif) |
-| Now, today's high and low, and how old the figures are. The mascot shrinks into the corner so you can still see what your sessions are doing. | Far past the refresh window, so it says so out loud rather than in small print. | The page says what is missing instead of showing an empty frame. |
+| ![weather](docs/images/weather_rain.gif) | ![crypto](docs/images/crypto_full.gif) | ![stocks](docs/images/stocks_full.gif) |
+| Now, today's high and low, and the next five hours — drawn under the sky of that hour. | The first coin gets a card with its logo and its 24-hour shape; the rest are one row each. | The same card, but the box plots where the price sits in today's swing instead. |
 
-Turn pages on, order them, and set the rotation in **Settings ▸ Screen**. Weather needs a city
-name and comes from Open-Meteo, crypto from CoinGecko — neither wants an account. Stocks come
-from Finnhub and need your own free API key; the free plan covers US symbols and the page only
-refreshes while the US market is open. The calendar is read from this Mac through EventKit, so
-macOS asks for calendar permission once and you tick the calendars that may appear — nothing
-about it goes over the network. Watchlists hold five symbols each.
+| Calendar | Long stale | Never arrived |
+|:--|:--|:--|
+| ![calendar](docs/images/calendar_full.gif) | ![stale](docs/images/weather_stale.gif) | ![no weather](docs/images/weather_empty.gif) |
+| What is next, how long until it starts, and the two after it. | Far past the refresh window, so it says so out loud rather than in small print. | The page says what is missing instead of showing an empty frame. |
+
+Every page says how old its figures are, because a Mac that sleeps freezes every number on
+the screen. The mascot's own sky follows the weather page while it is at it — rain on the
+weather page means rain behind the mascot.
+
+Pages are turned on, reordered, and given their rotation in **Settings ▸ Screen**: one card,
+the five pages in the order they come round, each row with its own switch and an arrow into
+its settings. Weather needs a city name and comes from Open-Meteo, crypto from CoinGecko —
+neither wants an account. Stocks come from Finnhub and need your own free API key; the free
+plan covers US symbols and the page only refreshes while the US market is open. The calendar
+is read from this Mac through EventKit, so macOS asks for calendar permission once and you
+tick the calendars that may appear — nothing about it goes over the network. Watchlists hold
+five symbols each, and the ones with artwork on the board are offered by name rather than
+typed blind.
+
+<img src="docs/images/screen-settings.jpg" width="620" alt="Settings ▸ Screen: the five pages in the order they come round, each with a switch and an arrow into its own settings, then the rotation, the hold after a swipe, and the jump to the mascot">
+
+*Settings ▸ Screen — the round, in the order the board runs it.*
 
 Your Mac does all the fetching, at its own pace per page. The board still never goes online
 itself, and your session key never leaves the Mac.
@@ -113,7 +133,7 @@ itself, and your session key never leaves the Mac.
 | Still live | Nobody feeding it |
 |:--|:--|
 | ![lan](docs/images/screen_lan.gif) | ![wifi](docs/images/screen_wifi.gif) |
-| Bluetooth is gone, so the label is the board's IP and the icon is a wave — but the snapshot still arrives, sealed, over the network. | The board is on the network with nothing to show: the Mac is asleep or the app is not running. |
+| Bluetooth is gone, so the icon in the top bar turns into a wave — but the snapshot still arrives, sealed, over the network, and every figure on the page stays live. | Nobody is feeding it: the bar says `no link` and the screen counts how long it has been since it last heard anything. |
 
 ## What you need
 
@@ -230,14 +250,27 @@ through the window faster than the clock is.
 
 ## 4. Connect it to Claude Code
 
-Everything below is in **gear ▸ Settings… ▸ General**:
+The settings window has four panes down its side — **Board**, **Screen**, **Wi-Fi**, and
+**Claude**. Two of them matter now:
 
-- **Install hooks in settings.json** — this is the one that matters. It teaches
-  Claude Code to tell the app what it is doing. Nothing appears on the board without it.
-  Your existing settings are kept, and a backup is written beside the file.
-- **Board** — pick your board by name, or leave it on *Any board*.
-- **Brightness** — the slider drives the screen's backlight.
+**gear ▸ Settings… ▸ Claude**
+
+- **Hooks ▸ Install** — this is the one that matters. It teaches Claude Code to tell the app
+  what it is doing. Nothing appears on the board without it. Your existing settings are kept,
+  and a backup is written beside the file.
 - **Launch at login** — so it is running before you start work.
+- **Auto-start a session when idle** — off by default; when on, the app opens a session of
+  its own only while nothing else is running.
+
+**gear ▸ Settings… ▸ Board**
+
+- **Use** — pick your board by name, or leave it on *Any board*.
+- **Brightness** — the slider drives the screen's backlight. One brightness all day; it never
+  dims on its own.
+
+<img src="docs/images/claude-settings.jpg" width="420" alt="Settings ▸ Claude: session key, refresh interval, the statusline switch, launch at login, auto-start, and the hooks installer"> <img src="docs/images/board-settings.jpg" width="420" alt="Settings ▸ Board: the link state, the address box, which board to use, and the brightness slider">
+
+*Settings ▸ Claude and Settings ▸ Board.*
 
 Start a Claude Code session in any terminal. Within a second or two the mascot should
 start moving.
@@ -246,11 +279,11 @@ start moving.
 
 The bars at the bottom of the screen have two independent sources, both optional:
 
-- **Read quota from the statusline** (Settings ▸ General) installs a Claude Code statusline
+- **Read quota from the statusline** (Settings ▸ Claude) installs a Claude Code statusline
   that hands the app your current usage. It needs no password, but it only updates while
   Claude Code is running.
-- **Set session key…** (Settings ▸ General) lets the app ask claude.ai directly, so the
-  number keeps moving even with Claude Code closed. **Refresh quota** then chooses how
+- **Session key ▸ Set…** (Settings ▸ Claude) lets the app ask claude.ai directly, so the
+  number keeps moving even with Claude Code closed. **Refresh** then chooses how
   often (Off / 60s / 5 min).
 
 > **About the session key.** It is the `sessionKey` cookie of a logged-in claude.ai
@@ -288,8 +321,8 @@ and the app keeps feeding it when Bluetooth has been quiet for ten seconds.
 
 You do not have to configure anything on the Mac side. The snapshot is sealed with
 AES-256-GCM under a key the app generates and pushes to the board over the same encrypted
-channel as your Wi-Fi password, and the board is found over mDNS — the address box at the
-bottom of the tab is only for networks that filter it.
+channel as your Wi-Fi password, and the board is found over mDNS — the **Address** box in
+Settings ▸ Board is only for networks that filter it.
 
 The board still never talks to claude.ai; your session key never leaves the Mac.
 
@@ -320,12 +353,12 @@ Expected. The app is signed ad-hoc, so each build is a new identity as far as ma
 concerned. There is no way around it without an Apple Developer ID.
 
 **The mascot never moves.**
-The hooks are probably not installed — Settings ▸ General → *Install hooks in
-settings.json*. Sessions already open when you install them keep the old settings; start
-a new one. *Open log* in the same tab shows what the app is receiving.
+The hooks are probably not installed — Settings ▸ Claude → *Hooks ▸ Install*. Sessions
+already open when you install them keep the old settings; start a new one. *Log ▸ Open* in
+the same pane shows what the app is receiving.
 
 **The Wi-Fi list stays empty, or the spinner never stops.**
-Wi-Fi is set up over Bluetooth, so the board has to be connected first — the tab says so
+Wi-Fi is set up over Bluetooth, so the board has to be connected first — the pane says so
 when it is not. The list only ever holds 2.4 GHz networks.
 
 **The board is on the network and pings, but the screen still freezes when Bluetooth
