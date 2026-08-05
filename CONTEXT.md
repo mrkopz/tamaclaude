@@ -58,6 +58,7 @@ _Avoid_: usage, limit, rate limit
 
 **Page rotation**:
 การที่ board เปลี่ยน active page เองตามเวลาที่ตั้งไว้ board เป็นคนจับเวลา Mac ส่งแค่ค่าตั้ง
+ผู้ใช้ปิดได้ทั้งรอบ แล้ว active page เปลี่ยนเฉพาะตอน swipe หรือ attention jump
 _Avoid_: slideshow, carousel, cycling
 
 **Manual hold**:

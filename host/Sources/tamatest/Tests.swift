@@ -2521,6 +2521,7 @@ func runAllTests() {
         equal(settings.rotation, 20, "the turn is 20 seconds until someone says otherwise")
         equal(settings.hold, 300, "and a swipe holds a page for five minutes")
         equal(settings.attentionJump, true, "the jump is on — it is the reason for the desk toy")
+        equal(settings.autoTurn, true, "and the pages turn by themselves until someone says stop")
 
         settings.setOn(.mascot, false)
         equal(settings.isOn(.mascot), true, "the mascot page cannot be turned off")
@@ -2545,6 +2546,11 @@ func runAllTests() {
         // ค่าที่บีบแล้วต้องบีบตั้งแต่ตอนสร้าง ไม่ใช่ตอนส่ง — หน้าต่างแสดงค่าที่เก็บจริง
         equal(PageSettings(rotation: 1, hold: 99_999).rotation, 5, "a turn too fast to read is clamped")
         equal(PageSettings(rotation: 1, hold: 99_999).hold, 3600, "so is a hold that never ends")
+        // จังหวะที่ผู้ใช้ตั้งไว้ต้องรอดข้ามการปิด ไม่งั้นเขาต้องนึกออกเองว่าเคยตั้งเท่าไร
+        // (และมันยังทำงานอยู่ขณะปิด — เป็นระยะที่มาสคอตอยู่บนจอหลังการเด้ง)
+        equal(
+            PageSettings(autoTurn: false, rotation: 45).rotation, 45,
+            "turning the round off keeps the pace the user chose")
         equal(
             PageSettings(order: [.weather, .weather]).order,
             [.weather, .mascot, .crypto, .calendar, .stocks],
@@ -2555,6 +2561,7 @@ func runAllTests() {
         settings.rotation = 45
         settings.hold = 60
         settings.attentionJump = false
+        settings.autoTurn = false
         settings.save(to: store)
         equal(PageSettings.load(store), settings, "every value survives a round trip on disk")
 
@@ -2584,7 +2591,7 @@ func runAllTests() {
         equal(first.count, 1, "once it says it knows about pages, the rules are sent")
         equal(
             String(decoding: first[0], as: UTF8.self),
-            #"{"h":600,"j":0,"pl":[0,1,2,3,4],"r":30}"#,
+            #"{"h":600,"j":0,"pl":[0,1,2,3,4],"r":30,"t":1}"#,
             "keys are sorted and the marker is 'pl', so a snapshot is still a snapshot")
         equal(hub.drain(now: t0 + 1).count, 0, "and not repeated every second afterwards")
 
@@ -2597,11 +2604,22 @@ func runAllTests() {
         let both = hub.drain(now: t0 + 2)
         equal(both.count, 2, "new rules and a new frame travel in the same round")
         equal(
-            String(decoding: both[0], as: UTF8.self), #"{"h":300,"j":1,"pl":[0,2,3,4],"r":20}"#,
+            String(decoding: both[0], as: UTF8.self),
+            #"{"h":300,"j":1,"pl":[0,2,3,4],"r":20,"t":1}"#,
             "the rules go first, and a page the user turned off is simply not in them")
 
+        // สวิตช์ปิดรอบหมุนเป็นคีย์ของตัวเอง ไม่ใช่ `r` ที่เป็นศูนย์ — จังหวะที่ผู้ใช้ตั้งไว้
+        // ยังเดินทางไปด้วยทุกครั้ง เพราะบอร์ดใช้มันเป็นระยะที่มาสคอตอยู่บนจอหลังการเด้ง
+        var still = PageSettings()
+        still.autoTurn = false
+        hub.submit(still.plan)
+        equal(
+            String(decoding: hub.drain(now: t0 + 3)[0], as: UTF8.self),
+            #"{"h":300,"j":1,"pl":[0,1,2,3,4],"r":20,"t":0}"#,
+            "a screen that stops turning still says how fast it would have turned")
+
         hub.forgetSent()
-        let again = hub.drain(now: t0 + 3)
+        let again = hub.drain(now: t0 + 4)
         equal(again.count, 2, "a board that came back is told the rules again, not just the pages")
 
         // ทุกเฟรมต้องพอดีหนึ่ง MTU โดยลำพัง (ADR-0003) — เฟรมนี้สั้นจนไม่มีอะไรให้บีบ
@@ -2669,6 +2687,10 @@ func runAllTests() {
         equal(
             macro("CT_ROTATION_HOLD_SECONDS"), PageSettings.defaultHold,
             "and holding a swiped page for the same time")
+        // บอร์ดที่ยังไม่เคยคุยกับใครต้องหมุนเป็น ไม่ใช่ค้างหน้าเดียวรอ Mac ที่อาจไม่มาทั้งคืน
+        equal(
+            macro("CT_ROTATION_AUTO"), PageSettings.defaultAutoTurn ? 1 : 0,
+            "and both start out turning at all")
         // Mac ตัดแถบพยากรณ์ที่ห้าช่องเพราะ *จอ* มีห้าช่อง ไม่ใช่เพราะห้าเป็นเลขสวย —
         // ช่องที่หกที่ส่งไปจะถูกบอร์ดทิ้งเงียบๆ แล้วไบต์นั้นก็หายไปจากงบ 500 เปล่าๆ
         equal(

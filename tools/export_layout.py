@@ -39,7 +39,11 @@ def _emit_section(name: str, values: dict) -> list[str]:
         if isinstance(v, list):
             continue  # ตารางไปออกเป็น C array ไม่ใช่ #define — ดู _emit_tables
         macro = f"CT_{name.upper()}_{k.upper()}"
-        if isinstance(v, float):
+        # ต้องมาก่อน int — `bool` เป็นลูกของ `int` ใน Python และ `f"{True}"` ได้ `True`
+        # ซึ่ง C ไม่รู้จัก (มาโครที่ไม่มีใครนิยาม = 0 เงียบๆ ตอน #if ไม่ใช่ตอนคอมไพล์)
+        if isinstance(v, bool):
+            lines.append(f"#define {macro:<28} {1 if v else 0}")
+        elif isinstance(v, float):
             lines.append(f"#define {macro:<28} {_f(v)}")
         else:
             lines.append(f"#define {macro:<28} {v}")

@@ -187,9 +187,14 @@ final class SettingsModel: ObservableObject {
     func setPageOrder(_ order: [PageKind]) {
         guard order != pages.order else { return }
         pages = PageSettings(
-            order: order, off: pages.off, rotation: pages.rotation, hold: pages.hold,
-            attentionJump: pages.attentionJump)
+            order: order, off: pages.off, autoTurn: pages.autoTurn, rotation: pages.rotation,
+            hold: pages.hold, attentionJump: pages.attentionJump)
         onPages?(pages)
+    }
+
+    func setAutoTurn(_ on: Bool) {
+        pages.autoTurn = on
+        emitPages()
     }
 
     func setRotation(_ seconds: Int) {
@@ -217,8 +222,8 @@ final class SettingsModel: ObservableObject {
     /// หน้าต่าง ไม่งั้นช่องจะค้างเลข 9999 ที่ไม่มีใครใช้ทั้งที่จอหมุนตาม 600
     private func emitPages() {
         let settled = PageSettings(
-            order: pages.order, off: pages.off, rotation: pages.rotation, hold: pages.hold,
-            attentionJump: pages.attentionJump)
+            order: pages.order, off: pages.off, autoTurn: pages.autoTurn,
+            rotation: pages.rotation, hold: pages.hold, attentionJump: pages.attentionJump)
         pages = settled
         onPages?(settled)
     }

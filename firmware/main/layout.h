@@ -186,6 +186,7 @@ static const int16_t ct_sky_bolt[CT_SKY_BOLT_COUNT][4] = {
 
 #define CT_ROTATION_SECONDS          20
 #define CT_ROTATION_HOLD_SECONDS     300
+#define CT_ROTATION_AUTO             1
 
 #define CT_TOUCH_Z_MIN               200
 #define CT_TOUCH_Z_MAX               3000
