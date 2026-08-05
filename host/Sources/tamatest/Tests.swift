@@ -2170,6 +2170,36 @@ func runAllTests() {
             "the firmware still counts its own kinds rather than trusting a number from the wire")
     }
 
+    // ทะเบียนของ logo เป็นข้อผูกสามฝั่ง: `tools/logos/*.svg` (สิ่งที่บอร์ดวาดได้) ·
+    // `tools/logos.toml` (ทะเบียน) · `LogoCatalog.swift` (สิ่งที่เมนูกางให้เลือก) ·
+    // `export_logos.py` จับข้อนี้ตอนรัน แต่ไม่มีใครบังคับให้รัน — เทสต์นี้คือด่านที่ดัก
+    // "เพิ่ม SVG แล้วลืม export" ซึ่งเป็นวิธีเดียวที่มันจะหลุดออกมาถึง commit ได้
+    suite("every logo in the catalog is a logo the board can draw") {
+        let dir = repoFile("tools/logos")
+        let svgs = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasSuffix(".svg") }
+            .map { String($0.dropLast(4)) }
+        // `_default` เป็นรูปของสิ่งที่เราไม่รู้จัก ไม่ใช่สัญลักษณ์ที่ใครเลือกได้
+        let onDisk = Set(svgs.filter { !$0.hasPrefix("_") })
+        let inCatalog = Set(LogoCatalog.all.map(\.symbol))
+
+        equal(onDisk.isEmpty, false, "the logo folder is where this test reads from")
+        equal(
+            inCatalog.subtracting(onDisk).sorted(), [],
+            "the menu never offers a symbol that has no artwork")
+        equal(
+            onDisk.subtracting(inCatalog).sorted(), [],
+            "a new svg reaches the settings menu too — run tools/export_logos.py")
+        equal(
+            Set(LogoCatalog.crypto.map(\.symbol))
+                .intersection(LogoCatalog.stocks.map(\.symbol)).sorted(), [],
+            "one artwork file, so one symbol is either a coin or a ticker, never both")
+        equal(
+            LogoCatalog.symbol(forName: "bitcoin"), "BTC",
+            "a full name typed into the coin field still finds its artwork")
+        equal(LogoCatalog.symbol(forName: "nothing at all"), nil, "an unknown name resolves to nil")
+    }
+
     // มาสคอตจิ๋วบนหน้าอื่นมีที่ให้ท่าเดียว บอร์ดจึงต้องเลือกเองว่าท่าไหนแทนทั้งเครื่อง
     // ซึ่งเป็นสำเนาที่สองของตารางนี้ — สำเนาที่ไม่มีใครเฝ้าคือสำเนาที่ดริฟต์
     suite("the board ranks poses the same way the daemon does") {

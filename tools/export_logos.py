@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""tools/logos/*.svg -> firmware/main/ct_logos.{c,h} + tools/logos/png/*.png
+"""tools/logos/*.svg + tools/logos.toml -> ct_logos.{c,h} + png/*.png + LogoCatalog.swift
 
 logo เป็น asset **ชนิดที่สอง** ของโปรเจกต์ — ไม่ใช่ rect list เหมือนมาสคอตกับ
 prop ทั้งหมด เหตุผลและทางที่ปฏิเสธอยู่ใน docs/adr/ (ย่อ: logo จริงไม่ได้ประกอบจาก
@@ -21,6 +21,11 @@ PNG ที่คายออกมามีผู้ใช้สองราย 
   * หน้าตั้งค่าของแอป Mac (`make-app.sh` ก๊อปเข้า Resources)
 สีจึงถูกบีบเป็น RGB565 **ตั้งแต่ตอน raster** ไม่ใช่ตอนวาด — ถ้าปล่อยให้ PNG เก็บสี 8 บิต
 เต็มไว้ หน้าตั้งค่าบน Mac จะสวยกว่าจอจริง แล้วผู้ใช้เลือกของที่เห็นแต่ได้ของอีกแบบ
+
+`tools/logos.toml` เข้ามาเป็นทะเบียนคู่กัน เพราะหน้าตั้งค่าต้องกางเมนูให้เลือก ซึ่ง
+ต้องรู้สองข้อที่ *ชื่อไฟล์บอกไม่ได้*: ไฟล์นี้เป็นเหรียญหรือหุ้น และมันคือชื่ออะไร ผลของมัน
+คือ `LogoCatalog.swift` ซึ่งเป็นไฟล์ที่สามที่สคริปต์นี้เขียนทับทุกครั้ง · ทะเบียนกับโฟลเดอร์
+ไม่ตรงกันเมื่อไหร่ที่นี่ล้ม ไม่ใช่ข้ามไป — ดูเหตุผลใน logos.toml
 """
 
 from __future__ import annotations
@@ -29,6 +34,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 
 from PIL import Image
@@ -39,8 +45,14 @@ from gen.config import REPO_DIR, TOOLS_DIR  # noqa: E402
 
 SVG_DIR = TOOLS_DIR / "logos"
 PNG_DIR = SVG_DIR / "png"
+CATALOG_TOML = TOOLS_DIR / "logos.toml"
 OUT_C = REPO_DIR / "firmware" / "main" / "ct_logos.c"
 OUT_H = REPO_DIR / "firmware" / "main" / "ct_logos.h"
+OUT_SWIFT = REPO_DIR / "host" / "Sources" / "TamaCore" / "LogoCatalog.swift"
+
+# ชื่อตารางใน logos.toml -> ชื่อ property ฝั่ง Swift · สองแท็บในหน้าตั้งค่ากางคนละชุด
+# และไม่มีชุดที่สาม: หน้าที่มี watchlist มีสองหน้า
+KINDS = (("crypto", "crypto"), ("stock", "stocks"))
 
 # ชื่อไฟล์คือ key ที่บอร์ดค้น ไม่มีตารางแม็ปแยก — ตารางแม็ปคือของที่ลืมอัปเดตได้
 # ตัวที่ขึ้นต้นด้วย `_` ไม่ใช่สัญลักษณ์: `_default.svg` คือรูปของสิ่งที่เราไม่รู้จัก
@@ -270,6 +282,99 @@ def c_name(name: str) -> str:
     return "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in name)
 
 
+# --- ทะเบียน + ฝั่ง Swift ---------------------------------------------------------
+def read_catalog(logos: list[str]) -> dict[str, list[tuple[str, str]]]:
+    """logos.toml -> {kind: [(symbol, name)]} เรียงตามสัญลักษณ์ และตรงกับโฟลเดอร์เป๊ะ
+
+    เรียงที่นี่ ไม่ใช่ที่หน้าต่าง: เมนู 12 แถวที่เดาตำแหน่งได้ไม่ต้องมีบรรณาธิการ และ
+    ลำดับที่จงใจคือของที่ต้องคิดใหม่ทุกครั้งที่เพิ่มบรรทัด แลกกับสิ่งที่ไม่มีใครได้ใช้
+    """
+    if not CATALOG_TOML.exists():
+        raise SystemExit(f"ไม่พบ {CATALOG_TOML.name} — ทะเบียนของ logo ทั้งหมดอยู่ในนั้น")
+    with CATALOG_TOML.open("rb") as fh:
+        raw = tomllib.load(fh)
+
+    out: dict[str, list[tuple[str, str]]] = {}
+    listed: dict[str, str] = {}
+    for table, _prop in KINDS:
+        rows: list[tuple[str, str]] = []
+        for entry in raw.get(table, []):
+            symbol = str(entry.get("symbol", "")).strip()
+            name = str(entry.get("name", "")).strip()
+            if not symbol or not name:
+                raise SystemExit(f"[[{table}]] ต้องมีทั้ง symbol และ name: {entry}")
+            if symbol in listed:
+                # สัญลักษณ์เดียวมี SVG ใบเดียว มันจึงเป็นเหรียญหรือหุ้นได้อย่างเดียว
+                raise SystemExit(f"{symbol} ถูกประกาศซ้ำ ({listed[symbol]} และ {table})")
+            listed[symbol] = table
+            rows.append((symbol, name))
+        out[table] = sorted(rows)
+
+    unlisted = sorted(set(logos) - set(listed))
+    if unlisted:
+        raise SystemExit(
+            f"มี SVG ที่ยังไม่ได้ประกาศใน {CATALOG_TOML.name}: {', '.join(unlisted)} — "
+            "บอร์ดจะวาดมันได้ แต่หน้าตั้งค่าจะไม่มีให้เลือก")
+    missing = sorted(set(listed) - set(logos))
+    if missing:
+        raise SystemExit(
+            f"ประกาศไว้แต่ไม่มีไฟล์ {', '.join(f'{m}.svg' for m in missing)} — "
+            "เมนูจะเสนอของที่ได้จานเปล่าทั้งบนจอและตรงนี้")
+    return out
+
+
+def swift_catalog(catalog: dict[str, list[tuple[str, str]]]) -> str:
+    lines = [
+        "// สร้างอัตโนมัติจาก tools/logos.toml — ห้ามแก้ไฟล์นี้ด้วยมือ",
+        "// แก้ที่ TOML แล้วรัน: python3 tools/export_logos.py",
+        "",
+        "import Foundation",
+        "",
+        "/// สิ่งที่หน้าตั้งค่าบน Mac กางให้เลือก — สัญลักษณ์ที่ *มี logo จริง*",
+        "///",
+        "/// เหตุผลที่ลิสต์นี้มีอยู่: ผู้ใช้พิมพ์อะไรก็ได้ลง watchlist แต่มีแค่ชุดนี้ที่ได้รูป",
+        "/// ตัวอื่นได้จานของ `_default` ทั้งบนบอร์ดและในหน้าต่าง · เมนูจึงเป็นคำตอบตรงๆ",
+        "/// ของ \"อันไหนมี icon\" โดยไม่ต้องมีคำเตือนมาบอกซ้ำ ส่วนช่องพิมพ์ยังอยู่ครบ",
+        "/// สำหรับตัวนอกชุด — ลิสต์นี้ไม่ใช่เพดาน มันคือทางลัดที่ถูกเสมอ",
+        "///",
+        "/// ที่นี่ไม่รู้จัก id ของ CoinGecko เลย และไม่ควรรู้: สิ่งที่ลงไปใน `CryptoSettings`",
+        "/// คือสัญลักษณ์อย่างที่มนุษย์เรียก เหมือนกับที่คนพิมพ์เองได้ — `CryptoService`",
+        "/// เป็นคนแปลงเป็น id ครั้งเดียวแล้วจำไว้ เหมือนเดิมทุกประการ",
+        "public enum LogoCatalog {",
+        "    public struct Entry: Equatable, Sendable {",
+        "        /// สิ่งที่ลงไปใน watchlist จริง และสิ่งที่ขึ้นบนจอ",
+        "        public let symbol: String",
+        "        /// ชื่อสั้นที่คนเรียก — มีไว้ยืนยันว่าเลือกไม่ผิดตัว (COIN คือ Coinbase)",
+        "        public let name: String",
+        "    }",
+        "",
+    ]
+    for table, prop in KINDS:
+        lines.append(f"    public static let {prop}: [Entry] = [")
+        for symbol, name in catalog[table]:
+            lines.append(f'        Entry(symbol: "{symbol}", name: "{name}"),')
+        lines += ["    ]", ""]
+    lines += [
+        "    /// ชื่อเต็มที่ผู้ใช้พิมพ์ -> สัญลักษณ์ · ไม่รู้จักคืน `nil`",
+        "    ///",
+        "    /// ช่องคริปโตรับ \"bitcoin\" ได้เท่ากับ \"btc\" เพราะ CoinGecko รับทั้งคู่ แต่รูป",
+        "    /// ถูกตั้งชื่อตามสัญลักษณ์ ใบนี้จึงเป็นสะพานที่ทำให้หน้าตั้งค่าไม่โชว์จานเปล่า",
+        "    /// ทั้งที่บอร์ดโชว์ logo จริง · ยังไม่ครอบคลุมชื่อเล่นที่มีแต่บริการรู้ (`xbt`)",
+        "    /// ซึ่งอยู่นอกเครื่องเหมือนเดิม",
+        "    public static func symbol(forName typed: String) -> String? {",
+        "        let key = typed.trimmingCharacters(in: .whitespaces).lowercased()",
+        "        guard !key.isEmpty else { return nil }",
+        "        return all.first { $0.name.lowercased() == key }?.symbol",
+        "    }",
+        "",
+        "    public static var all: [Entry] { " +
+        " + ".join(prop for _, prop in KINDS) + " }",
+        "}",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def main() -> None:
     svgs = sorted(SVG_DIR.glob("*.svg"))
     names = [p.stem for p in svgs]
@@ -291,6 +396,10 @@ def main() -> None:
             f"({len(logos) * BYTES_PER_LOGO // 1024} KB) — ตัดออกหรือขยับเพดานพร้อมวัด "
             "ขนาด .bin จริงก่อน")
 
+    # ก่อน raster ไม่ใช่หลัง: การ raster 25 ไฟล์สองขนาดใช้เวลาหลายวินาที และคนที่ลืม
+    # ประกาศบรรทัดควรรู้ทันที ไม่ใช่หลังจากรอจนเสร็จ
+    catalog = read_catalog(logos)
+
     PNG_DIR.mkdir(parents=True, exist_ok=True)
     for old in PNG_DIR.glob("*.png"):
         old.unlink()  # เหรียญที่ถูกลบ SVG ทิ้งต้องไม่ทิ้ง PNG ค้างให้ preview ไปหยิบ
@@ -305,9 +414,11 @@ def main() -> None:
     h, c = build(logos, images)
     OUT_H.write_text(h, encoding="utf-8")
     OUT_C.write_text(c, encoding="utf-8")
+    OUT_SWIFT.write_text(swift_catalog(catalog), encoding="utf-8")
 
     total = (len(logos) + 1) * BYTES_PER_LOGO
-    print(f"{len(logos)} logos + default, {total / 1024:.1f} KB -> {OUT_C.name}")
+    counts = " + ".join(f"{len(catalog[t])} {t}" for t, _ in KINDS)
+    print(f"{len(logos)} logos + default ({counts}), {total / 1024:.1f} KB -> {OUT_C.name}")
 
 
 if __name__ == "__main__":

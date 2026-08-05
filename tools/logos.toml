@@ -1,0 +1,111 @@
+# ทะเบียนของ logo — คู่กับไฟล์ใน tools/logos/*.svg แบบหนึ่งต่อหนึ่ง
+#
+# ชื่อไฟล์ SVG ยังเป็น key ที่บอร์ดค้นเหมือนเดิม (ADR-0010) ไฟล์นี้ตอบสองข้อที่ชื่อไฟล์
+# ตอบไม่ได้ และเป็นสองข้อที่หน้าตั้งค่าบน Mac ต้องรู้ก่อนจะกางเมนูให้เลือก:
+#   * `BTC.svg` เป็นเหรียญหรือหุ้น — แท็บ Crypto กับแท็บ Stocks กางคนละชุด
+#   * `COIN` คืออะไร — ticker ของ Coinbase ไม่ใช่เหรียญชื่อ Coin
+#
+# **ประกาศไม่ครบ = `export_logos.py` ล้ม** ทั้งสองทาง: SVG ที่ไม่มีบรรทัด และบรรทัดที่
+# ไม่มี SVG · กติกาของรีโปคือ "หย่อน SVG แล้วมันโผล่ทุกที่" การข้ามเงียบๆ จะทำให้มัน
+# โผล่บนบอร์ดแต่ไม่โผล่ในเมนู ซึ่งแย่กว่าการบอกตั้งแต่ตอน export ว่ายังโผล่ไม่ครบ
+# (`_default.svg` ไม่ต้องประกาศ — มันไม่ใช่สัญลักษณ์ที่ใครเลือกได้)
+#
+# ชื่อคือ **ชื่อสั้นที่คนเรียกจริง** ไม่ใช่ชื่อจดทะเบียน: คอลัมน์นี้มีไว้ตอบว่า "เลือกถูกตัว
+# ไหม" `GOOG — Google` ตอบได้เร็วกว่า `GOOG — Alphabet Inc.` สำหรับคนที่กำลังหา
+# Google อยู่ · ชื่อที่ซ้ำกับสัญลักษณ์ (XRP, BNB, AMD) ยังต้องเขียน แต่เมนูจะไม่พูดซ้ำ
+
+[[crypto]]
+symbol = "BTC"
+name = "Bitcoin"
+
+[[crypto]]
+symbol = "ETH"
+name = "Ethereum"
+
+[[crypto]]
+symbol = "XRP"
+name = "XRP"
+
+[[crypto]]
+symbol = "BNB"
+name = "BNB"
+
+[[crypto]]
+symbol = "SOL"
+name = "Solana"
+
+[[crypto]]
+symbol = "ADA"
+name = "Cardano"
+
+[[crypto]]
+symbol = "DOGE"
+name = "Dogecoin"
+
+[[crypto]]
+symbol = "TRX"
+name = "TRON"
+
+[[crypto]]
+symbol = "AVAX"
+name = "Avalanche"
+
+[[crypto]]
+symbol = "DOT"
+name = "Polkadot"
+
+[[crypto]]
+symbol = "LINK"
+name = "Chainlink"
+
+[[crypto]]
+symbol = "LTC"
+name = "Litecoin"
+
+[[stock]]
+symbol = "AAPL"
+name = "Apple"
+
+[[stock]]
+symbol = "AMD"
+name = "AMD"
+
+[[stock]]
+symbol = "AMZN"
+name = "Amazon"
+
+[[stock]]
+symbol = "COIN"
+name = "Coinbase"
+
+[[stock]]
+symbol = "GOOG"
+name = "Google"
+
+[[stock]]
+symbol = "INTC"
+name = "Intel"
+
+[[stock]]
+symbol = "META"
+name = "Meta"
+
+[[stock]]
+symbol = "MSFT"
+name = "Microsoft"
+
+[[stock]]
+symbol = "NFLX"
+name = "Netflix"
+
+[[stock]]
+symbol = "NVDA"
+name = "Nvidia"
+
+[[stock]]
+symbol = "PYPL"
+name = "PayPal"
+
+[[stock]]
+symbol = "TSLA"
+name = "Tesla"

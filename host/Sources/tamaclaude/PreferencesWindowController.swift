@@ -77,6 +77,9 @@ final class PreferencesWindowController: NSWindowController {
     private let coinList = NSStackView()
     private let coinField = NSTextField()
     private let addButton = NSButton(title: "Add", target: nil, action: nil)
+    /// เมนูของตัวที่ *มี logo* — ทางเข้าที่สองของ watchlist ที่อยู่ข้างช่องพิมพ์ ไม่ใช่แทนมัน
+    /// (`buildCatalogPopup` เป็นเจ้าของเหตุผลว่าทำไมเป็นเมนู ไม่ใช่ combo box)
+    private let coinPopup = NSPopUpButton()
     private let cryptoStatus = NSTextField(labelWithString: "")
     /// หน้านี้เปิดอยู่ไหม — ปุ่มของทุกแถวถูกสร้างใหม่ตอน `rebuildCoinList` ซึ่งเกิดตอนที่
     /// ผู้เรียกยังไม่ได้บอกค่านี้เข้ามาก็ได้ จึงต้องจำไว้ ไม่ใช่ส่งผ่านเป็นพารามิเตอร์
@@ -90,6 +93,8 @@ final class PreferencesWindowController: NSWindowController {
     private let symbolList = NSStackView()
     private let symbolField = NSTextField()
     private let addSymbolButton = NSButton(title: "Add", target: nil, action: nil)
+    /// เมนูเดียวกับแท็บ Crypto คนละชุด — `LogoCatalog` แยกไว้ให้แล้วว่าใบไหนเป็นหุ้น
+    private let symbolPopup = NSPopUpButton()
     private let stocksStatus = NSTextField(labelWithString: "")
     private let stockKeyLabel = NSTextField(labelWithString: "")
     private var stocksOn = true
@@ -381,6 +386,53 @@ final class PreferencesWindowController: NSWindowController {
         }
     }
 
+    /// เมนู "เพิ่มจากลิสต์" ของแท็บที่มี watchlist — สองแท็บใช้ตัวนี้ใบเดียวกัน
+    ///
+    /// เป็น **pull-down** ไม่ใช่ pop-up ที่จำค่าไว้รอปุ่ม Add: ปุ่ม Add ปุ่มเดียวที่รับของจาก
+    /// สองแหล่งคือปุ่มที่ไม่มีอะไรบอกว่ามันกำลังจะเพิ่มตัวไหน · เลือกแล้วเพิ่มเลย ผิดก็กด
+    /// Remove ในแถวที่เพิ่งโผล่ ซึ่งอยู่เหนือปุ่มนี้พอดี
+    ///
+    /// และเป็น **เมนู ไม่ใช่ `NSComboBox`**: combo box วาดแถวเป็นข้อความล้วน ซึ่งฆ่า
+    /// เหตุผลทั้งหมดที่ลิสต์นี้มีอยู่ — คนกางมันมาเพื่อดูว่า *อันไหนมี icon* ส่วนการพิมพ์เอง
+    /// ยังทำได้ที่ช่องข้างๆ ซึ่งเป็นทางที่ตรงข้ามกันโดยตั้งใจ (พิมพ์ = ยอมรับจานเปล่า)
+    private func buildCatalogPopup(_ popup: NSPopUpButton) {
+        popup.pullsDown = true
+        popup.bezelStyle = .rounded
+        popup.widthAnchor.constraint(equalToConstant: 150).isActive = true
+    }
+
+    /// กางเมนูใหม่ทั้งใบทุกครั้งที่ watchlist ขยับ — เหตุผลเดียวกับที่รายการถูกสร้างใหม่ทั้งแถบ
+    ///
+    /// ตัวที่มีอยู่แล้วถูก **disable ไม่ใช่ถอดออก**: เมนูที่รายการหายไปเรื่อยๆ ทำให้ตำแหน่งที่
+    /// มือจำไว้ขยับทุกครั้งที่เพิ่ม ส่วนแถวจางบอกว่า "ตัวนี้มีแล้ว" ตรงๆ
+    private func rebuildCatalogMenu(
+        _ popup: NSPopUpButton,
+        entries: [LogoCatalog.Entry],
+        taken: [String],
+        action: Selector
+    ) {
+        let menu = NSMenu()
+        menu.autoenablesItems = false  // ไม่งั้น AppKit เปิดทุกแถวคืนให้เอง แถวที่มีแล้วก็กดได้
+        // แถวแรกของ pull-down คือหน้าปุ่ม ไม่ใช่ตัวเลือก — ผู้ใช้ไม่มีวันเห็นมันในเมนู
+        menu.addItem(withTitle: "Add from list", action: nil, keyEquivalent: "")
+
+        let have = Set(taken.map { $0.uppercased() })
+        for (index, entry) in entries.enumerated() {
+            // ชื่อที่ซ้ำกับสัญลักษณ์ (XRP, BNB, AMD) ไม่ต้องพูดสองครั้ง — สัญลักษณ์มาก่อน
+            // เพราะมันคือของที่ลงไปใน watchlist จริงและคือของที่ขึ้นบนจอ ชื่อเต็มเป็นแค่
+            // ตัวยืนยันว่าเลือกไม่ผิดตัว
+            let title = entry.name == entry.symbol
+                ? entry.symbol : "\(entry.symbol) — \(entry.name)"
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            item.target = self
+            item.tag = index
+            item.image = LogoIconImage.menuImage(for: entry.symbol)
+            item.isEnabled = !have.contains(entry.symbol)
+            menu.addItem(item)
+        }
+        popup.menu = menu
+    }
+
     /// watchlist ของหน้าคริปโต — เพิ่ม ลบ จัดลำดับ และเพดานห้าตัวที่กดผ่านไม่ได้
     ///
     /// ผู้ใช้พิมพ์ชื่อที่เขาเรียกมันเอง ("btc", "bitcoin") ไม่ใช่ id ของบริการ การแปลงเป็น id
@@ -399,10 +451,12 @@ final class PreferencesWindowController: NSWindowController {
         addButton.action = #selector(addCoin)
         addButton.bezelStyle = .rounded
 
+        buildCatalogPopup(coinPopup)
+
         cryptoStatus.font = .systemFont(ofSize: 11)
         cryptoStatus.textColor = .secondaryLabelColor
 
-        let entry = NSStackView(views: [coinField, addButton])
+        let entry = NSStackView(views: [coinPopup, coinField, addButton])
         entry.orientation = .horizontal
         entry.spacing = 6
 
@@ -431,6 +485,9 @@ final class PreferencesWindowController: NSWindowController {
     /// วาดรายการเหรียญใหม่ทั้งแถบจากค่าที่ถืออยู่ — เหตุผลเดียวกับรายการหน้า:
     /// ไม่กี่แถว ลำดับขยับได้ และ view ที่ต้องคอยย้ายที่เองแลกไม่คุ้ม
     private func rebuildCoinList() {
+        rebuildCatalogMenu(
+            coinPopup, entries: LogoCatalog.crypto, taken: crypto.coins,
+            action: #selector(addCoinFromList))
         for view in coinList.arrangedSubviews { view.removeFromSuperview() }
         for (index, coin) in crypto.coins.enumerated() {
             // รูปเดียวกับที่จะขึ้นบนจอ — เหรียญนอกชุดได้จานเปล่าตรงนี้ *และ* ตรงนั้น
@@ -482,6 +539,8 @@ final class PreferencesWindowController: NSWindowController {
         addSymbolButton.action = #selector(addSymbol)
         addSymbolButton.bezelStyle = .rounded
 
+        buildCatalogPopup(symbolPopup)
+
         let key = NSButton(title: "Set Finnhub key…", target: self,
                            action: #selector(setFinnhubKey))
         key.bezelStyle = .rounded
@@ -491,7 +550,7 @@ final class PreferencesWindowController: NSWindowController {
             label.textColor = .secondaryLabelColor
         }
 
-        let entry = NSStackView(views: [symbolField, addSymbolButton])
+        let entry = NSStackView(views: [symbolPopup, symbolField, addSymbolButton])
         entry.orientation = .horizontal
         entry.spacing = 6
 
@@ -523,6 +582,9 @@ final class PreferencesWindowController: NSWindowController {
 
     /// วาดรายการหุ้นใหม่ทั้งแถบ — เหตุผลเดียวกับรายการหน้าและ watchlist ของคริปโต
     private func rebuildSymbolList() {
+        rebuildCatalogMenu(
+            symbolPopup, entries: LogoCatalog.stocks, taken: stocks.symbols,
+            action: #selector(addSymbolFromList))
         for view in symbolList.arrangedSubviews { view.removeFromSuperview() }
         for (index, symbol) in stocks.symbols.enumerated() {
             // รูปเดียวกับที่จะขึ้นบนจอ เหมือนรายการเหรียญเป๊ะ — ตารางรูปใบเดียวกันด้วย
@@ -767,6 +829,7 @@ final class PreferencesWindowController: NSWindowController {
         let room = settings.coins.count < CryptoSettings.maxCoins
         coinField.isEnabled = on && room
         addButton.isEnabled = on && room
+        coinPopup.isEnabled = on && room
 
         // เหตุผลที่หน้านี้ยังไม่ขึ้นจอมีได้สี่อย่าง และผู้ใช้แก้ได้คนละแบบ: firmware เก่า
         // (ต้องแฟลช) · ยังไม่ใส่เหรียญ (ใส่) · เต็มเพดานแล้ว (ลบก่อน) · ดึงไม่สำเร็จ
@@ -794,6 +857,7 @@ final class PreferencesWindowController: NSWindowController {
         let room = settings.symbols.count < StockSettings.maxSymbols
         symbolField.isEnabled = on && room
         addSymbolButton.isEnabled = on && room
+        symbolPopup.isEnabled = on && room
 
         // บรรทัดใต้ปุ่มเป็นทางเดียวที่ผู้ใช้รู้ว่า key เข้าไหม — ช่องกรอกปิดบังตัวอักษร
         // และไม่เคยถูกเติมกลับ (กติกาเดียวกับ `sessionKey`)
@@ -987,6 +1051,15 @@ final class PreferencesWindowController: NSWindowController {
         emitCrypto()
     }
 
+    /// เลือกจากเมนู = เพิ่มทันที · ลง watchlist เป็น **สัญลักษณ์** ไม่ใช่ชื่อเต็มหรือ id ของ
+    /// CoinGecko — `coins` ยังเป็นชนิดเดียวอยู่ (คำที่มนุษย์เรียกเหรียญ) ไม่ว่าจะมาจาก
+    /// เมนูหรือช่องพิมพ์ และรูปตรงทันทีทั้งในรายการนี้และบนบอร์ด
+    @objc private func addCoinFromList(_ sender: NSMenuItem) {
+        guard LogoCatalog.crypto.indices.contains(sender.tag) else { return }
+        guard crypto.add(LogoCatalog.crypto[sender.tag].symbol) else { return }
+        emitCrypto()
+    }
+
     @objc private func removeCoin(_ sender: NSButton) {
         crypto.remove(sender.tag)
         emitCrypto()
@@ -1013,6 +1086,14 @@ final class PreferencesWindowController: NSWindowController {
         // ต้องยังอยู่ให้ผู้ใช้เห็นว่าเขาพิมพ์อะไรไป พร้อมเหตุผลในบรรทัดสถานะ
         guard stocks.add(symbolField.stringValue) else { return }
         symbolField.stringValue = ""
+        emitStocks()
+    }
+
+    /// รูปเดียวกับ `addCoinFromList` — ฝั่งหุ้นไม่มีการแปลงอะไรเลย สัญลักษณ์ที่ Finnhub
+    /// รับคือสิ่งเดียวกับชื่อไฟล์ logo อยู่แล้ว
+    @objc private func addSymbolFromList(_ sender: NSMenuItem) {
+        guard LogoCatalog.stocks.indices.contains(sender.tag) else { return }
+        guard stocks.add(LogoCatalog.stocks[sender.tag].symbol) else { return }
         emitStocks()
     }
 

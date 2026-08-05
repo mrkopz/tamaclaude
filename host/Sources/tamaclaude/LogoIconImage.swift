@@ -1,4 +1,5 @@
 import AppKit
+import TamaCore
 
 /// logo ในหน้าตั้งค่า — รูปชุดเดียวกับที่บอร์ดวาด ทั้งหน้าคริปโตและหน้าหุ้น
 ///
@@ -11,16 +12,33 @@ enum LogoIconImage {
     /// อ่านเป็น "รูปคุณภาพต่ำ" ไม่ใช่ "รูปที่หยาบเท่าของจริง"
     static let px = 32
 
+    /// ขนาดในเมนู "Add from list" — ย่อจากไฟล์ 32px ไม่ใช่หยิบไฟล์ 16px ของบอร์ดมาใช้
+    /// (`make-app.sh` ก๊อปมาแต่ 32 อยู่แล้ว) การ *ย่อ* บนจอ Retina ยังคม ต่างจากการ
+    /// *ขยาย* ซึ่งเป็นสิ่งที่บรรทัดบนห้ามไว้ · แถวเมนูของ AppKit สูงกว่า 16pt
+    static let menuPx = 18
+
     /// ชื่อที่ผู้ใช้พิมพ์ -> รูป · ไม่รู้จักก็ได้ `_default` เหมือนที่บอร์ดทำ
     ///
     /// **จับคู่กับสิ่งที่ผู้ใช้พิมพ์ ไม่ใช่สัญลักษณ์ที่บริการคืนมา** — ช่องคริปโตรับ "btc"
-    /// หรือ "bitcoin" ก็ได้ ตัวหลังจึงไม่มีวันตรงกับชื่อไฟล์ `BTC.png` แล้วรายการนี้จะโชว์
-    /// จานเปล่าทั้งที่บนบอร์ดขึ้น logo bitcoin จริง · ที่รับไว้เพราะการแก้แปลว่าต้องเดิน
-    /// สัญลักษณ์ที่ resolve แล้วจาก `CryptoService` ข้ามมาถึงหน้าต่างนี้ ซึ่งเป็นท่อใหม่
-    /// ทั้งเส้นเพื่อรูปหนึ่งใบในหน้าที่เปิดปีละครั้ง · หน้าหุ้นไม่มีปัญหานี้เลย: Finnhub
-    /// รับ ticker ตรงๆ สิ่งที่ผู้ใช้พิมพ์ *คือ* สัญลักษณ์อยู่แล้ว
+    /// หรือ "bitcoin" ก็ได้ ตัวหลังไม่ตรงกับชื่อไฟล์ `BTC.png` `LogoCatalog` จึงถูกถาม
+    /// เป็นด่านที่สอง: ชื่อเต็มที่เรารู้จักแปลงกลับเป็นสัญลักษณ์ได้ในเครื่อง ไม่ต้องเดิน
+    /// สัญลักษณ์ที่ resolve แล้วจาก `CryptoService` ข้ามมาถึงหน้าต่างนี้ ซึ่งเคยเป็นราคา
+    /// ที่แพงเกินไปตอนยังไม่มีทะเบียน · ยังเหลือชื่อเล่นที่มีแต่ CoinGecko รู้ ("xbt")
+    /// ที่ได้จานเปล่าตรงนี้แต่ได้รูปจริงบนจอ — นั่นเป็นของนอกเครื่องเหมือนเดิม
+    ///
+    /// หน้าหุ้นไม่มีปัญหานี้เลย: Finnhub รับ ticker ตรงๆ สิ่งที่ผู้ใช้พิมพ์ *คือ* สัญลักษณ์
     static func image(for typed: String) -> NSImage? {
-        load(typed.uppercased()) ?? load("_default")
+        if let hit = load(typed.uppercased()) { return hit }
+        if let symbol = LogoCatalog.symbol(forName: typed), let hit = load(symbol) { return hit }
+        return load("_default")
+    }
+
+    /// รูปเดียวกันขนาดเมนู · **copy ก่อนตั้งขนาด** — `image(for:)` คืนตัวที่แคชไว้ ซึ่งแถว
+    /// ของ watchlist ถืออยู่ด้วย การตั้ง `size` ทับจะย่อรูปในแถวนั้นไปพร้อมกัน
+    static func menuImage(for typed: String) -> NSImage? {
+        guard let copy = image(for: typed)?.copy() as? NSImage else { return nil }
+        copy.size = NSSize(width: menuPx, height: menuPx)
+        return copy
     }
 
     private static var cache: [String: NSImage?] = [:]
