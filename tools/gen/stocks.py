@@ -25,7 +25,7 @@ from PIL import Image, ImageDraw
 
 from . import age, logos, mini, pages, screen, topbar, trend
 from .config import L, PAL
-from .render import draw_rects, quantize565
+from .render import draw_arrow, draw_rects, quantize565
 
 # ทิศทางขึ้น/ลงเป็นกติกาของทุกหน้า watchlist ไม่ใช่ของหน้านี้ — อยู่ที่ `trend` ที่เดียว
 tone = trend.tone
@@ -183,7 +183,7 @@ def _hero(img: Image.Image, draw: ImageDraw.ImageDraw, row: Stock, rng: DayRange
         # ลูกศรเกาะตัวเลข วัดความกว้างจริงก่อนแล้วค่อยวาง (ฝั่ง LVGL คือ lv_obj_get_width)
         pw = draw.textlength(pct, font=pf)
         ax = cfg.pct_x - pw - cfg.arrow_gap - cfg.arrow_grid * cfg.arrow_px
-        draw_rects(draw, arrow(row.change, connected), cfg.arrow_px, ax, cfg.arrow_y)
+        draw_arrow(img, draw, arrow(row.change, connected), cfg.arrow_px, ax, cfg.arrow_y)
 
         # แคปซูลบอกหน้าต่างเวลา — ต้องตรงกับ CT_STOCKS_WINDOW_TEXT ใน ct_stocks_ui.c
         _window(draw, WINDOW, ax, cfg, connected)
@@ -202,8 +202,20 @@ def _hero(img: Image.Image, draw: ImageDraw.ImageDraw, row: Stock, rng: DayRange
         _range(draw, rng, row.change, cfg, connected)
 
 
+def _rows_arrow_x(draw: ImageDraw.ImageDraw, rows: list[Stock], cfg) -> float:
+    """พิกัดลูกศรที่แถวเล็ก *ทุกแถว* ใช้ร่วมกัน — เหตุผลอยู่ที่ `gen/crypto.py:_rows_arrow_x`
+
+    แถวที่ไม่มีเปอร์เซ็นต์ไม่นับ: มันไม่วาดลูกศร ความกว้างของมันจึงไม่ควรดันคอลัมน์ของคนอื่น
+    ต้องตรงกับที่ ct_stocks_ui.c คิดใน ct_stocks_ui_redraw()
+    """
+    f = screen.font(cfg.row_font_pil)
+    widest = max((draw.textlength(pct_text(r.change), font=f)
+                  for r in rows if r.change is not None), default=0.0)
+    return cfg.row_pct_x - widest - cfg.row_arrow_gap - cfg.row_arrow_grid * cfg.row_arrow_px
+
+
 def _row(img: Image.Image, draw: ImageDraw.ImageDraw, row: Stock, top: int,
-         connected: bool) -> None:
+         connected: bool, arrow_x: float) -> None:
     """หนึ่งแถวเล็กใต้การ์ด — คู่ขนานกับ `gen/crypto.py:_row` ที่เขียนแยกกัน"""
     cfg = L.stocks
     text = PAL.text if connected else PAL.gray
@@ -223,9 +235,7 @@ def _row(img: Image.Image, draw: ImageDraw.ImageDraw, row: Stock, top: int,
     pct = pct_text(row.change)
     screen.line(draw, (cfg.row_pct_x, ty), pct, pil=cfg.row_font_pil,
                 board=cfg.row_font, fill=tone(row.change, connected), anchor="rt")
-    pw = draw.textlength(pct, font=screen.font(cfg.row_font_pil))
-    ax = cfg.row_pct_x - pw - cfg.row_arrow_gap - cfg.row_arrow_grid * cfg.row_arrow_px
-    draw_rects(draw, arrow(row.change, connected), cfg.row_arrow_px, ax,
+    draw_arrow(img, draw, arrow(row.change, connected), cfg.row_arrow_px, arrow_x,
                top + cfg.row_arrow_dy)
 
 
@@ -254,8 +264,9 @@ def render(s: Stocks, phase: float = 0.0, cycle: int = 0) -> Image.Image:
 
     _hero(img, draw, rows[0], s.day_range, s.connected,
           live=s.connected and not s.market_closed)
+    ax = _rows_arrow_x(draw, rows[1:], L.stocks)
     for i, row in enumerate(rows[1:]):
-        _row(img, draw, row, L.stocks.row_y + i * L.stocks.row_h, s.connected)
+        _row(img, draw, row, L.stocks.row_y + i * L.stocks.row_h, s.connected, ax)
     if len(rows) == 1:
         # ขึ้นเฉพาะตอนไม่มีแถวเล็กเลย ไม่ใช่ทุกครั้งที่เหลือช่องว่าง (ดู `hint_y`)
         screen.line(draw, (L.stocks.hint_x, L.stocks.hint_y), "add more in the mac app",

@@ -55,6 +55,58 @@ def draw_rects(
             draw.rectangle([x0, y0, x1 - 1, y1 - 1], fill=conv(r.color))
 
 
+# กี่เท่าที่ขยายก่อนย่อกลับเพื่อให้ได้ขอบนุ่ม — 8 เท่าให้ 64 ระดับต่อพิกเซล ซึ่งเกินกว่าที่
+# ตาแยกออกบนแผง RGB565 อยู่แล้ว สูงกว่านี้คือเวลาเรนเดอร์ที่ไม่มีใครเห็นผล
+_AA = 8
+
+
+def draw_poly(
+    img: Image.Image,
+    points: tuple[tuple[float, float], ...],
+    px: float,
+    ox: float = 0.0,
+    oy: float = 0.0,
+    color: str = "#ffffff",
+    true_color: bool = False,
+) -> None:
+    """รูปหลายเหลี่ยมขอบนุ่ม — ตัวแทนของ ct_paint_triangle() ฝั่ง Python
+
+    PIL วาด polygon แบบขอบแข็งอย่างเดียว จึงวาดลง mask ที่ขยาย `_AA` เท่าแล้วย่อกลับ
+    ด้วย BOX (= เฉลี่ยพื้นที่จริง) ผลที่ได้คือ coverage ต่อพิกเซลแบบเดียวกับที่ LVGL
+    คำนวณจาก mask line · ไม่ใช่ผลลัพธ์เดียวกันบิตต่อบิตกับบอร์ด และไม่ต้องเป็น — พรีวิว
+    พิสูจน์ *การออกแบบ* ไม่ใช่ renderer (ดูหัวไฟล์)
+    """
+    xs = [ox + x * px for x, _ in points]
+    ys = [oy + y * px for _, y in points]
+    x0, y0 = int(min(xs)), int(min(ys))
+    w, h = int(max(xs)) - x0 + 1, int(max(ys)) - y0 + 1
+    if w <= 0 or h <= 0:
+        return
+    mask = Image.new("L", (w * _AA, h * _AA), 0)
+    ImageDraw.Draw(mask).polygon(
+        [((x - x0) * _AA, (y - y0) * _AA) for x, y in zip(xs, ys)], fill=255)
+    fill = Image.new("RGB", (w, h), (hex_rgb if true_color else quantize565)(color))
+    img.paste(fill, (x0, y0), mask.resize((w, h), Image.BOX))
+
+
+def draw_arrow(
+    img: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    a,  # gen.trend.Arrow — ไม่ import เพื่อไม่ให้ตัววาดรู้จักกติกาของหน้า watchlist
+    px: float,
+    ox: float,
+    oy: float,
+) -> None:
+    """ลูกศรหนึ่งใบ — ทิศทางเป็นสามเหลี่ยมขอบนุ่ม นิ่งเป็นขีด (ดู `trend.arrow`)
+
+    ตัวคู่ขนานฝั่ง C คือ arrow_draw_cb ใน ct_crypto_ui.c / ct_stocks_ui.c
+    """
+    if a.tri is not None:
+        draw_poly(img, a.tri, px, ox, oy, a.color)
+    else:
+        draw_rects(draw, a.bar, px, ox, oy)
+
+
 def render_rects(
     rects: RectList,
     px: float,

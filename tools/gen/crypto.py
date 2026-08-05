@@ -12,7 +12,7 @@ from PIL import Image, ImageDraw
 
 from . import age, logos, mini, pages, screen, topbar, trend
 from .config import L, PAL
-from .render import draw_rects, quantize565
+from .render import draw_arrow, draw_rects, quantize565
 
 # ทิศทางขึ้น/ลงเป็นกติกาของทุกหน้า watchlist ไม่ใช่ของหน้านี้ — อยู่ที่ `trend` ที่เดียว
 tone = trend.tone
@@ -109,7 +109,7 @@ def _hero(img: Image.Image, draw: ImageDraw.ImageDraw, coin: Coin, connected: bo
     # (ฝั่ง LVGL คือ lv_obj_get_width ของป้ายเปอร์เซ็นต์หลัง lv_label_set_text)
     pw = draw.textlength(pct, font=pf)
     ax = cfg.pct_x - pw - cfg.arrow_gap - cfg.arrow_grid * cfg.arrow_px
-    draw_rects(draw, arrow(coin.change, connected), cfg.arrow_px, ax, cfg.arrow_y)
+    draw_arrow(img, draw, arrow(coin.change, connected), cfg.arrow_px, ax, cfg.arrow_y)
 
     # แคปซูลบอกหน้าต่างเวลา — ต้องตรงกับ CT_CRYPTO_WINDOW_TEXT ใน ct_crypto_ui.c
     # ค่าที่ CoinGecko ให้คือ price_change_percentage_24h ตรงๆ ไม่ใช่ที่เราคำนวณเอง
@@ -131,8 +131,23 @@ def _hero(img: Image.Image, draw: ImageDraw.ImageDraw, coin: Coin, connected: bo
                1.0, cfg.spark_x, cfg.spark_y)
 
 
+def _rows_arrow_x(draw: ImageDraw.ImageDraw, coins: list[Coin], cfg) -> float:
+    """พิกัดลูกศรที่แถวเล็ก *ทุกแถว* ใช้ร่วมกัน — วัดจากเปอร์เซ็นต์ที่ยาวที่สุดในหน้านั้น
+
+    ลูกศรของแถวใหญ่เกาะตัวเลขของตัวเอง เพราะมันมีใบเดียว ไม่มีอะไรให้เรียงด้วย แต่ในลิสต์
+    ที่มีหลายแถว การเกาะตัวเลขแยกใครแยกมันทำให้ลูกศรเยื้องกันตามความยาวเลข ("+1.1%" กับ
+    "+12.4%" ต่างกันเกือบหนึ่งตัวอักษร) แล้วคอลัมน์ที่ควรอ่านด้วยการกวาดตาลงมาก็เป็นฟันหลอ
+    · เลือกวัดจากตัวที่ยาวที่สุดแทนพิกัดตายตัว เพราะพิกัดตายตัวจะทิ้งช่องว่างค้างไว้เสมอ
+    ในหน้าที่ทุกแถวเป็นเลขสั้น (และต้องเดาความกว้างฟอนต์บอร์ดล่วงหน้าด้วย)
+    ต้องตรงกับที่ ct_crypto_ui.c คิดใน ct_crypto_ui_redraw()
+    """
+    f = screen.font(cfg.row_font_pil)
+    widest = max((draw.textlength(pct_text(c.change), font=f) for c in coins), default=0.0)
+    return cfg.row_pct_x - widest - cfg.row_arrow_gap - cfg.row_arrow_grid * cfg.row_arrow_px
+
+
 def _row(img: Image.Image, draw: ImageDraw.ImageDraw, coin: Coin, top: int,
-         connected: bool) -> None:
+         connected: bool, arrow_x: float) -> None:
     """หนึ่งแถวเล็กใต้การ์ด — `gen/stocks.py` มีตัวคู่ขนานที่เขียนแยกกัน (ดู `_hero`)"""
     cfg = L.crypto
     text = PAL.text if connected else PAL.gray
@@ -153,9 +168,7 @@ def _row(img: Image.Image, draw: ImageDraw.ImageDraw, coin: Coin, top: int,
     pct = pct_text(coin.change)
     screen.line(draw, (cfg.row_pct_x, ty), pct, pil=cfg.row_font_pil,
                 board=cfg.row_font, fill=tone(coin.change, connected), anchor="rt")
-    pw = draw.textlength(pct, font=screen.font(cfg.row_font_pil))
-    ax = cfg.row_pct_x - pw - cfg.row_arrow_gap - cfg.row_arrow_grid * cfg.row_arrow_px
-    draw_rects(draw, arrow(coin.change, connected), cfg.row_arrow_px, ax,
+    draw_arrow(img, draw, arrow(coin.change, connected), cfg.row_arrow_px, arrow_x,
                top + cfg.row_arrow_dy)
 
 
@@ -183,8 +196,9 @@ def render(c: Crypto, phase: float = 0.0, cycle: int = 0) -> Image.Image:
         return img
 
     _hero(img, draw, rows[0], c.connected)
+    ax = _rows_arrow_x(draw, rows[1:], L.crypto)
     for i, coin in enumerate(rows[1:]):
-        _row(img, draw, coin, L.crypto.row_y + i * L.crypto.row_h, c.connected)
+        _row(img, draw, coin, L.crypto.row_y + i * L.crypto.row_h, c.connected, ax)
     if len(rows) == 1:
         # ขึ้นเฉพาะตอนไม่มีแถวเล็กเลย ไม่ใช่ทุกครั้งที่เหลือช่องว่าง (ดู `hint_y`)
         screen.line(draw, (L.crypto.hint_x, L.crypto.hint_y), "add more in the mac app",

@@ -14,6 +14,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from .config import PAL
 from .rects import Rect, RectList
 
@@ -35,20 +37,36 @@ def tone(change: int, connected: bool = True) -> str:
     return PAL.text_dim
 
 
-def arrow(change: int, connected: bool = True) -> RectList:
-    """ลูกศรขึ้น/ลง — ต้องตรงกับ ct_trend_arrow() ใน ct_trend.c"""
+@dataclass(frozen=True)
+class Arrow:
+    """ลูกศรหนึ่งใบ: *ทิศทาง* เป็นสามเหลี่ยม ส่วน *นิ่ง* เป็นขีด สองอย่างนี้วาดคนละแบบ"""
+    color: str
+    tri: tuple[tuple[float, float], ...] | None  # สามจุดในตาราง 4x4 unit (None = นิ่ง)
+    bar: RectList                                # ขีดนิ่ง (ว่างเมื่อมีสามเหลี่ยม)
+
+
+# ปลายอยู่กึ่งกลางแนวนอน ฐานกว้างเท่ากับความสูง — สามเหลี่ยมด้านเท่าโดยประมาณอ่านเป็น
+# "ลูกศร" ที่ 16px ได้เร็วกว่าทรงเรียวสูง ซึ่งที่ขนาดนี้เริ่มอ่านเป็นขีดเอียง
+_TRI_INSET = 0.4  # เว้นขอบตาราง unit ไว้ทุกด้าน กันปลายชนกล่องผืนวาด
+
+
+def arrow(change: int, connected: bool = True) -> Arrow:
+    """ลูกศรขึ้น/ลง — ต้องตรงกับ ct_trend_arrow() ใน ct_trend.c
+
+    **สามเหลี่ยมจริง ไม่ใช่บันไดสี่เหลี่ยมสามขั้นเหมือนของเดิม** — ที่ 16px ขั้นบันได
+    อ่านออกว่าเป็นขั้น ไม่ใช่ด้านเฉียง และมันเป็นชิ้นเดียวบนหน้าที่ต้องแหลมจริงๆ (ทุกอย่าง
+    อื่นบนสองหน้านี้เป็นแท่งกับกล่องซึ่งขอบตรงอยู่แล้ว) · ทั้งสองฝั่งวาดด้วยขอบ
+    anti-alias: บอร์ดได้จาก lv_draw_triangle, พรีวิวได้จากการ supersample ใน render.py
+    """
     color = tone(change, connected)
 
     if change == 0:
         # นิ่งคือขีดเดียว ไม่ใช่ลูกศรแบนๆ — สามเหลี่ยมที่ชี้ไปไหนไม่ได้อ่านเป็นลูกศรเสีย
-        return [Rect(0.5, 1.75, 3.0, 0.5, color)]
-    out: RectList = []
-    for i in range(3):
-        w = 1.0 + i
-        x = 2.0 - w / 2.0
-        y = 0.5 + i if change > 0 else 3.5 - i - 1.0
-        out.append(Rect(x, y, w, 1.0, color))
-    return out
+        return Arrow(color, None, [Rect(0.5, 1.75, 3.0, 0.5, color)])
+
+    lo, hi = _TRI_INSET, 4.0 - _TRI_INSET
+    apex_y, base_y = (lo, hi) if change > 0 else (hi, lo)
+    return Arrow(color, ((2.0, apex_y), (lo, base_y), (hi, base_y)), [])
 
 
 def card_fill(change: int, live: bool) -> str:

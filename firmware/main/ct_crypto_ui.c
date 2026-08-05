@@ -72,10 +72,12 @@ static void arrow_draw_cb(lv_event_t *e)
 
     lv_area_t coords;
     lv_obj_get_coords(obj, &coords);
-    ct_rects_t rects;
-    ct_trend_arrow(&rects, data->change, s_connected);
-    ct_paint_rects(lv_event_get_layer(e), &rects, coords.x1, coords.y1,
-                   index == 0 ? CT_CRYPTO_ARROW_PX : CT_CRYPTO_ROW_ARROW_PX);
+    ct_trend_arrow_t a;
+    ct_trend_arrow(&a, data->change, s_connected);
+    float px = index == 0 ? CT_CRYPTO_ARROW_PX : CT_CRYPTO_ROW_ARROW_PX;
+    lv_layer_t *layer = lv_event_get_layer(e);
+    if (a.tri) ct_paint_triangle(layer, a.p, a.color, coords.x1, coords.y1, px);
+    else ct_paint_rect(layer, &a.bar, coords.x1, coords.y1, px);
 }
 
 static void spark_draw_cb(lv_event_t *e)
@@ -345,7 +347,7 @@ static void draw_hero(const ct_crypto_row_t *data)
     lv_obj_invalidate(s_hero.spark);
 }
 
-static void draw_row(ct_crypto_row_ui_t *row, const ct_crypto_row_t *data)
+static void draw_row(ct_crypto_row_ui_t *row, const ct_crypto_row_t *data, int32_t arrow_x)
 {
     uint16_t text = s_connected ? CT_COL_TEXT : CT_COL_GRAY;
     lv_image_set_src(row->icon, ct_logo_row(data->sym));
@@ -363,9 +365,9 @@ static void draw_row(ct_crypto_row_ui_t *row, const ct_crypto_row_t *data)
     lv_label_set_text(row->pct, pct);
     lv_obj_set_style_text_color(row->pct, ct_color(ct_trend_tone(data->change, s_connected)),
                                 0);
-    lv_obj_set_x(row->arrow, CT_CRYPTO_ROW_PCT_X - text_w(row->pct, pct) -
-                                 CT_CRYPTO_ROW_ARROW_GAP -
-                                 CT_CRYPTO_ROW_ARROW_GRID * CT_CRYPTO_ROW_ARROW_PX);
+    // ลูกศรของแถวเล็กไม่ได้เกาะตัวเลขของตัวเองเหมือนแถวใหญ่ — พิกัดร่วมมาจากผู้เรียก
+    // (ดู ct_crypto_ui_redraw) เพราะคอลัมน์ลูกศรที่เยื้องกันตามความยาวเลขอ่านเป็นฟันหลอ
+    lv_obj_set_x(row->arrow, arrow_x);
 
     lv_obj_invalidate(row->arrow);
     lv_obj_invalidate(row->spark);
@@ -387,6 +389,18 @@ void ct_crypto_ui_redraw(void)
     if (count > 0) draw_hero(&s_frame->rows[0]);
     else show(s_hero.price_int, false);
 
+    // พิกัดลูกศรร่วมของแถวเล็กทุกแถว วัดจากเปอร์เซ็นต์ที่ยาวที่สุดที่จะขึ้นจริงในรอบนี้ —
+    // ต้องคิดให้ครบก่อนวาดแถวแรก และต้องตรงกับ `_rows_arrow_x` ใน tools/gen/crypto.py
+    int32_t widest = 0;
+    for (int i = 1; i < count && i <= CT_CRYPTO_LIST_ROWS; i++) {
+        char pct[16];
+        ct_trend_pct_text(pct, sizeof(pct), s_frame->rows[i].change);
+        int32_t w = text_w(s_rows[i - 1].pct, pct);
+        if (w > widest) widest = w;
+    }
+    int32_t row_ax = CT_CRYPTO_ROW_PCT_X - widest - CT_CRYPTO_ROW_ARROW_GAP -
+                     CT_CRYPTO_ROW_ARROW_GRID * CT_CRYPTO_ROW_ARROW_PX;
+
     for (int i = 0; i < CT_CRYPTO_LIST_ROWS; i++) {
         ct_crypto_row_ui_t *row = &s_rows[i];
         // แถวที่ไม่มีเหรียญคือแถวที่ไม่มีอยู่ ไม่ใช่แถวที่มีขีดคั่น — watchlist สามตัว
@@ -398,7 +412,7 @@ void ct_crypto_ui_redraw(void)
         show(row->spark, on);
         show(row->arrow, on);
         show(row->pct, on);
-        if (on) draw_row(row, &s_frame->rows[i + 1]);
+        if (on) draw_row(row, &s_frame->rows[i + 1], row_ax);
     }
 
     show(s_hint, count == 1);

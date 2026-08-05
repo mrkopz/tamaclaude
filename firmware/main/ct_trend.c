@@ -30,23 +30,28 @@ uint16_t ct_trend_card_edge(int change, bool connected)
     return CT_COL_GRAY;
 }
 
-void ct_trend_arrow(ct_rects_t *out, int change, bool connected)
+// เว้นขอบตาราง unit ไว้ทุกด้าน กันปลายชนกล่องผืนวาด — ต้องตรงกับ _TRI_INSET ฝั่ง Python
+#define CT_TREND_TRI_INSET 0.4f
+
+void ct_trend_arrow(ct_trend_arrow_t *out, int change, bool connected)
 {
-    ct_rects_reset(out);
-    uint16_t color = ct_trend_tone(change, connected);
+    out->color = ct_trend_tone(change, connected);
 
     if (change == 0) {
         // นิ่งคือขีดเดียว ไม่ใช่ลูกศรแบนๆ — สามเหลี่ยมที่ชี้ไปไหนไม่ได้อ่านเป็นลูกศรเสีย
-        ct_rects_add(out, 0.5f, 1.75f, 3.0f, 0.5f, color);
+        out->tri = false;
+        out->bar = (ct_rect_t){0.5f, 1.75f, 3.0f, 0.5f, out->color, 0.0f};
         return;
     }
-    // สามขั้น กว้างขึ้นไปทางฐาน — ที่ 16px ขั้นละ 4px ยังอ่านเป็นสามเหลี่ยม
-    for (int i = 0; i < 3; i++) {
-        float w = 1.0f + i * 1.0f;
-        float x = 2.0f - w / 2.0f;
-        float y = change > 0 ? 0.5f + i * 1.0f : 3.5f - i * 1.0f - 1.0f;
-        ct_rects_add(out, x, y, w, 1.0f, color);
-    }
+    // ปลายอยู่กึ่งกลางแนวนอน ฐานกว้างเท่าความสูง — สามเหลี่ยมด้านเท่าโดยประมาณอ่านเป็น
+    // "ลูกศร" ที่ 16px ได้เร็วกว่าทรงเรียวสูง ซึ่งที่ขนาดนี้เริ่มอ่านเป็นขีดเอียง
+    float lo = CT_TREND_TRI_INSET, hi = 4.0f - CT_TREND_TRI_INSET;
+    float apex_y = change > 0 ? lo : hi;
+    float base_y = change > 0 ? hi : lo;
+    out->tri = true;
+    out->p[0] = (ct_pt_t){2.0f, apex_y};
+    out->p[1] = (ct_pt_t){lo, base_y};
+    out->p[2] = (ct_pt_t){hi, base_y};
 }
 
 int ct_trend_fold(const uint8_t *levels, int n, uint8_t *out, int cols)

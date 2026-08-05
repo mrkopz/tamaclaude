@@ -39,8 +39,19 @@ uint16_t ct_trend_card_fill(int change, bool live);
 // กรอบ 303px ด้วยสีเต็มแรงอ่านเป็นกล่อง error (เหตุผลเต็มอยู่ที่ card_edge_up ใน layout.toml)
 uint16_t ct_trend_card_edge(int change, bool connected);
 
-// ลูกศรขึ้น/ลงในตาราง 4x4 unit — ผู้เรียกเป็นคนกำหนดขนาดพิกเซลต่อ unit
-void ct_trend_arrow(ct_rects_t *out, int change, bool connected);
+// ลูกศรหนึ่งใบในตาราง 4x4 unit — ผู้เรียกเป็นคนกำหนดขนาดพิกเซลต่อ unit
+//
+// *ทิศทาง* เป็นสามเหลี่ยมจริง ไม่ใช่บันไดสี่เหลี่ยมสามขั้นอย่างที่เคยเป็น: ที่ 16px ขั้น
+// บันไดอ่านออกว่าเป็นขั้น ไม่ใช่ด้านเฉียง และลูกศรเป็นชิ้นเดียวบนสองหน้านี้ที่มีขอบเฉียง
+// (ที่เหลือเป็นแท่งกับกล่องซึ่งขอบตรงอยู่แล้ว) · ส่วน *นิ่ง* ยังเป็นขีดสี่เหลี่ยมใบเดียว
+typedef struct {
+    uint16_t color;
+    bool tri;      // true = สามเหลี่ยมใน p[] · false = ขีดนิ่งใน bar
+    ct_pt_t p[3];
+    ct_rect_t bar;
+} ct_trend_arrow_t;
+
+void ct_trend_arrow(ct_trend_arrow_t *out, int change, bool connected);
 
 // ย่อจำนวนจุดลงเหลือ `cols` โดย **เก็บปลายทั้งสองไว้เสมอ** — เฉลี่ยเป็นคู่ๆ จะทำให้จุด
 // สุดท้ายไม่ใช่ราคาปิดอีกต่อไป แล้วแท่งสุดท้ายก็เลิกตรงกับเปอร์เซ็นต์ที่พิมพ์อยู่ข้างมัน

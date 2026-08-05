@@ -22,6 +22,12 @@ typedef struct {
     int count;
 } ct_rects_t;
 
+// จุดเดียวในพิกัด unit เดียวกับ ct_rect_t — สำหรับรูปทรงที่ขอบเฉียง ซึ่ง rect list วาดได้
+// แค่เป็นบันได (ตอนนี้มีลูกศรทิศทางชิ้นเดียว ดู ct_trend_arrow)
+typedef struct {
+    float x, y;
+} ct_pt_t;
+
 static inline void ct_rects_reset(ct_rects_t *rs) { rs->count = 0; }
 
 // เกิน CT_RECTS_MAX แล้วทิ้งเงียบๆ ดีกว่าเขียนล้น — ตรวจได้ด้วย ct_rects_full()
