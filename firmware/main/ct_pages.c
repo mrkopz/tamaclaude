@@ -104,7 +104,7 @@ void ct_pages_init(void)
     ct_mini_init(&s_mascot);
 
     ct_weather_ui_init(s_pages[CT_PAGE_WEATHER].root, &s_weather,
-                       &s_pages[CT_PAGE_WEATHER].has_frame);
+                       &s_pages[CT_PAGE_WEATHER].has_frame, &s_mascot);
     ct_crypto_ui_init(s_pages[CT_PAGE_CRYPTO].root, &s_crypto,
                       &s_pages[CT_PAGE_CRYPTO].has_frame);
     ct_calendar_ui_init(s_pages[CT_PAGE_CALENDAR].root, &s_calendar,
@@ -131,9 +131,11 @@ void ct_pages_set_snapshot(const ct_snapshot_t *snap)
     // เปลี่ยนพร้อมกันเสมอ (ต้องมาหลัง ct_ui_redraw: กติกา "ไม่พูดซ้ำ" ถามหน้ามาสคอตว่า
     // ตอนนี้มันแสดงอะไรอยู่)
     ct_topbar_redraw();
-    // มาสคอตจิ๋วบนหน้าอื่นอ่าน snapshot ก้อนเดียวกันนี้ — pose ที่รออนุญาตอยู่ต้องไม่
-    // หายไปเพียงเพราะผู้ใช้กำลังดูหน้าอื่น
-    if (s_active == CT_PAGE_WEATHER) ct_weather_ui_redraw();
+    // หน้าอากาศอ่าน snapshot ใบนี้เอา *นาฬิกา* ไปเลือกฟ้าของฉาก (ADR-0009) — และวาดใหม่
+    // เฉพาะตอนข้ามขอบช่วงเวลาจริงๆ ไม่ใช่ทุกวินาที ผืนฉากกินเกือบเต็มจอ การ invalidate
+    // มันทุกวินาทีคือการวาดจอใหม่ทั้งใบตลอดเวลาเพื่อภาพที่เหมือนเดิมวันละ 86396 ครั้ง
+    // (มาสคอตจิ๋วมีจังหวะของตัวเองที่ `ct_mini_tick` ไม่ได้พึ่งเส้นทางนี้)
+    if (s_active == CT_PAGE_WEATHER) ct_weather_ui_redraw_clock();
     // หน้าปฏิทินอ่าน snapshot ใบนี้ด้วย: สัปดาห์ที่ว่างวาดวันที่ตัวใหญ่ ซึ่งต้องข้ามเที่ยงคืน
     // ไปพร้อมกับนาฬิกาบนแถบ ไม่ใช่รอเฟรมปฏิทินใบถัดไปอีกห้านาที
     if (s_active == CT_PAGE_CALENDAR) ct_calendar_ui_redraw();

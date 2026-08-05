@@ -103,10 +103,10 @@ static const uint16_t CARD_FILL[CT_SKY_PHASE_COUNT] = {
     CT_COL_CAL_SKY_NIGHT, CT_COL_CAL_SKY_DAWN, CT_COL_CAL_SKY_DAY, CT_COL_CAL_SKY_DUSK};
 static const uint16_t CARD_EDGE[CT_SKY_PHASE_COUNT] = {
     CT_COL_CAL_EDGE_NIGHT, CT_COL_CAL_EDGE_DAWN, CT_COL_CAL_EDGE_DAY, CT_COL_CAL_EDGE_DUSK};
-static const uint16_t CARD_TEXT[CT_SKY_PHASE_COUNT] = {CT_COL_TEXT, CT_COL_TEXT, CT_COL_CAL_INK,
+static const uint16_t CARD_TEXT[CT_SKY_PHASE_COUNT] = {CT_COL_TEXT, CT_COL_TEXT, CT_COL_INK,
                                                        CT_COL_TEXT};
 static const uint16_t CARD_DIM[CT_SKY_PHASE_COUNT] = {CT_COL_CAL_DIM, CT_COL_CAL_DIM,
-                                                      CT_COL_CAL_INK_DIM, CT_COL_CAL_DIM};
+                                                      CT_COL_INK_DIM, CT_COL_CAL_DIM};
 static const uint16_t CARD_ACCENT[CT_SKY_PHASE_COUNT] = {
     CT_COL_CAL_ACCENT, CT_COL_CAL_ACCENT, CT_COL_CAL_INK_ACCENT, CT_COL_CAL_ACCENT};
 // ก้นการ์ด (ฟ้าจางลงเข้าหาขอบฟ้า) · ดาวกับเมฆ · ดวง

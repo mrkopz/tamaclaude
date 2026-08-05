@@ -122,20 +122,99 @@ static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
 #define CT_PAGE_MINI_BOTTOM_Y        236
 
 #define CT_WEATHER_PLACE_X           12
-#define CT_WEATHER_PLACE_Y           30
+#define CT_WEATHER_PLACE_Y           28
 #define CT_WEATHER_TEMP_X            14
-#define CT_WEATHER_TEMP_Y            64
-#define CT_WEATHER_HILO_X            18
-#define CT_WEATHER_HILO_Y            140
+#define CT_WEATHER_TEMP_Y            52
+#define CT_WEATHER_HILO_X            16
+#define CT_WEATHER_HILO_Y            108
 #define CT_WEATHER_TEMP_FONT         48
 #define CT_WEATHER_TEMP_FONT_PIL     46
-#define CT_WEATHER_ICON_X            232
-#define CT_WEATHER_ICON_Y            92
+#define CT_WEATHER_ICON_X            236
+#define CT_WEATHER_ICON_Y            60
 #define CT_WEATHER_ICON_PX           5
 #define CT_WEATHER_ICON_GRID         10
 #define CT_WEATHER_EMPTY_Y           80
 #define CT_WEATHER_EMPTY_SUB_Y       104
+#define CT_WEATHER_HORIZON           148
+#define CT_WEATHER_DECK_CLOUD_Y      56
+#define CT_WEATHER_DECK_WET_Y        62
+#define CT_WEATHER_DECK_STORM_Y      108
+#define CT_WEATHER_RAIN_W            2
+#define CT_WEATHER_FC_COLS           5
+#define CT_WEATHER_FC_COL_W          64
+#define CT_WEATHER_FC_HOUR_Y         150
+#define CT_WEATHER_FC_ICON_Y         166
+#define CT_WEATHER_FC_ICON_PX        2
+#define CT_WEATHER_FC_TEMP_Y         190
+#define CT_WEATHER_FC_HOUR_FONT      12
+#define CT_WEATHER_FC_TEMP_FONT      14
 #define CT_WEATHER_REFRESH_S         900
+
+#define CT_WEATHER_DECK_LUMPS_COUNT  10
+static const int16_t ct_weather_deck_lumps[CT_WEATHER_DECK_LUMPS_COUNT][3] = {
+    { -6,  46,  16},
+    { 30,  34,  11},
+    { 60,  42,  18},
+    { 96,  30,  10},
+    {124,  40,  15},
+    {158,  34,  12},
+    {188,  44,  17},
+    {226,  32,  10},
+    {252,  42,  16},
+    {290,  44,  13},
+};
+
+#define CT_WEATHER_RAIN_COUNT        14
+static const int16_t ct_weather_rain[CT_WEATHER_RAIN_COUNT][3] = {
+    { 22,  76,  14},
+    { 54,  92,  10},
+    { 78,  70,  18},
+    {108,  98,  12},
+    {140,  74,  15},
+    {166,  96,  11},
+    {196,  72,  17},
+    {222,  90,  13},
+    {252,  78,  16},
+    {284,  94,  10},
+    { 38, 112,   9},
+    {126, 118,   8},
+    {208, 116,   9},
+    {300, 110,   8},
+};
+
+#define CT_WEATHER_SNOW_COUNT        14
+static const int16_t ct_weather_snow[CT_WEATHER_SNOW_COUNT][3] = {
+    { 26,  74,   5},
+    { 58,  96,   3},
+    { 84,  78,   4},
+    {112, 104,   3},
+    {138,  82,   5},
+    {162, 100,   3},
+    {192,  76,   4},
+    {216,  98,   3},
+    {248,  84,   5},
+    {278, 102,   4},
+    { 42, 120,   3},
+    {130, 124,   4},
+    {204, 122,   3},
+    {296, 118,   4},
+};
+
+#define CT_WEATHER_FOG_BANDS_COUNT   4
+static const int16_t ct_weather_fog_bands[CT_WEATHER_FOG_BANDS_COUNT][2] = {
+    { 68,   5},
+    { 86,   7},
+    {106,   9},
+    {128,  12},
+};
+
+#define CT_WEATHER_BOLT_COUNT        4
+static const int16_t ct_weather_bolt[CT_WEATHER_BOLT_COUNT][4] = {
+    {168, 102,  11,  14},
+    {157, 114,  11,  13},
+    {164, 126,  10,  12},
+    {153, 136,  10,  10},
+};
 
 #define CT_CRYPTO_ROWS               5
 #define CT_CRYPTO_ROW_Y              30
@@ -271,6 +350,7 @@ static const int16_t ct_calendar_card_clouds[CT_CALENDAR_CARD_CLOUDS_COUNT][3] =
 #define CT_COL_GRAY                  0x5AEB
 #define CT_COL_GRAY_DARK             0x39E7
 #define CT_COL_INK                   0x10A1
+#define CT_COL_INK_DIM               0x3AAD
 #define CT_COL_OUTLINE               0xFFFF
 #define CT_COL_TEXT                  0xEF1B
 #define CT_COL_TEXT_DIM              0x8C0F
@@ -315,8 +395,6 @@ static const int16_t ct_calendar_card_clouds[CT_CALENDAR_CARD_CLOUDS_COUNT][3] =
 #define CT_COL_CAL_EDGE_DUSK         0xAB17
 #define CT_COL_CAL_DIM               0xBE1B
 #define CT_COL_CAL_ACCENT            0xFE14
-#define CT_COL_CAL_INK               0x10A1
-#define CT_COL_CAL_INK_DIM           0x3AAD
 #define CT_COL_CAL_INK_ACCENT        0x8A04
 #define CT_COL_CAL_LO_NIGHT          0x2169
 #define CT_COL_CAL_LO_DAWN           0x4AD1
@@ -330,6 +408,14 @@ static const int16_t ct_calendar_card_clouds[CT_CALENDAR_CARD_CLOUDS_COUNT][3] =
 #define CT_COL_CAL_DISC_DAWN         0x6BD5
 #define CT_COL_CAL_DISC_DAY          0xE54B
 #define CT_COL_CAL_DISC_DUSK         0x9293
+#define CT_COL_WX_DECK_NIGHT         0x2147
+#define CT_COL_WX_DECK_DAWN          0x5333
+#define CT_COL_WX_DECK_DAY           0x8D16
+#define CT_COL_WX_DECK_DUSK          0x8A53
+#define CT_COL_WX_STORM_SKY          0x29A8
+#define CT_COL_WX_STORM_DECK         0x10C4
+#define CT_COL_WX_FLAKE              0xF7DF
+#define CT_COL_WX_FLAKE_INK          0x6C74
 
 // visual state — daemon ส่งค่าพวกนี้มาบน BLE ห้ามเรียงใหม่
 typedef enum {

@@ -173,6 +173,9 @@ public final class WeatherService {
         }
         fetch(url) { [weak self] result in
             guard let self else { return }
+            // แถบพยากรณ์อ่านจาก payload ก้อนเดียวกัน และอ่านไม่ได้ก็ไม่ล้มทั้งรอบ
+            // (ดู `WeatherSource.hourly`) — รอบที่ "สำเร็จแต่ไม่มีแถบล่าง" ยังมีค่า
+            let ahead = result.map(WeatherSource.hourly)
             switch result.flatMap({ data in
                 Result { try WeatherSource.reading(from: data, unit: unit) }
             }) {
@@ -180,7 +183,10 @@ public final class WeatherService {
                 // ป้ายบนจอเป็นชื่อที่ *บริการ* คืนมา ไม่ใช่ที่ผู้ใช้พิมพ์ — คนที่พิมพ์
                 // "bkk" ต้องเห็นว่าจอกำลังพูดถึงเมืองไหนจริงๆ
                 let label = place.name.isEmpty ? self.settings.place : place.name
-                self.finish(WeatherFrame(place: label, reading: reading), nil)
+                let none: (hourStart: Int, hours: [HourlyPoint]) = (-1, [])
+                let hours = (try? ahead.get()) ?? none
+                self.finish(WeatherFrame(place: label, reading: reading,
+                                         hourStart: hours.hourStart, hours: hours.hours), nil)
             case .failure(let error):
                 self.finish(nil, Self.explain(error))
             }

@@ -44,6 +44,21 @@ public struct WeatherReading: Equatable, Sendable {
     }
 }
 
+/// หนึ่งช่องของแถบพยากรณ์ — ชั่วโมงข้างหน้าหนึ่งชั่วโมง
+///
+/// ไม่มีเวลาอยู่ในตัวมันเอง: ทั้งแถบเดินทีละหนึ่งชั่วโมงจาก `WeatherFrame.hourStart`
+/// การใส่ชั่วโมงลงทุกช่องคือการจ่ายไบต์ให้ข้อมูลที่คำนวณได้ ในเฟรมที่มีงบ 500
+public struct HourlyPoint: Equatable, Sendable {
+    public var temp: Int
+    /// รหัส WMO เหมือน `WeatherReading.code` — บอร์ดแปลเป็นสัญลักษณ์เอง (ADR-0004)
+    public var code: Int
+
+    public init(temp: Int, code: Int) {
+        self.temp = temp
+        self.code = code
+    }
+}
+
 /// จุดบนแผนที่ที่ได้จากชื่อเมือง — ผู้ใช้พิมพ์ชื่อ ไม่ได้พิมพ์พิกัด
 public struct GeoPlace: Equatable, Sendable {
     public var name: String
@@ -60,7 +75,8 @@ public struct GeoPlace: Equatable, Sendable {
 /// page frame ของหน้าอากาศ
 ///
 /// ```
-/// {"a":420,"g":1,"h":34,"l":26,"p":"Bangkok","t":31,"u":"C","w":61}
+/// {"a":420,"c":[0,1,3,61,61],"g":1,"h":34,"l":26,"n":15,
+///  "o":[32,33,33,31,30],"p":"Bangkok","t":31,"u":"C","w":61}
 /// ```
 public struct WeatherFrame: PageFrame, Equatable, Codable, Sendable {
     public var kind: PageKind { .weather }
@@ -68,16 +84,33 @@ public struct WeatherFrame: PageFrame, Equatable, Codable, Sendable {
     public var place: String
     public var reading: WeatherReading
     public var age: Int
+    /// ชั่วโมงของช่องแรกในแถบพยากรณ์ (0..23) — `-1` คือเฟรมนี้ไม่มีพยากรณ์มาด้วย
+    ///
+    /// ชั่วโมง **สัมบูรณ์** ไม่ใช่ offset จากตอนนี้ ทั้งที่ทุกอย่างอื่นบนหน้านี้เป็นอายุ:
+    /// อายุใช้ได้เพราะบอร์ดนับต่อเองได้ แต่ป้าย "17:00" ที่นับต่อไม่ได้จะกลายเป็นคำโกหก
+    /// ทันทีที่เฟรมค้าง — ส่วนชั่วโมงสัมบูรณ์ที่ค้างอยู่ยังเป็นชั่วโมงนั้นจริงๆ แค่ผ่านไปแล้ว
+    /// และบรรทัดอายุก็บอกอยู่แล้วว่าผ่านไปนานเท่าไร
+    public var hourStart: Int
+    public var hours: [HourlyPoint]
 
     /// ชื่อสถานที่ยาวเกินความกว้างจอไม่มีประโยชน์ — วัดจากพื้นที่จริงใน
     /// `tools/layout.toml` (`[weather] place_x` ถึง `icon_x`) ผ่าน `tools/gen/weather.py`
     public static let placeLimit = 18
+    /// จำนวนคอลัมน์ของแถบพยากรณ์ — ต้องตรงกับ `[weather] fc_cols` ใน `tools/layout.toml`
+    /// (`tamatest` อ่าน `layout.h` มาเทียบ เหมือนที่ทำกับ `PageKind`)
+    public static let hourLimit = 5
 
-    public init(place: String, reading: WeatherReading, age: Int = 0) {
+    public init(place: String, reading: WeatherReading, age: Int = 0,
+                hourStart: Int = -1, hours: [HourlyPoint] = []) {
         self.place = place
         self.reading = reading
         self.age = age
+        self.hourStart = hourStart
+        self.hours = Array(hours.prefix(Self.hourLimit))
     }
+
+    /// มีพยากรณ์ที่วาดได้จริงไหม — สองฟิลด์ต้องพร้อมกัน ไม่ใช่อย่างใดอย่างหนึ่ง
+    public var hasHours: Bool { (0..<24).contains(hourStart) && !hours.isEmpty }
 
     enum CodingKeys: String, CodingKey {
         case kindID = "g"
@@ -88,6 +121,9 @@ public struct WeatherFrame: PageFrame, Equatable, Codable, Sendable {
         case low = "l"
         case code = "w"
         case unit = "u"
+        case hourStart = "n"
+        case hourTemps = "o"
+        case hourCodes = "c"
     }
 
     public init(from decoder: Decoder) throws {
@@ -105,6 +141,19 @@ public struct WeatherFrame: PageFrame, Equatable, Codable, Sendable {
             low: try c.decode(Int.self, forKey: .low),
             code: try c.decode(Int.self, forKey: .code),
             unit: try c.decode(TempUnit.self, forKey: .unit))
+        // พยากรณ์เป็นส่วนเสริม เฟรมที่ไม่มีมันยังเป็นเฟรมที่ใช้ได้ — และสองแถวที่ยาวไม่เท่ากัน
+        // ก็ไม่ใช่พยากรณ์ครึ่งเดียว มันคือพยากรณ์ที่อ่านไม่ได้ ทิ้งทั้งชุดดีกว่าเดาช่องที่หาย
+        let start = try c.decodeIfPresent(Int.self, forKey: .hourStart) ?? -1
+        let temps = try c.decodeIfPresent([Int].self, forKey: .hourTemps) ?? []
+        let codes = try c.decodeIfPresent([Int].self, forKey: .hourCodes) ?? []
+        if (0..<24).contains(start), !temps.isEmpty, temps.count == codes.count {
+            hourStart = start
+            hours = Array(zip(temps, codes).map(HourlyPoint.init(temp:code:))
+                .prefix(Self.hourLimit))
+        } else {
+            hourStart = -1
+            hours = []
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -117,18 +166,32 @@ public struct WeatherFrame: PageFrame, Equatable, Codable, Sendable {
         try c.encode(reading.low, forKey: .low)
         try c.encode(reading.code, forKey: .code)
         try c.encode(reading.unit, forKey: .unit)
+        guard hasHours else { return }
+        try c.encode(hourStart, forKey: .hourStart)
+        try c.encode(hours.map(\.temp), forKey: .hourTemps)
+        try c.encode(hours.map(\.code), forKey: .hourCodes)
     }
 
-    /// เฟรมนี้มีข้อความชิ้นเดียวให้บีบ คือชื่อสถานที่ — ตัวเลขไม่มีทางทำให้ล้น
+    /// สองสิ่งที่บีบได้: แถบพยากรณ์ทั้งชุด แล้วจึงค่อยเป็นชื่อสถานที่
     ///
-    /// ถึงอย่างนั้นก็ยังต้องมีทางบีบ: ชื่อเมืองมาจากบริการภายนอกและเป็นภาษาอะไรก็ได้
-    /// (ไทยกิน 3 ไบต์ต่อตัว) เฟรมที่ล้นแล้วถูกทิ้งเงียบๆ คือหน้าที่ไม่มีวันอัปเดต
+    /// ลำดับนี้ไม่ใช่เรื่องบังเอิญ — ชื่อเมืองบอกว่าตัวเลขทั้งหน้าพูดถึง *ที่ไหน* หน้าที่มี
+    /// พยากรณ์ครบห้าช่องแต่ไม่มีชื่อเมืองคือหน้าที่ตอบไม่ได้ว่าเป็นอากาศของใคร
+    /// และการทิ้งพยากรณ์ทีละคอลัมน์ก็ไม่ช่วย: สามคอลัมน์อ่านเป็นข้อมูลหาย ไม่ใช่ข้อมูลย่อ
+    ///
+    /// ชื่อเมืองมาจากบริการภายนอกและเป็นภาษาอะไรก็ได้ (ไทยกิน 3 ไบต์ต่อตัว)
+    /// เฟรมที่ล้นแล้วถูกทิ้งเงียบๆ คือหน้าที่ไม่มีวันอัปเดต
     public func encoded(maxBytes: Int = Wire.maxPayload) throws -> Data {
         let encoder = Wire.encoder()
         var copy = self
         copy.place = Text.fit(place, to: Self.placeLimit)
         var data = try encoder.encode(copy)
         if data.count <= maxBytes { return data }
+
+        copy.hourStart = -1
+        copy.hours = []
+        data = try encoder.encode(copy)
+        if data.count <= maxBytes { return data }
+
         var limit = Text.displayWidth(copy.place)
         while limit > 0, data.count > maxBytes {
             limit -= 1
@@ -190,6 +253,10 @@ public enum WeatherSource {
             URLQueryItem(name: "current", value: "temperature_2m,weather_code"),
             URLQueryItem(name: "daily", value: "temperature_2m_max,temperature_2m_min"),
             URLQueryItem(name: "forecast_days", value: "1"),
+            // แถวรายชั่วโมงเริ่มที่ *ชั่วโมงปัจจุบัน* เสมอ ดัชนี 0 จึงเป็นชั่วโมงที่ผ่านไปแล้ว
+            // บางส่วน ซึ่งเลข `current` ด้านบนตอบไปแล้ว — ขอมา 6 เพื่อใช้ 1..5
+            URLQueryItem(name: "hourly", value: "temperature_2m,weather_code"),
+            URLQueryItem(name: "forecast_hours", value: "\(WeatherFrame.hourLimit + 1)"),
             // สูงสุด/ต่ำสุด "ของวันนี้" ต้องเป็นวันของสถานที่นั้น ไม่ใช่ของ Mac
             URLQueryItem(name: "timezone", value: "auto"),
         ]
@@ -233,5 +300,44 @@ public enum WeatherSource {
             low: Int(low.rounded()),
             code: code,
             unit: unit)
+    }
+
+    /// ห้าชั่วโมงข้างหน้าจากคำตอบก้อนเดียวกับ `reading` — คืน `(-1, [])` เมื่อใช้ไม่ได้
+    ///
+    /// **ไม่ throw** ต่างจากทุกอย่างอื่นในไฟล์นี้ และตั้งใจ: แถบพยากรณ์เป็นส่วนเสริมของหน้า
+    /// ที่ตอบคำถามหลักได้อยู่แล้วด้วยเลขใหญ่ · ถ้าบล็อก `hourly` หายไปหรือเปลี่ยนรูป
+    /// สิ่งที่ควรเกิดคือแถบล่างว่าง ไม่ใช่หน้าอากาศทั้งหน้าหยุดอัปเดต
+    ///
+    /// ชั่วโมงมาจากสตริงเวลาของบริการ ไม่ใช่จากนาฬิกาของ Mac — `timezone=auto` ทำให้
+    /// มันเป็นเวลาของ *สถานที่นั้น* ซึ่งเป็นสิ่งเดียวที่ป้ายบนจอควรพูดถึง
+    public static func hourly(from data: Data) -> (hourStart: Int, hours: [HourlyPoint]) {
+        guard
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let block = object["hourly"] as? [String: Any],
+            let times = block["time"] as? [Any],
+            let temps = block["temperature_2m"] as? [Any],
+            let codes = block["weather_code"] as? [Any]
+        else { return (-1, []) }
+        // ข้ามดัชนี 0 — ชั่วโมงปัจจุบันคือสิ่งที่เลขใหญ่บอกอยู่แล้ว
+        let n = min(times.count, temps.count, codes.count)
+        guard n > 1, let start = hour(from: times[1]) else { return (-1, []) }
+        var out: [HourlyPoint] = []
+        for i in 1..<min(n, WeatherFrame.hourLimit + 1) {
+            guard
+                let t = (temps[i] as? NSNumber)?.doubleValue,
+                let c = (codes[i] as? NSNumber)?.intValue
+            else { return (-1, []) }  // ช่องที่หายกลางแถบทำให้ทั้งแถบอ่านผิด ไม่ใช่แค่สั้นลง
+            out.append(HourlyPoint(temp: Int(t.rounded()), code: c))
+        }
+        return out.isEmpty ? (-1, []) : (start, out)
+    }
+
+    /// "2026-08-03T13:00" -> 13 · nil เมื่อไม่ใช่รูปนั้น
+    private static func hour(from value: Any) -> Int? {
+        guard let s = value as? String, s.count >= 13 else { return nil }
+        let chars = Array(s)
+        guard chars[10] == "T" else { return nil }
+        guard let h = Int(String(chars[11...12])), (0..<24).contains(h) else { return nil }
+        return h
     }
 }

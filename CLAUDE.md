@@ -230,6 +230,9 @@ look at `out/`. It proves the *design*, not the C renderer.
 - **`PageKind` is a three-way contract**: `Pages.swift`, `firmware/main/ct_pages.h`, and
   `tools/gen/pages.py`. The raw values travel on the wire, so reordering one side silently
   changes what every frame means. `tamatest` reads the real header to check.
+- **The weather strip is five columns on all three sides.** `[weather] fc_cols` sizes the C
+  arrays and `WeatherFrame.hourLimit` caps what the Mac sends; a sixth hour on the wire is
+  bytes the board drops. `tamatest` reads `layout.h` to check, as it does for `PageKind`.
 - **One frame per page, and each must fit `Wire.maxPayload` alone** (ADR-0003). A frame is a
   mascot `Snapshot` exactly when it has **no** `g` key; a frame with `pl` is page settings.
   `{"g":N,"x":1}` retires a page the user turned off — not sending it is not enough (ADR-0002).

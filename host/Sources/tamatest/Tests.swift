@@ -2209,13 +2209,51 @@ func runAllTests() {
             "keys are sorted, so 'did it change?' is a byte comparison")
         equal(try JSONDecoder().decode(WeatherFrame.self, from: data), frame, "round trips")
 
+        // แถบพยากรณ์เดินทางเป็นสามคีย์ ไม่ใช่รายการของอ็อบเจกต์: ห้าช่องแบบ
+        // [{"t":32,"w":0},...] กิน 90 ไบต์ ส่วนสามแถวขนานกันกิน 40 ในงบ 500 ที่มี
+        let ahead = WeatherFrame(
+            place: "Bangkok", reading: reading, age: 420, hourStart: 15,
+            hours: [(32, 0), (33, 1), (33, 3), (31, 61), (30, 61)]
+                .map(HourlyPoint.init(temp:code:)))
+        let full = try ahead.encoded()
+        expect(full.count <= Wire.maxPayload,
+               "five hours ahead still travel alone (got \(full.count)B)")
+        equal(
+            String(decoding: full, as: UTF8.self),
+            #"{"a":420,"c":[0,1,3,61,61],"g":1,"h":34,"l":26,"n":15,"#
+                + #""o":[32,33,33,31,30],"p":"Bangkok","t":31,"u":"C","w":61}"#,
+            "keys stay sorted with the forecast on board")
+        equal(try JSONDecoder().decode(WeatherFrame.self, from: full), ahead, "round trips")
+
+        // สองแถวที่ยาวไม่เท่ากันคืออุณหภูมิที่จับคู่กับสัญลักษณ์ผิดช่อง ไม่ใช่แถบที่สั้นลง
+        let ragged = #"{"a":1,"c":[0,1],"g":1,"h":34,"l":26,"n":15,"o":[32,33,33],"#
+            + #""p":"Bangkok","t":31,"u":"C","w":61}"#
+        let dropped = try JSONDecoder().decode(WeatherFrame.self, from: Data(ragged.utf8))
+        expect(!dropped.hasHours, "a half-read forecast is no forecast")
+        equal(dropped.reading, reading, "and the figures that matter are untouched")
+
         // ชื่อเมืองมาจากบริการภายนอกและเป็นภาษาอะไรก็ได้ — ไทยกิน 3 ไบต์ต่อตัว
         let long = WeatherFrame(
-            place: "กรุงเทพมหานคร อมรรัตนโกสินทร์ มหินทรายุธยา", reading: reading)
+            place: "กรุงเทพมหานคร อมรรัตนโกสินทร์ มหินทรายุธยา", reading: reading,
+            hourStart: 15, hours: ahead.hours)
         let squeezed = try long.encoded(maxBytes: 80)
         expect(squeezed.count <= 80, "an unreasonable name is clipped, not dropped")
         let back = try JSONDecoder().decode(WeatherFrame.self, from: squeezed)
         equal(back.reading, reading, "the figures are never what gets cut")
+        expect(!back.hasHours, "the forecast goes before the name does")
+
+        // ...และไปทั้งชุด ไม่ใช่ทีละคอลัมน์ · งบที่พอสำหรับเฟรมไร้พยากรณ์ (108B) แต่ไม่พอ
+        // สำหรับเฟรมเต็ม (154B) ต้องได้ชื่อเมืองครบและแถบล่างว่าง ไม่ใช่ชื่อสั้นกับสามคอลัมน์
+        let tight = try JSONDecoder().decode(
+            WeatherFrame.self, from: try long.encoded(maxBytes: 120))
+        expect(!tight.hasHours, "the whole strip goes at once")
+        equal(
+            tight.place, Text.fit(long.place, to: WeatherFrame.placeLimit),
+            "and the name still fills the label, untouched until the strip is gone")
+
+        let roomy = try JSONDecoder().decode(
+            WeatherFrame.self, from: try long.encoded(maxBytes: 160))
+        equal(roomy.hours.count, WeatherFrame.hourLimit, "with room for both, both travel")
 
         // หน้ามาสคอตต้องไม่รู้เรื่องนี้เลย — ตัวแยกบนสายคือการ *มี* คีย์ "g"
         let snapshot = Snapshot(clock: "14:32", date: "Mon 27 Jul")
@@ -2317,6 +2355,39 @@ func runAllTests() {
             }
         }
 
+        // แถบพยากรณ์อ่านจาก payload ก้อนเดียวกัน และเริ่มที่ดัชนี 1 — ดัชนี 0 คือชั่วโมง
+        // ปัจจุบันซึ่งเลขใหญ่ตอบไปแล้ว · ชั่วโมงมาจากสตริงเวลาของบริการ (timezone=auto)
+        // ไม่ใช่นาฬิกาของ Mac ป้ายบนจอจึงเป็นเวลาของ *เมืองนั้น*
+        let withHours = Data(
+            """
+            {"current":{"temperature_2m":31.4,"weather_code":61},
+             "daily":{"temperature_2m_max":[33.8],"temperature_2m_min":[25.2]},
+             "hourly":{"time":["2026-08-03T12:00","2026-08-03T13:00","2026-08-03T14:00",
+                               "2026-08-03T15:00","2026-08-03T16:00","2026-08-03T17:00"],
+                       "temperature_2m":[31.4,32.2,32.8,32.5,31.1,30.4],
+                       "weather_code":[61,0,1,3,61,95]}}
+            """.utf8)
+        let ahead = WeatherSource.hourly(from: withHours)
+        equal(ahead.hourStart, 13, "the strip starts at the next full hour, not this one")
+        equal(ahead.hours.count, WeatherFrame.hourLimit, "and is exactly as wide as the strip")
+        equal(ahead.hours.first, HourlyPoint(temp: 32, code: 0), "rounded like every other figure")
+        equal(ahead.hours.last, HourlyPoint(temp: 30, code: 95), "through to the far end")
+
+        // บล็อกเสริมที่หายหรือเปลี่ยนรูปทำให้แถบล่างว่าง ไม่ใช่ทำให้ทั้งหน้าหยุดอัปเดต
+        for thin in [
+            forecast,  // ไม่มีบล็อก hourly เลย
+            Data(#"{"hourly":{"time":["2026-08-03T12:00"],"temperature_2m":[31],"weather_code":[0]}}"#.utf8),
+            Data(#"{"hourly":{"time":["x","y"],"temperature_2m":[1,2],"weather_code":[0,0]}}"#.utf8),
+            Data(#"{"hourly":{"time":["2026-08-03T12:00","2026-08-03T13:00"],"temperature_2m":[1,null],"weather_code":[0,0]}}"#.utf8),
+        ] {
+            let none = WeatherSource.hourly(from: thin)
+            equal(none.hourStart, -1, "an unreadable forecast block is simply absent")
+            expect(none.hours.isEmpty, "and leaves nothing half-drawn behind")
+        }
+        equal(
+            try WeatherSource.reading(from: withHours, unit: .celsius).temp, 31,
+            "the main figures come out of the same payload untouched")
+
         let geo = Data(
             #"{"results":[{"name":"Bangkok","latitude":13.75,"longitude":100.5}]}"#.utf8)
         equal(
@@ -2337,6 +2408,9 @@ func runAllTests() {
         let query = url?.query ?? ""
         expect(query.contains("temperature_unit=fahrenheit"), "the unit rides along in the request")
         expect(query.contains("timezone=auto"), "today's high and low are the city's day, not ours")
+        expect(
+            query.contains("forecast_hours=\(WeatherFrame.hourLimit + 1)"),
+            "one hour more than the strip is asked for, because index 0 is the hour we are in")
         expect(
             WeatherSource.forecastURL(
                 GeoPlace(name: "x", latitude: 1, longitude: 2), unit: .celsius)?
@@ -2550,6 +2624,11 @@ func runAllTests() {
         equal(
             macro("CT_ROTATION_HOLD_SECONDS"), PageSettings.defaultHold,
             "and holding a swiped page for the same time")
+        // Mac ตัดแถบพยากรณ์ที่ห้าช่องเพราะ *จอ* มีห้าช่อง ไม่ใช่เพราะห้าเป็นเลขสวย —
+        // ช่องที่หกที่ส่งไปจะถูกบอร์ดทิ้งเงียบๆ แล้วไบต์นั้นก็หายไปจากงบ 500 เปล่าๆ
+        equal(
+            macro("CT_WEATHER_FC_COLS"), WeatherFrame.hourLimit,
+            "the mac sends exactly as many hours as the strip can draw")
     }
 
     suite("a crypto frame fits one mtu without ever cutting the symbol off a number") {

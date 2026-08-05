@@ -147,7 +147,7 @@ def hero_sub(c: Calendar) -> str | None:
 CARD = {
     "night": (PAL.cal_sky_night, PAL.cal_edge_night, PAL.text, PAL.cal_dim, PAL.cal_accent),
     "dawn": (PAL.cal_sky_dawn, PAL.cal_edge_dawn, PAL.text, PAL.cal_dim, PAL.cal_accent),
-    "day": (PAL.cal_sky_day, PAL.cal_edge_day, PAL.cal_ink, PAL.cal_ink_dim,
+    "day": (PAL.cal_sky_day, PAL.cal_edge_day, PAL.ink, PAL.ink_dim,
             PAL.cal_ink_accent),
     "dusk": (PAL.cal_sky_dusk, PAL.cal_edge_dusk, PAL.text, PAL.cal_dim, PAL.cal_accent),
 }

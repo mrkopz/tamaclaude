@@ -231,10 +231,33 @@ WEATHER_SCENES: dict[str, weather.Weather] = {
     "rain": weather.Weather(mascot_state="writing"),
     "clear": weather.Weather(place="Chiang Mai", temp=36, high=38, low=27, code=0,
                              age=45, mascot_state="waiting"),
+    # หิมะตอนเช้ามืด — ฟ้า dawn เป็นช่วงที่แคบที่สุด (2 ชม.) และเป็นช่วงที่หมึกยังไม่กลับขั้ว
     "cold": weather.Weather(place="Sapporo", temp=28, high=31, low=19, code=73, unit="F",
-                            age=40 * 60, mascot_state="sleeping"),
+                            age=40 * 60, mascot_state="sleeping",
+                            hour_start=6, hours=[weather.Hour(t, 73) for t in
+                                                 (27, 27, 28, 29, 30)],
+                            bar=topbar.Bar(clock="06:20", has_usage=True, pct=12)),
     "storm": weather.Weather(place="กรุงเทพ", temp=29,
                              high=33, low=26, code=95, age=12 * 60, mascot_state="alert"),
+    # หมอกตอนพลบค่ำ — ฉากเดียวที่ไม่มีแนวเมฆเลย และช่วงเวลาที่เหลืออีกช่วง
+    "fog": weather.Weather(place="Chiang Rai", temp=19, high=24, low=17, code=45,
+                           age=3 * 60, mascot_state="thinking",
+                           hour_start=18, hours=[weather.Hour(t, c) for t, c in
+                                                 ((18, 45), (18, 45), (17, 3), (17, 0),
+                                                  (16, 0))],
+                           bar=topbar.Bar(clock="18:05", has_usage=True, pct=44)),
+    # กลางคืนโล่ง — ดวงในไอคอนต้องเป็นดวงจันทร์ ไม่ใช่ดวงอาทิตย์ซีด และคอลัมน์ที่ข้าม
+    # 05:00 ต้องกลับเป็นดวงอาทิตย์เองทีละคอลัมน์
+    "night": weather.Weather(place="Bangkok", temp=26, high=33, low=25, code=1,
+                             age=8 * 60, mascot_state="idle",
+                             hour_start=3, hours=[weather.Hour(t, c) for t, c in
+                                                  ((26, 1), (25, 0), (25, 0), (26, 0),
+                                                   (28, 2))],
+                             bar=topbar.Bar(clock="02:40", has_usage=True, pct=8)),
+    # เฟรมที่ไม่มีพยากรณ์มาด้วย — พื้นดินว่างแต่ไม่ใช่จอเปล่า (ADR-0002)
+    "nohours": weather.Weather(place="Bangkok", temp=31, high=34, low=26, code=3,
+                               age=6 * 60, hour_start=-1, hours=[],
+                               mascot_state="reading"),
     # เก่าเกิน 10 เท่าของรอบดึง — ตัวเลขยังอ่านได้ แต่ต้องไม่มีใครเข้าใจว่ามันสด
     "stale": weather.Weather(place="Bangkok", temp=31, high=34, low=26, code=3,
                              age=4 * 3600, mascot_state="thinking",
