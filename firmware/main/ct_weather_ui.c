@@ -31,27 +31,8 @@ static lv_obj_t *s_fc_icon[CT_WEATHER_FC_COLS];
 static void paint_ink(void);
 
 // --- สัญลักษณ์อากาศ ------------------------------------------------------------
-// รหัส WMO มีหลายสิบค่า แต่จอ 2.8 นิ้วที่มองจากอีกฝั่งห้องแยกได้จริงราวหกกลุ่ม
-// การวาดหมอกกับหมอกน้ำแข็งคนละรูปคือรายละเอียดที่ไม่มีใครอ่านออก
-// ต้องตรงกับ bucket() ใน tools/gen/weather.py
-typedef enum {
-    ICON_CLEAR = 0,
-    ICON_CLOUD,
-    ICON_FOG,
-    ICON_RAIN,
-    ICON_SNOW,
-    ICON_STORM,
-} icon_kind_t;
-
-static icon_kind_t bucket(int code)
-{
-    if (code >= 95) return ICON_STORM;
-    if ((code >= 71 && code <= 77) || code == 85 || code == 86) return ICON_SNOW;
-    if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return ICON_RAIN;
-    if (code == 45 || code == 48) return ICON_FOG;
-    if (code >= 2) return ICON_CLOUD;
-    return ICON_CLEAR;  // 0, 1 = โล่ง/เกือบโล่ง
-}
+// กลุ่มสภาพอากาศ (`ct_wx_kind_t` / `ct_sky_bucket`) อยู่ที่ ct_sky.h ตั้งแต่หน้ามาสคอต
+// เอาไปใช้ด้วย (ADR-0012) — ที่นี่เหลือแต่การแปลงกลุ่มเป็นรูปและเป็นฉาก
 
 // ชั่วโมงนี้ดวงบนฟ้าเป็นดวงจันทร์ไหม — ขอบเดียวกับที่ sky_disc() ใน ct_ui.c ใช้
 // ไอคอนที่มีดวงอาทิตย์อยู่ข้างฟ้ากลางคืนที่เต็มไปด้วยดาวคืออุปกรณ์ที่ขัดแย้งกับตัวเอง
@@ -83,8 +64,8 @@ static void build_icon(ct_rects_t *out, int code, bool connected, bool night)
     uint16_t bolt = connected ? CT_COL_ACCENT : CT_COL_GRAY_DARK;
     uint16_t flake = connected ? CT_COL_TEXT : CT_COL_GRAY_DARK;
 
-    switch (bucket(code)) {
-        case ICON_CLEAR:
+    switch (ct_sky_bucket(code)) {
+        case CT_WX_CLEAR:
             if (night) {
                 // ดวงจันทร์ + ดาวสามดวง — ดวงกลมเปล่าๆ ที่ 20px (คอลัมน์พยากรณ์)
                 // อ่านเป็นจุดหัวข้อ ไม่ใช่ดวงจันทร์ · ดาวทำหน้าที่เดียวกับรังสีของดวงอาทิตย์
@@ -104,31 +85,31 @@ static void build_icon(ct_rects_t *out, int code, bool connected, bool night)
             ct_rects_add(out, 0.2f, 4.6f, 1.6f, 0.8f, sun);
             ct_rects_add(out, 8.2f, 4.6f, 1.6f, 0.8f, sun);
             break;
-        case ICON_CLOUD:
+        case CT_WX_CLOUD:
             // เมฆบังดวงบางส่วน — เมฆล้วนแยกไม่ออกจากหมอกที่ระยะโต๊ะ
             ct_rects_add_round(out, 5.6f, 0.2f, 3.6f, 3.6f, sun, 1.8f);
             add_cloud(out, cloud);
             break;
-        case ICON_FOG:
+        case CT_WX_FOG:
             // สามขีดนอน ไม่มีเมฆ — หมอกคือสิ่งที่ *ไม่* มีรูปร่าง
             for (int i = 0; i < 3; i++) {
                 ct_rects_add_round(out, 1.0f + (i % 2) * 0.8f, 2.6f + i * 2.2f, 7.4f, 1.0f,
                                    cloud, 0.5f);
             }
             break;
-        case ICON_RAIN:
+        case CT_WX_RAIN:
             add_cloud(out, cloud);
             for (int i = 0; i < 3; i++) {
                 ct_rects_add_round(out, 2.2f + i * 2.4f, 7.0f, 0.9f, 2.4f, wet, 0.45f);
             }
             break;
-        case ICON_SNOW:
+        case CT_WX_SNOW:
             add_cloud(out, cloud);
             for (int i = 0; i < 3; i++) {
                 ct_rects_add_round(out, 2.2f + i * 2.4f, 7.4f, 1.4f, 1.4f, flake, 0.7f);
             }
             break;
-        case ICON_STORM:
+        case CT_WX_STORM:
             add_cloud(out, cloud);
             // สายฟ้าเป็นสองชิ้นเยื้องกัน — ชิ้นเดียวอ่านเป็นเสาไฟ
             ct_rects_add(out, 4.6f, 6.8f, 1.6f, 1.8f, bolt);
@@ -153,8 +134,6 @@ static const uint16_t SKY_GROUND[CT_SKY_PHASE_COUNT] = {
     CT_COL_GROUND_NIGHT, CT_COL_GROUND_DAWN, CT_COL_GROUND_DAY, CT_COL_GROUND_DUSK};
 static const uint16_t SKY_GRASS[CT_SKY_PHASE_COUNT] = {
     CT_COL_GRASS_NIGHT, CT_COL_GRASS_DAWN, CT_COL_GRASS_DAY, CT_COL_GRASS_DUSK};
-static const uint16_t WX_DECK[CT_SKY_PHASE_COUNT] = {
-    CT_COL_WX_DECK_NIGHT, CT_COL_WX_DECK_DAWN, CT_COL_WX_DECK_DAY, CT_COL_WX_DECK_DUSK};
 
 // ช่วงเวลาของฉาก — CT_SKY_NONE = ไม่มีฉากเลย ปล่อยให้เป็นพื้นจอเปล่า
 // ต้องตรงกับ scene_phase() ใน tools/gen/weather.py
@@ -175,9 +154,9 @@ static ct_sky_phase_t scene_phase(void)
 // เจอจนกว่าจะถึงชั่วโมงนั้นของวันที่อากาศแบบนั้นพอดี
 //
 // พายุไม่นับเป็นกลางวันไม่ว่ากี่โมง เพราะฉากพายุแทนที่สีฟ้าทั้งย่านด้วยฟ้ามืดของมันเอง
-static bool sky_is_light(ct_sky_phase_t phase, icon_kind_t kind)
+static bool sky_is_light(ct_sky_phase_t phase, ct_wx_kind_t kind)
 {
-    return phase == CT_SKY_DAY && kind != ICON_STORM;
+    return phase == CT_SKY_DAY && kind != CT_WX_STORM;
 }
 
 static void fill_rect(lv_layer_t *layer, int x0, int y0, int x1, int y1, uint16_t color,
@@ -196,22 +175,22 @@ static void fill_rect(lv_layer_t *layer, int x0, int y0, int x1, int y1, uint16_
 
 // ก้นแนวเมฆของแต่ละกลุ่ม — 0 คือกลุ่มที่ไม่มีแนวเมฆเลย (โล่ง/หมอก)
 // ต้องตรงกับ DECK_BOTTOM ใน tools/gen/weather.py
-static int deck_bottom(icon_kind_t kind)
+static int deck_bottom(ct_wx_kind_t kind)
 {
     switch (kind) {
-        case ICON_CLOUD: return CT_WEATHER_DECK_CLOUD_Y;
-        case ICON_RAIN:
-        case ICON_SNOW: return CT_WEATHER_DECK_WET_Y;
-        case ICON_STORM: return CT_WEATHER_DECK_STORM_Y;
+        case CT_WX_CLOUD: return CT_WEATHER_DECK_CLOUD_Y;
+        case CT_WX_RAIN:
+        case CT_WX_SNOW: return CT_WEATHER_DECK_WET_Y;
+        case CT_WX_STORM: return CT_WEATHER_DECK_STORM_Y;
         default: return 0;
     }
 }
 
-static void draw_deck(lv_layer_t *layer, icon_kind_t kind, ct_sky_phase_t phase)
+static void draw_deck(lv_layer_t *layer, ct_wx_kind_t kind, ct_sky_phase_t phase)
 {
     int bottom = deck_bottom(kind);
     if (bottom == 0) return;
-    uint16_t color = kind == ICON_STORM ? CT_COL_WX_STORM_DECK : WX_DECK[phase];
+    uint16_t color = kind == CT_WX_STORM ? CT_COL_WX_STORM_DECK : CT_SKY_DECK[phase];
     fill_rect(layer, 0, CT_TOPBAR_HEIGHT, CT_SCREEN_WIDTH - 1, bottom - 1, color, 0);
     // ก้อนที่ห้อยลงจากก้นแนว — ก้นที่เป็นเส้นตรงอ่านเป็นแถบสี ไม่ใช่เมฆ
     // รัศมีเท่าครึ่งความลึก ก้อนจึงเป็นครึ่งวงกลมพอดี
@@ -222,9 +201,9 @@ static void draw_deck(lv_layer_t *layer, icon_kind_t kind, ct_sky_phase_t phase)
     }
 }
 
-static void draw_fall(lv_layer_t *layer, icon_kind_t kind, bool light)
+static void draw_fall(lv_layer_t *layer, ct_wx_kind_t kind, bool light)
 {
-    if (kind == ICON_RAIN) {
+    if (kind == CT_WX_RAIN) {
         for (int i = 0; i < CT_WEATHER_RAIN_COUNT; i++) {
             int x = ct_weather_rain[i][0], y = ct_weather_rain[i][1];
             int len = ct_weather_rain[i][2];
@@ -232,7 +211,7 @@ static void draw_fall(lv_layer_t *layer, icon_kind_t kind, bool light)
         }
         return;
     }
-    if (kind != ICON_SNOW) return;
+    if (kind != CT_WX_SNOW) return;
     uint16_t color = light ? CT_COL_WX_FLAKE_INK : CT_COL_WX_FLAKE;
     for (int i = 0; i < CT_WEATHER_SNOW_COUNT; i++) {
         int x = ct_weather_snow[i][0], y = ct_weather_snow[i][1], s = ct_weather_snow[i][2];
@@ -246,8 +225,8 @@ static void scene_draw_cb(lv_event_t *e)
     if (phase == CT_SKY_NONE) return;  // ไม่มีฉาก = ปล่อยให้เป็นพื้นจอเปล่า
 
     lv_layer_t *layer = lv_event_get_layer(e);
-    icon_kind_t kind = bucket(s_frame->code);
-    bool storm = kind == ICON_STORM;
+    ct_wx_kind_t kind = ct_sky_bucket(s_frame->code);
+    bool storm = kind == CT_WX_STORM;
 
     fill_rect(layer, 0, CT_TOPBAR_HEIGHT, CT_SCREEN_WIDTH - 1, CT_WEATHER_HORIZON - 1,
               storm ? CT_COL_WX_STORM_SKY : SKY_BG[phase], 0);
@@ -266,11 +245,11 @@ static void scene_draw_cb(lv_event_t *e)
 
     draw_deck(layer, kind, phase);
     draw_fall(layer, kind, sky_is_light(phase, kind));
-    if (kind == ICON_FOG) {
+    if (kind == CT_WX_FOG) {
         // หมอกไม่มีแนวเมฆ — แถบนอนที่หนาขึ้นเมื่อเข้าใกล้ขอบฟ้า
         for (int i = 0; i < CT_WEATHER_FOG_BANDS_COUNT; i++) {
             int y = ct_weather_fog_bands[i][0], h = ct_weather_fog_bands[i][1];
-            fill_rect(layer, 0, y, CT_SCREEN_WIDTH - 1, y + h - 1, WX_DECK[phase], 0);
+            fill_rect(layer, 0, y, CT_SCREEN_WIDTH - 1, y + h - 1, CT_SKY_DECK[phase], 0);
         }
     }
     if (storm) {
@@ -498,7 +477,7 @@ void ct_weather_ui_redraw_age(void)
 static void paint_ink(void)
 {
     ct_sky_phase_t phase = scene_phase();
-    icon_kind_t kind = *s_has_frame ? bucket(s_frame->code) : ICON_CLOUD;
+    ct_wx_kind_t kind = *s_has_frame ? ct_sky_bucket(s_frame->code) : CT_WX_CLOUD;
     bool light = sky_is_light(phase, kind);
 
     uint16_t text = light ? CT_COL_INK : CT_COL_TEXT;

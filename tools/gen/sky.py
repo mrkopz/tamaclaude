@@ -1,4 +1,4 @@
-"""ท้องฟ้าตามช่วงเวลา — ฉากเต็มจอใต้แถบบน
+"""ท้องฟ้าตามช่วงเวลาและสภาพอากาศ — ฉากเต็มจอใต้แถบบน
 
 ฟ้าอยู่ 22..119 แล้วพื้นดินยาวลงไปถึงก้นจอ: card วาดพื้นทึบของตัวเองอยู่แล้ว
 ส่วนแผงโควตากับนาฬิกาใหญ่วางตัวอักษรลงบนพื้นดินตรงๆ สีพื้นดินทุกช่วงจึงต้องเข้ม
@@ -7,8 +7,14 @@
 เส้นขอบฟ้าอยู่ที่เส้นฝ่าเท้าพอดี — มาสคอตยืนบนพื้น ไม่ลอย ไม่จม ป้ายชื่อโปรเจกต์
 ตกลงไปอยู่บนพื้นดินใต้เท้า
 
-เวลามาจาก `snapshot.clock` ที่มีอยู่แล้ว ไม่มีอะไรเพิ่มบนสาย BLE — ต้องตรงกับ
-ฝั่ง firmware ใน `firmware/main/ct_ui.c`
+เวลามาจาก `snapshot.clock` ที่มีอยู่แล้ว ส่วนสภาพอากาศมาจากเฟรมของ *หน้าอากาศ*
+ที่บอร์ดแคชไว้ (ADR-0012) — ทั้งคู่ไม่มีอะไรเพิ่มบนสาย BLE · ต้องตรงกับฝั่ง firmware
+ใน `firmware/main/ct_ui.c`
+
+`bucket()` กับ `DECK_COLOR` อยู่ที่นี่ ไม่ใช่ที่ `weather.py` เพราะมีคนใช้สองหน้าแล้ว
+เหตุผลเดียวกับที่ `phase_at` ย้ายมาอยู่ `ct_sky.h` ฝั่ง C — สำเนาสองใบจะเลื่อนจากกัน
+เงียบๆ แล้ววันหนึ่ง 61 ก็เป็นฝนบนหน้าหนึ่งและเป็นเมฆบนอีกหน้า · และทิศ import ก็ถูก
+ทางนี้ทางเดียว: `weather.py` ดึงจาก `sky.py` อยู่แล้ว ทางกลับเป็นวงกลมทันที
 """
 
 from __future__ import annotations
@@ -55,17 +61,62 @@ SHADOW_COLOR = {
     "day": PAL.shadow_day,
     "dusk": PAL.shadow_dusk,
 }
+DECK_COLOR = {
+    "night": PAL.wx_deck_night,
+    "dawn": PAL.wx_deck_dawn,
+    "day": PAL.wx_deck_day,
+    "dusk": PAL.wx_deck_dusk,
+}
+# กลุ่มที่มีแนวเมฆปิดฟ้า — `clear` ไม่มีอะไรปิด ส่วน `fog` เป็นแถบนอน ไม่ใช่เพดาน
+DECK_KINDS = ("cloud", "rain", "snow", "storm")
+# กลุ่มที่มีอะไรปิดฟ้าอยู่แต่ยังไม่ใช่พายุ — หมอกนับด้วยทั้งที่ไม่มีเพดาน
+DULL_KINDS = ("cloud", "fog", "rain", "snow")
 
 
-def shadow_color(clock: str, connected: bool) -> str | None:
+def _dull(phase: str, kind: str) -> bool:
+    """กลางวันที่ฟ้าถูกปิด — ใช้ชุดสี `wx_dull_*` แทนสีของช่วงเวลา
+
+    เฉพาะ day: กลางคืน/เช้ามืด/พลบค่ำ ฟ้าเข้มอยู่แล้ว สีที่จูนไว้กับมันยังจริง และ
+    ความขัดแย้งที่สายตาจับได้ ("ฟ้าใสใต้เพดานเทา") มีแค่ตอนกลางวัน
+    """
+    return phase == "day" and kind in DULL_KINDS
+
+
+def bucket(code: int) -> str:
+    """รหัส WMO -> กลุ่มสภาพอากาศ — ต้องตรงกับ ct_sky_bucket() ใน ct_sky.h
+
+    รหัสมีหลายสิบค่า แต่จอ 2.8 นิ้วที่มองจากอีกฝั่งห้องแยกได้จริงราวหกกลุ่ม
+    หมอกกับหมอกน้ำแข็งคนละรูปคือรายละเอียดที่ไม่มีใครอ่านออก
+    """
+    if code >= 95:
+        return "storm"
+    if 71 <= code <= 77 or code in (85, 86):
+        return "snow"
+    if 51 <= code <= 67 or 80 <= code <= 82:
+        return "rain"
+    if code in (45, 48):
+        return "fog"
+    if code >= 2:
+        return "cloud"
+    return "clear"
+
+
+def shadow_color(clock: str, connected: bool, code: int | None = None) -> str | None:
     """สีเงาใต้เท้าของช่วงเวลานี้ — None เมื่อไม่มีฉาก (ไม่ต่อลิงก์ / ยังไม่รู้เวลา)
 
     ไม่มีพื้นก็ไม่มีเงา: เงาบนพื้นจอเปล่าอ่านเป็นคราบ ไม่ใช่เงา
+
+    พายุใช้เงาของ night เพราะพื้นดินของมันคือ `ground_night` — เงาจับคู่กับพื้นที่มัน
+    ทาบอยู่ ไม่ใช่กับชั่วโมง ถ้าใช้ของช่วงเวลาต่อไปจะได้คราบม่วงบนพื้นเทากลางพายุตอนเย็น
     """
     if not connected:
         return None
     h = hours(clock)
-    return None if h is None else SHADOW_COLOR[phase_at(h)]
+    if h is None:
+        return None
+    if code is not None and bucket(code) == "storm":
+        return SHADOW_COLOR["night"]
+    return SHADOW_COLOR[phase_at(h)]
 
 
 def hours(clock: str) -> float | None:
@@ -132,8 +183,9 @@ def _draw_disc(draw: ImageDraw.ImageDraw, x: float, y: float, color: str) -> Non
     draw.ellipse([x0, y0, x0 + 2 * r, y0 + 2 * r], fill=quantize565(color))
 
 
-def _draw_stars(draw: ImageDraw.ImageDraw, phase: str, cycle: int) -> None:
-    if phase == "day":
+def _draw_stars(draw: ImageDraw.ImageDraw, phase: str, cycle: int, kind: str) -> None:
+    # พายุไม่มีดาวไม่ว่ากี่โมง — กติกาเดียวกับหน้าอากาศ
+    if phase == "day" or kind == "storm":
         return
     stars = L.sky.stars
     base = L.sky.star_px
@@ -150,6 +202,11 @@ def _draw_stars(draw: ImageDraw.ImageDraw, phase: str, cycle: int) -> None:
         for x, y in stars[: L.sky.low_star_n]:
             dot(x, y, PAL.star_dim)
         return
+    # ฟ้าที่ถูกเมฆปิดก็เห็นไม่ครบเหมือนกัน — เหตุที่สอง ไม่ใช่กฎที่สอง: คืนฝนที่ดาวเต็มฟ้า
+    # อ่านผิดพอๆ กับดาวเต็มฟ้าตอนหกโมงเย็น · แต่ยังกะพริบ ต่างจากทาง dawn/dusk ข้างบน
+    # เพราะกลางคืนที่ bucket เป็น `cloud` ไม่มีทั้งเมฆลอย (กลางคืนไม่มี) และของที่ตกลงมา
+    # ดาวที่หยุดกะพริบด้วยจะทำให้จอนิ่งสนิททั้งคืน
+    n = L.sky.low_star_n if kind in DECK_KINDS else len(stars)
     # ดวงที่กะพริบไล่สว่างขึ้นแล้วหรี่ลง: dim -> mid -> star(โต) -> mid ขั้นละ 1 วินาที
     # ตั้งต้นที่หรี่แล้วสว่างขึ้น ไม่ใช่ตั้งต้นสว่างแล้วดับ — ดาวดับอ่านเป็นจอเสีย
     # ขั้นสว่างสุดโตเป็น star_peak_px ด้วย: บนแผงจริงความต่างของสีอย่างเดียวจางเกินกว่าจะจับได้
@@ -157,17 +214,21 @@ def _draw_stars(draw: ImageDraw.ImageDraw, phase: str, cycle: int) -> None:
     peak = L.sky.star_peak_px
     ramp = ((PAL.star_dim, base), (PAL.star_mid, base),
             (PAL.star, peak), (PAL.star_mid, base))
-    for i, (x, y) in enumerate(stars):
+    for i, (x, y) in enumerate(stars[:n]):
         if i < L.sky.twinkle_n:
             dot(x, y, *ramp[(cycle + i * 3) % 4])
         else:
             dot(x, y, PAL.star)
 
 
-def _draw_clouds(draw: ImageDraw.ImageDraw, phase: str, t: float) -> None:
+def _draw_clouds(draw: ImageDraw.ImageDraw, phase: str, t: float, kind: str) -> None:
     if phase == "night":
         return
-    color = quantize565(CLOUD_COLOR[phase])
+    # ก้อนลอยยืมสีของแนวเมฆทุกครั้งที่ฟ้าถูกปิด ไม่ใช่สีเมฆของช่วงเวลา — `cloud_day`
+    # เกือบขาวสนิท บนฟ้าครึ้มหรือฟ้าพายุมันอ่านเป็นรูรั่วบนเพดาน ไม่ใช่เมฆ
+    # ที่ยังต้องมีก้อนลอยอยู่เพราะวันที่ปิดสนิทไม่มีทั้งดาวและของที่ตกลงมา (สายฟ้าไม่กะพริบ)
+    # มันจึงเป็นสิ่งเดียวที่ขยับ
+    color = quantize565(_deck_color(phase, kind) if kind != "clear" else CLOUD_COLOR[phase])
     pad, span = L.sky.cloud_pad, L.screen.width + 2 * L.sky.cloud_pad
     for base_x, y, w in L.sky.clouds:
         x = (base_x + t * L.sky.cloud_speed_px_s) % span - pad
@@ -180,14 +241,84 @@ def _draw_clouds(draw: ImageDraw.ImageDraw, phase: str, t: float) -> None:
         draw.rounded_rectangle([bx, y - 5, bx + bw, y + 4], radius=4, fill=color)
 
 
-def _draw_grass(draw_ctx: ImageDraw.ImageDraw, phase: str) -> None:
+def _deck_color(phase: str, kind: str) -> str:
+    """สีของแนวเมฆ/แถบหมอก — สามทาง ไม่ใช่สองทาง ตั้งแต่มีฟ้าครึ้ม"""
+    if kind == "storm":
+        return PAL.wx_storm_deck
+    return PAL.wx_dull_deck if _dull(phase, kind) else DECK_COLOR[phase]
+
+
+def _draw_deck(draw: ImageDraw.ImageDraw, phase: str, kind: str) -> None:
+    """แนวเมฆที่ปิดฟ้าลงมาถึง `deck_bottom` พร้อมก้อนที่ห้อยลงจากก้นแนว
+
+    ตื้นกว่าของหน้าอากาศมาก และเป็นค่าเดียวทุกสภาพ — เหตุผลอยู่ที่ `deck_bottom`
+    ใน layout.toml (สรุป: ลึกกว่านี้แล้วฟ้าเลิกบอกเวลา)
+    """
+    color = quantize565(_deck_color(phase, kind))
+    bottom = L.sky.deck_bottom
+    draw.rectangle([0, SKY_TOP, L.screen.width - 1, bottom - 1], fill=color)
+    for x, w, h in L.sky.deck_lumps:
+        # รัศมีเท่าครึ่งความสูงของกล่อง — ก้อนจึงเป็นวงกลมพอดีเมื่อ w == 2h ซึ่งเป็นกฎของ
+        # ตารางนี้ (ดู deck_lumps ใน layout.toml) · กว้างกว่านั้นจะได้แคปซูลก้นแบน
+        draw.rounded_rectangle([x, bottom - h, x + w - 1, bottom + h - 1], radius=h, fill=color)
+
+
+def _fall_shift(t: float, speed: int) -> int:
+    """ของที่ตกเลื่อนลงมากี่พิกเซลแล้ว ณ วินาทีที่ `t`
+
+    ตัดเป็นจำนวนเต็มตรงนี้แล้วบวกด้วยเลขจำนวนเต็ม ไม่ใช่บวกทศนิยมแล้วค่อยปัด —
+    ความเร็วเป็นจำนวนเต็มพิกเซลต่อเฟรมอยู่แล้ว การปัดสองฝั่งจึงไม่มีอะไรให้เถียงกัน
+    """
+    return int(t * speed)
+
+
+def _draw_fall(draw: ImageDraw.ImageDraw, phase: str, kind: str, t: float) -> None:
+    """สิ่งที่กำลังตกลงมาจากแนวเมฆ — ฝนเป็นแท่งตั้ง หิมะเป็นสี่เหลี่ยมจัตุรัส
+
+    ต่างจากหน้าอากาศที่ฉากนิ่ง: หน้านี้เป็นหน้า idle ที่ค้างอยู่ทั้งคืน (ดู `rain` ใน
+    layout.toml) · เม็ดที่เลยเส้นขอบฟ้าถูกพื้นดินตัดเองตอนวาด ไม่ต้องตัดตรงนี้
+    """
+    top = L.sky.deck_bottom
+    span = HORIZON - top
+    if kind == "rain":
+        color = quantize565(PAL.steel)
+        w = L.sky.rain_w
+        shift = _fall_shift(t, L.sky.rain_speed_px_s)
+        for x, base_y, length in L.sky.rain:
+            y = top + (base_y - top + shift) % span
+            draw.rectangle([x, y, x + w - 1, y + length - 1], fill=color)
+        return
+    # หิมะบนฟ้าที่สว่างต้องเป็นหมึกเข้ม ไม่ใช่ขาวบนขาว — กติกาเดียวกับหน้าอากาศ
+    # แต่ที่นี่เงื่อนไขสั้นกว่า: `sky_is_light` ที่นั่นต้องกันฟ้าพายุออกด้วย ส่วนที่นี่
+    # พายุกับหิมะเป็นคนละ bucket อยู่แล้ว เหลือแค่ "ช่วง day ไหม"
+    color = quantize565(PAL.wx_flake_ink if phase == "day" else PAL.wx_flake)
+    shift = _fall_shift(t, L.sky.snow_speed_px_s)
+    for x, base_y, s in L.sky.snow:
+        y = top + (base_y - top + shift) % span
+        draw.rectangle([x, y, x + s - 1, y + s - 1], fill=color)
+
+
+def _draw_fog(draw: ImageDraw.ImageDraw, phase: str) -> None:
+    """แถบหมอกนอนขวางจอ — ไม่มีแนวเมฆ หมอกคือสิ่งที่ *ไม่* มีรูปร่าง"""
+    color = quantize565(_deck_color(phase, "fog"))
+    for y, h in L.sky.fog_bands:
+        draw.rectangle([0, y, L.screen.width - 1, y + h - 1], fill=color)
+
+
+def _draw_bolt(draw: ImageDraw.ImageDraw) -> None:
+    color = quantize565(PAL.accent)
+    for x, y, w, h in L.sky.bolt:
+        draw.rectangle([x, y, x + w - 1, y + h - 1], fill=color)
+
+
+def _draw_grass(draw_ctx: ImageDraw.ImageDraw, phase: str, override: str | None = None) -> None:
     """กอหญ้างอกขึ้นจากเส้นขอบฟ้าไปในฟ้า — ก้านกลางสูงสุด ขนาบด้วยก้านสั้นสองข้าง
 
     งอกขึ้น ไม่ใช่ห้อยลง: หญ้าที่ยื่นลงไปในพื้นอ่านเป็นรอยขีดบนดิน ไม่ใช่ต้นไม้
     และอยู่แค่แถวเดียวบนเส้นขอบฟ้า ไม่ปูลงมาทั้งพื้น เพราะพื้นล่างมีตัวอักษรของ
     แผงโควตาและนาฬิกาใหญ่ทับอยู่ ลายบนพื้นตรงนั้นจะแย่งกับตัวอักษร
     """
-    color = quantize565(GRASS_COLOR[phase])
+    color = quantize565(override or GRASS_COLOR[phase])
     y = HORIZON - 1  # แถวบนสุดของหญ้าอยู่เหนือเส้นขอบฟ้าหนึ่งพิกเซล = โคนติดพื้นพอดี
     for i, x in enumerate(L.sky.grass_x):
         # ความสูงวนตามลำดับกอ — กอสูงเท่ากันหมดอ่านเป็นรั้ว ไม่ใช่หญ้า
@@ -199,11 +330,18 @@ def _draw_grass(draw_ctx: ImageDraw.ImageDraw, phase: str) -> None:
         draw_ctx.rectangle([x + 3, y - (2 + (side + 1) % 3), x + 4, y], fill=color)
 
 
-def draw(draw_ctx: ImageDraw.ImageDraw, clock: str, connected: bool, t: float) -> None:
+def draw(draw_ctx: ImageDraw.ImageDraw, clock: str, connected: bool, t: float,
+         code: int | None = None) -> None:
     """วาดท้องฟ้า + พื้นดินลงในแถบ slot
 
-    `t` = เวลาสัมบูรณ์เป็นวินาทีของฉาก ใช้เฉพาะกับเมฆและการกะพริบ
+    `t` = เวลาสัมบูรณ์เป็นวินาทีของฉาก ใช้กับเมฆ การกะพริบ และของที่ตกลงมา
     ส่วนช่วงเวลาของฟ้ามาจาก `clock` ล้วนๆ
+
+    `code` = รหัส WMO จากเฟรมของหน้าอากาศที่บอร์ดแคชไว้ · **None คือไม่มีอากาศที่ใช้ได้**
+    ซึ่งเกิดได้สามทางและทั้งสามทางต้องได้ผลเดียวกันคือฟ้าตามเวลาแบบเดิม: ยังไม่เคยได้
+    เฟรมเลย · ผู้ใช้ปิดหน้าอากาศ · หรือเฟรมเก่าเกิน `ct_weather_is_stale` (2.5 ชม.)
+    ข้อสุดท้ายสำคัญที่สุด — หน้านี้ไม่มีบรรทัดอายุมาแก้ต่างให้แบบหน้าอากาศ ฝนที่หยุดไป
+    สามชั่วโมงแล้วจึงเป็นคำโกหกที่ไม่มีอะไรมาถ่วง
 
     ไม่ต่อลิงก์ = ไม่วาดอะไรเลย ปล่อยให้เป็นพื้นจอเดิม — clock ที่ค้างอยู่ไม่ใช่เวลาจริง
     อีกต่อไป ท้องฟ้าที่ยังสวยอยู่จะกลบสัญญาณว่าขาดการติดต่อ และโกหกเรื่องเวลาด้วย
@@ -214,18 +352,53 @@ def draw(draw_ctx: ImageDraw.ImageDraw, clock: str, connected: bool, t: float) -
     if h is None:
         return
     phase = phase_at(h)
+    kind = "clear" if code is None else bucket(code)
     W = L.screen.width
-    draw_ctx.rectangle([0, SKY_TOP, W - 1, HORIZON - 1], fill=quantize565(SKY_COLOR[phase]))
+    # ฟ้าพายุแทนสีของช่วงเวลาทั้งย่าน เหมือนหน้าอากาศเป๊ะ — ผู้ใช้ปัดระหว่างสองหน้านี้
+    # พายุที่มืดสนิทหน้าหนึ่งแต่ฟ้าใสอีกหน้าอ่านเป็นข้อมูลขัดกัน ไม่ใช่สองมุมมอง
+    # ที่นี่ไม่มีตัวอักษรอยู่ในย่านฟ้าเลย (card.top = 144, แผงโควตา/นาฬิกาอยู่บนพื้นดิน)
+    # การกลับขั้วหมึกแบบ ADR-0009 จึงไม่ลามมาถึงหน้านี้ สิ่งเดียวที่ยืนบนฟ้าคือมาสคอต
+    base = PAL.wx_storm_sky if kind == "storm" else (
+        PAL.wx_dull_sky if _dull(phase, kind) else SKY_COLOR[phase])
+    draw_ctx.rectangle([0, SKY_TOP, W - 1, HORIZON - 1], fill=quantize565(base))
 
-    _draw_stars(draw_ctx, phase, int(t))
+    _draw_stars(draw_ctx, phase, int(t), kind)
     # เมฆก่อนดวง ไม่ใช่ดวงก่อนเมฆ — ตำแหน่งดวงคือเวลา ส่วนเมฆเป็นของประดับที่ลอยผ่าน
     # เมื่อส่วนโค้งถูกดันขึ้น ดวงกับเมฆก้อนสูงมาอยู่ย่านเดียวกัน แล้วเมฆขาวก็กินดวงไป
     # ทั้งดวงนานหลายสิบวินาทีต่อรอบ · ของที่บังนาฬิกาได้มีได้อย่างเดียวคือตัวละคร
-    _draw_clouds(draw_ctx, phase, t)
+    _draw_clouds(draw_ctx, phase, t, kind)
     x, y, color = disc(h)
+    # ตอนพายุดวงอาทิตย์ใช้สีของดวงที่เตี้ย ไม่ใช่สีเที่ยงวัน — ดวงยังต้องอยู่เพราะมันคือ
+    # นาฬิกา แต่ดวงสีเต็มบนฟ้าพายุอ่านเป็นข้อผิดพลาด ไม่ใช่แดดที่ส่องผ่านเมฆหนา
+    # ดวงจันทร์ไม่ต้องแตะ มันหรี่อยู่แล้วและกลางคืนไม่มีเมฆลอยมาเทียบให้เห็นความสว่าง
+    if kind == "storm" and color == PAL.sun:
+        color = PAL.sun_low
     _draw_disc(draw_ctx, x, y, color)
 
+    # แนวเมฆเป็นข้อยกเว้นเดียวของกติกา "ห้ามอะไรบังดวง" — และมันบังได้ *ทั้งดวง*
+    # ฟ้าที่ปิดสนิทแต่ยังเห็นดวงอาทิตย์คือฟ้าที่ขัดแย้งกับตัวเอง ฉากนี้บอกสภาพตอนนี้
+    # ส่วนเวลามีนาฬิกาบนแถบบนอยู่แล้ว (เคยตั้งเพดานไว้ไม่ให้บังหมด แล้วกลับคำ — ดู
+    # `deck_bottom` ใน layout.toml) · เมฆลอยยังอยู่ใต้ deck ตามเดิม ไม่ได้ถูกแทน:
+    # กลางวันที่ฟ้าปิดและไม่มีอะไรตกลงมาต้องยังมีอะไรขยับ ไม่งั้นจอนิ่งสนิททั้งวัน
+    if kind in DECK_KINDS:
+        _draw_deck(draw_ctx, phase, kind)
+    if kind in ("rain", "snow"):
+        _draw_fall(draw_ctx, phase, kind, t)
+    if kind == "fog":
+        _draw_fog(draw_ctx, phase)
+    if kind == "storm":
+        _draw_bolt(draw_ctx)
+
     # พื้นดินวาดทับหลังสุด — ครึ่งล่างของดวงและเมฆที่ต่ำเกินไปจึงถูกตัดที่เส้นขอบฟ้าเอง
-    draw_ctx.rectangle([0, HORIZON, W - 1, GROUND_BOTTOM - 1],
-                       fill=quantize565(GROUND_COLOR[phase]))
-    _draw_grass(draw_ctx, phase)
+    # และฝนที่ตกถึงพื้นก็หายไปที่เส้นนั้นเอง ไม่ต้องมีใครตัดให้
+    ground = PAL.ground_night if kind == "storm" else GROUND_COLOR[phase]
+    draw_ctx.rectangle([0, HORIZON, W - 1, GROUND_BOTTOM - 1], fill=quantize565(ground))
+    # พายุยืมหญ้าของ dusk ไม่ใช่ของ night ด้วยเหตุผลที่หน้าอากาศบันทึกไว้แล้ว:
+    # เกณฑ์ของสีหญ้าคือ 2:1 กับฟ้าของช่วงนั้น และฟ้าพายุที่ขอบฟ้าคือแถบสว่างค้าง
+    if kind == "storm":
+        _draw_grass(draw_ctx, "dusk")
+    elif _dull(phase, kind):
+        # หญ้าของฟ้าครึ้มไม่ใช่หญ้าของช่วงไหนเลย — เกณฑ์คือ 2:1 กับฟ้า *ที่มันยืนอยู่หน้า*
+        _draw_grass(draw_ctx, phase, PAL.wx_dull_grass)
+    else:
+        _draw_grass(draw_ctx, phase)

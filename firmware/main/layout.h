@@ -68,6 +68,10 @@
 #define CT_SKY_LOW_STAR_N            6
 #define CT_SKY_CLOUD_SPEED_PX_S      4
 #define CT_SKY_CLOUD_PAD             60
+#define CT_SKY_DECK_BOTTOM           34
+#define CT_SKY_RAIN_W                2
+#define CT_SKY_RAIN_SPEED_PX_S       64
+#define CT_SKY_SNOW_SPEED_PX_S       16
 
 #define CT_SKY_STARS_COUNT           16
 static const int16_t ct_sky_stars[CT_SKY_STARS_COUNT][2] = {
@@ -100,6 +104,84 @@ static const int16_t ct_sky_clouds[CT_SKY_CLOUDS_COUNT][3] = {
 static const int16_t ct_sky_grass_x[CT_SKY_GRASS_X_COUNT] = {
       4,  13,  35,  41,  55,  62,  88,  99, 104, 123, 131, 155,
     168, 174, 191, 200, 228, 235, 247, 268, 273, 288, 298, 310,
+};
+
+#define CT_SKY_DECK_LUMPS_COUNT      22
+static const int16_t ct_sky_deck_lumps[CT_SKY_DECK_LUMPS_COUNT][3] = {
+    {-15,  18,   9},
+    { -2,  26,  13},
+    { 21,  16,   8},
+    { 35,  20,  10},
+    { 49,  20,  10},
+    { 62,  22,  11},
+    { 76,  26,  13},
+    { 92,  26,  13},
+    {113,  20,  10},
+    {125,  26,  13},
+    {145,  16,   8},
+    {157,  28,  14},
+    {179,  20,  10},
+    {193,  22,  11},
+    {214,  16,   8},
+    {227,  20,  10},
+    {237,  28,  14},
+    {257,  18,   9},
+    {267,  26,  13},
+    {286,  16,   8},
+    {301,  16,   8},
+    {313,  22,  11},
+};
+
+#define CT_SKY_RAIN_COUNT            14
+static const int16_t ct_sky_rain[CT_SKY_RAIN_COUNT][3] = {
+    { 22,  44,  14},
+    { 54,  66,  10},
+    { 78,  40,  18},
+    {108,  78,  12},
+    {140,  52,  15},
+    {166,  88,  11},
+    {196,  46,  17},
+    {222,  70,  13},
+    {252,  56,  16},
+    {284,  92,  10},
+    { 38, 104,   9},
+    {126, 112,   8},
+    {208,  98,   9},
+    {300,  84,   8},
+};
+
+#define CT_SKY_SNOW_COUNT            14
+static const int16_t ct_sky_snow[CT_SKY_SNOW_COUNT][3] = {
+    { 26,  42,   5},
+    { 58,  64,   3},
+    { 84,  48,   4},
+    {112,  80,   3},
+    {138,  54,   5},
+    {162,  92,   3},
+    {192,  44,   4},
+    {216,  74,   3},
+    {248,  58,   5},
+    {278, 100,   4},
+    { 42, 108,   3},
+    {130, 116,   4},
+    {204,  96,   3},
+    {296,  68,   4},
+};
+
+#define CT_SKY_FOG_BANDS_COUNT       4
+static const int16_t ct_sky_fog_bands[CT_SKY_FOG_BANDS_COUNT][2] = {
+    { 64,   4},
+    { 80,   5},
+    { 98,   7},
+    {112,   8},
+};
+
+#define CT_SKY_BOLT_COUNT            4
+static const int16_t ct_sky_bolt[CT_SKY_BOLT_COUNT][4] = {
+    { 58,  34,   9,  12},
+    { 49,  45,   9,  11},
+    { 55,  55,   8,  10},
+    { 46,  64,   8,   9},
 };
 
 #define CT_ROTATION_SECONDS          20
@@ -522,6 +604,9 @@ static const int16_t ct_calendar_card_clouds[CT_CALENDAR_CARD_CLOUDS_COUNT][3] =
 #define CT_COL_WX_DECK_DUSK          0x8A53
 #define CT_COL_WX_STORM_SKY          0x29A8
 #define CT_COL_WX_STORM_DECK         0x10C4
+#define CT_COL_WX_DULL_SKY           0xAE3A
+#define CT_COL_WX_DULL_DECK          0x7C73
+#define CT_COL_WX_DULL_GRASS         0x6CA9
 #define CT_COL_WX_FLAKE              0xF7DF
 #define CT_COL_WX_FLAKE_INK          0x6C74
 

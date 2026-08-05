@@ -19,23 +19,10 @@ from .config import L, PAL
 from .rects import Rect, RectList
 from .render import draw_rects, quantize565
 
-def bucket(code: int) -> str:
-    """รหัส WMO -> กลุ่มสัญลักษณ์ — ต้องตรงกับ bucket() ใน ct_weather_ui.c
-
-    รหัสมีหลายสิบค่า แต่จอ 2.8 นิ้วที่มองจากอีกฝั่งห้องแยกได้จริงราวหกกลุ่ม
-    หมอกกับหมอกน้ำแข็งคนละรูปคือรายละเอียดที่ไม่มีใครอ่านออก
-    """
-    if code >= 95:
-        return "storm"
-    if 71 <= code <= 77 or code in (85, 86):
-        return "snow"
-    if 51 <= code <= 67 or 80 <= code <= 82:
-        return "rain"
-    if code in (45, 48):
-        return "fog"
-    if code >= 2:
-        return "cloud"
-    return "clear"
+# กลุ่มสภาพอากาศกับสีแนวเมฆอยู่ที่ `gen/sky.py` แล้ว ตั้งแต่หน้ามาสคอตใช้มันด้วย
+# (ADR-0012) — ที่นี่แค่ยืมชื่อมาให้โค้ดเดิมในไฟล์นี้เรียกได้เหมือนเดิม
+bucket = sky.bucket
+DECK_COLOR = sky.DECK_COLOR
 
 
 def _cloud(color: str) -> RectList:
@@ -117,12 +104,6 @@ DECK_BOTTOM = {
     "rain": L.weather.deck_wet_y,
     "snow": L.weather.deck_wet_y,
     "storm": L.weather.deck_storm_y,
-}
-DECK_COLOR = {
-    "night": PAL.wx_deck_night,
-    "dawn": PAL.wx_deck_dawn,
-    "day": PAL.wx_deck_day,
-    "dusk": PAL.wx_deck_dusk,
 }
 
 

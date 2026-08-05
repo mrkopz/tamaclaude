@@ -63,6 +63,12 @@ draws (`VisualState`, `PageKind`) and sends one frame per page. What the board o
 *which page is on screen right now* — it caches every page in RAM, runs the rotation clock,
 holds after a swipe, and jumps to the mascot on an attention event, all so a sleeping Mac
 cannot freeze the screen on one page all night.
+
+Because every page is cached, **a page may draw from another page's frame** (ADR-0012) —
+the mascot sky reads the weather frame's WMO code, the weather page reads the mascot
+snapshot's clock. That costs nothing on the wire and does not move the line above: what
+gets drawn is still a value the daemon sent, never one the board synthesised. A frame the
+board would have to treat as expired is treated as absent instead.
 Tool-to-animation mapping is host-side and user-overridable at `~/.tamaclaude/tools.json`.
 
 ## Commands

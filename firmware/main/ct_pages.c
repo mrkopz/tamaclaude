@@ -141,12 +141,23 @@ void ct_pages_set_snapshot(const ct_snapshot_t *snap)
     if (s_active == CT_PAGE_CALENDAR) ct_calendar_ui_redraw();
 }
 
+// ป้อนสภาพอากาศให้ฟ้าของหน้ามาสคอต (ADR-0012) — หน้านั้นวาดเฟรมของหน้า *อื่น*
+// การตัดสินว่าเฟรมยังใช้ได้ไหมอยู่ที่นี่ ไม่ใช่ที่ ct_ui.c เพราะทะเบียนหน้ากับนาฬิกาอายุ
+// อยู่ที่นี่ทั้งคู่ · เก่าเกิน stale = ไม่มีอากาศ ไม่ใช่อากาศเก่า: หน้ามาสคอตไม่มีบรรทัดอายุ
+// มาแก้ต่างให้แบบหน้าอากาศ ฝนที่หยุดไปสามชั่วโมงแล้วจึงเป็นคำโกหกที่ไม่มีอะไรถ่วง
+static void push_weather_to_sky(void)
+{
+    bool ok = s_pages[CT_PAGE_WEATHER].has_frame && !ct_weather_is_stale(&s_weather);
+    ct_ui_set_weather(s_weather.code, ok);
+}
+
 bool ct_pages_set_frame(ct_page_kind_t kind, const char *json, int len)
 {
     switch (kind) {
         case CT_PAGE_WEATHER:
             if (!ct_weather_parse(json, len, &s_weather)) return false;
             s_pages[CT_PAGE_WEATHER].has_frame = true;
+            push_weather_to_sky();
             if (s_active == CT_PAGE_WEATHER) ct_weather_ui_redraw();
             return true;
         case CT_PAGE_CRYPTO:
@@ -179,6 +190,8 @@ void ct_pages_forget(ct_page_kind_t kind)
         ct_weather_t empty = {0};
         empty.unit = 'C';
         s_weather = empty;
+        // หน้าที่ถูกปิดต้องหายไปจากฟ้าของหน้ามาสคอตด้วย ไม่ใช่แค่หายจากรอบ rotation
+        push_weather_to_sky();
     } else if (kind == CT_PAGE_CRYPTO) {
         ct_crypto_t empty = {0};
         s_crypto = empty;
@@ -417,6 +430,9 @@ void ct_pages_tick(int elapsed_ms)
     // บอร์ดไม่มีนาฬิกาที่ตั้งเวลาไว้ แต่นับต่อจากเลขที่ได้มาได้เสมอ
     if (second_passed && s_pages[CT_PAGE_WEATHER].has_frame) {
         ct_weather_tick(&s_weather, 1);
+        // เส้น stale ถูกข้ามระหว่างสองวินาทีนี้ได้ ฟ้าของหน้ามาสคอตจึงต้องถูกถามซ้ำ
+        // ทุกวินาทีด้วย — `ct_ui_set_weather` คืนทันทีเมื่อกลุ่มไม่เปลี่ยน ไม่มีการวาด
+        push_weather_to_sky();
         if (s_active == CT_PAGE_WEATHER) ct_weather_ui_redraw_age();
     }
     if (second_passed && s_pages[CT_PAGE_CRYPTO].has_frame) {

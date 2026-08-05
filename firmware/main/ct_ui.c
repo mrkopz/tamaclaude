@@ -70,6 +70,27 @@ static const uint16_t SKY_SHADOW[CT_SKY_PHASE_COUNT] = {
 // กลางคืนไม่มีเมฆ ช่องแรกจึงไม่ถูกใช้
 static const uint16_t SKY_CLOUD[CT_SKY_PHASE_COUNT] = {0, CT_COL_CLOUD_DAWN, CT_COL_CLOUD_DAY,
                                                        CT_COL_CLOUD_DUSK};
+// กลุ่มที่มีแนวเมฆปิดฟ้า — โล่งไม่มีอะไรปิด ส่วนหมอกเป็นแถบนอน ไม่ใช่เพดาน
+static inline bool sky_has_deck(ct_wx_kind_t k)
+{
+    return k == CT_WX_CLOUD || k == CT_WX_RAIN || k == CT_WX_SNOW || k == CT_WX_STORM;
+}
+
+// กลางวันที่ฟ้าถูกปิดแต่ยังไม่ถึงพายุ -> ใช้ชุดสี wx_dull_* แทนสีของช่วงเวลา
+// เฉพาะ day: ช่วงอื่นฟ้าเข้มอยู่แล้ว และ "ฟ้าใสใต้เพดานเทา" เห็นได้แค่ตอนกลางวัน
+// ต้องตรงกับ _dull() ใน tools/gen/sky.py
+static inline bool sky_is_dull(ct_sky_phase_t phase, ct_wx_kind_t k)
+{
+    return phase == CT_SKY_DAY &&
+           (k == CT_WX_CLOUD || k == CT_WX_FOG || k == CT_WX_RAIN || k == CT_WX_SNOW);
+}
+
+// สีของแนวเมฆ/แถบหมอก/ก้อนลอย — สามทาง ไม่ใช่สองทาง ตั้งแต่มีฟ้าครึ้ม
+static inline uint16_t sky_deck_color(ct_sky_phase_t phase, ct_wx_kind_t k)
+{
+    if (k == CT_WX_STORM) return CT_COL_WX_STORM_DECK;
+    return sky_is_dull(phase, k) ? CT_COL_WX_DULL_DECK : CT_SKY_DECK[phase];
+}
 
 // เงาใต้เท้า — กว้าง 11 unit วางใต้เส้นขอบฟ้า ตรงกับ SHADOW_W ใน tools/gen/screen.py
 #define SHADOW_W_UNIT 11.0f
@@ -81,6 +102,10 @@ static lv_obj_t *s_sky;
 static ct_sky_phase_t s_sky_phase = CT_SKY_NONE;
 static float s_sky_hours = -1.0f;  // เวลาที่ใช้หาตำแหน่งดวง — <0 คือไม่รู้
 static int s_cloud_shift = -1;     // เมฆเลื่อนไปกี่พิกเซลแล้ว ใช้ตัดสินว่าต้องวาดใหม่ไหม
+// สภาพอากาศบนฟ้าของหน้านี้ — มาจากเฟรมของ *หน้าอากาศ* ที่ ct_pages.c แคชไว้ ไม่ใช่จาก
+// snapshot (ADR-0012) · CT_WX_CLEAR คือทั้ง "ฟ้าโล่งจริงๆ" และ "ไม่มีอากาศที่ใช้ได้"
+// ซึ่งเป็นค่าเดียวกันโดยตั้งใจ: ทั้งสองต้องได้ฟ้าตามเวลาแบบก่อนหน้านี้เป๊ะ
+static ct_wx_kind_t s_wx = CT_WX_CLEAR;
 
 static lv_obj_t *s_stroll;  // มาสคอตเดินข้ามจอตอนไม่มี session — กินแถบ slot ทั้งแถบ
 static lv_obj_t *s_clock_big, *s_date;
@@ -139,9 +164,10 @@ static void fill_rect(lv_layer_t *layer, int x0, int y0, int x1, int y1, uint16_
     lv_draw_rect(layer, &dsc, &a);
 }
 
-static void draw_stars(lv_layer_t *layer, ct_sky_phase_t phase)
+static void draw_stars(lv_layer_t *layer, ct_sky_phase_t phase, ct_wx_kind_t kind)
 {
-    if (phase == CT_SKY_DAY) return;
+    // พายุไม่มีดาวไม่ว่ากี่โมง — กติกาเดียวกับหน้าอากาศ
+    if (phase == CT_SKY_DAY || kind == CT_WX_STORM) return;
     // ดาวเป็นสี่เหลี่ยมอย่างน้อย star_px x star_px ทุกดวง — จุด 1px หายไปเลยบนแผงจริง
     const int d = CT_SKY_STAR_PX - 1;
     if (phase != CT_SKY_NIGHT) {
@@ -160,7 +186,11 @@ static void draw_stars(lv_layer_t *layer, ct_sky_phase_t phase)
                                      CT_COL_STAR_MID};
     static const int ramp_px[4] = {CT_SKY_STAR_PX, CT_SKY_STAR_PX, CT_SKY_STAR_PEAK_PX,
                                    CT_SKY_STAR_PX};
-    for (int i = 0; i < CT_SKY_STARS_COUNT; i++) {
+    // ฟ้าที่ถูกเมฆปิดก็เห็นไม่ครบเหมือนกัน — เหตุที่สอง ไม่ใช่กฎที่สอง แต่ *ยังกะพริบ*
+    // ต่างจากทาง dawn/dusk ข้างบน เพราะกลางคืนที่เป็นเมฆล้วนไม่มีทั้งเมฆลอย (กลางคืน
+    // ไม่มี) และของที่ตกลงมา ดาวที่หยุดกะพริบด้วยจะทำให้จอนิ่งสนิททั้งคืน
+    int n = sky_has_deck(kind) ? CT_SKY_LOW_STAR_N : CT_SKY_STARS_COUNT;
+    for (int i = 0; i < n; i++) {
         int x = ct_sky_stars[i][0], y = ct_sky_stars[i][1];
         if (i >= CT_SKY_TWINKLE_N) {
             fill_rect(layer, x, y, x + d, y + d, CT_COL_STAR, 0);
@@ -173,10 +203,13 @@ static void draw_stars(lv_layer_t *layer, ct_sky_phase_t phase)
     }
 }
 
-static void draw_clouds(lv_layer_t *layer, ct_sky_phase_t phase, float t)
+static void draw_clouds(lv_layer_t *layer, ct_sky_phase_t phase, float t, ct_wx_kind_t kind)
 {
     if (phase == CT_SKY_NIGHT) return;
-    uint16_t color = SKY_CLOUD[phase];
+    // ก้อนลอยยืมสีของแนวเมฆทุกครั้งที่ฟ้าถูกปิด ไม่ใช่สีเมฆของช่วงเวลา — cloud_day
+    // เกือบขาวสนิท บนฟ้าครึ้มหรือฟ้าพายุมันอ่านเป็นรูรั่วบนเพดาน ไม่ใช่เมฆ
+    // ที่ยังต้องมีก้อนลอยเพราะวันที่ปิดสนิทไม่มีทั้งดาวและของที่ตกลงมา (สายฟ้าไม่กะพริบ)
+    uint16_t color = kind == CT_WX_CLEAR ? SKY_CLOUD[phase] : sky_deck_color(phase, kind);
     float span = (float)(CT_SCREEN_WIDTH + 2 * CT_SKY_CLOUD_PAD);
     for (int i = 0; i < CT_SKY_CLOUDS_COUNT; i++) {
         float base_x = ct_sky_clouds[i][0];
@@ -190,11 +223,81 @@ static void draw_clouds(lv_layer_t *layer, ct_sky_phase_t phase, float t)
     }
 }
 
+// แนวเมฆที่ปิดฟ้าลงมาถึง deck_bottom พร้อมก้อนที่ห้อยลงจากก้นแนว
+// ตื้นกว่าของหน้าอากาศมาก และเป็นค่าเดียวทุกสภาพ — เหตุผลอยู่ที่ deck_bottom ใน
+// layout.toml (สรุป: ลึกกว่านี้แล้วฟ้าเลิกบอกเวลา) · ต้องตรงกับ _draw_deck ใน gen/sky.py
+static void draw_deck(lv_layer_t *layer, ct_sky_phase_t phase, ct_wx_kind_t kind)
+{
+    uint16_t color = sky_deck_color(phase, kind);
+    const int bottom = CT_SKY_DECK_BOTTOM;
+    fill_rect(layer, 0, CT_TOPBAR_HEIGHT, CT_SCREEN_WIDTH - 1, bottom - 1, color, 0);
+    for (int i = 0; i < CT_SKY_DECK_LUMPS_COUNT; i++) {
+        int x = ct_sky_deck_lumps[i][0], w = ct_sky_deck_lumps[i][1];
+        int h = ct_sky_deck_lumps[i][2];
+        // รัศมีเท่าครึ่งความสูงของกล่อง — ก้อนเป็นวงกลมพอดีเมื่อ w == 2h ซึ่งเป็นกฎของ
+        // ตารางนี้ (ดู deck_lumps ใน layout.toml) · กว้างกว่านั้น LVGL clamp รัศมีแล้วได้
+        // แคปซูลก้นแบน ซึ่งอ่านเป็นแถบสีขอบหยิก ไม่ใช่เมฆ
+        fill_rect(layer, x, bottom - h, x + w - 1, bottom + h - 1, color, h);
+    }
+}
+
+// ของที่ตกเลื่อนลงมากี่พิกเซลแล้ว ณ วินาทีที่ t — ตัดเป็นจำนวนเต็มก่อนบวก ไม่ใช่บวก
+// ทศนิยมแล้วค่อยปัด ความเร็วเป็นจำนวนเต็มพิกเซลต่อเฟรมอยู่แล้วสองฝั่งจึงไม่มีอะไรให้เถียงกัน
+// ต้องตรงกับ _fall_shift ใน tools/gen/sky.py
+static int fall_shift(float t, int speed)
+{
+    return (int)(t * (float)speed);
+}
+
+// สิ่งที่กำลังตกลงมาจากแนวเมฆ — ฝนเป็นแท่งตั้ง หิมะเป็นสี่เหลี่ยมจัตุรัส
+// ต่างจากหน้าอากาศที่ฉากนิ่ง: หน้านี้เป็นหน้า idle ที่ค้างอยู่ทั้งคืน (ดู rain ใน layout.toml)
+// เม็ดที่เลยเส้นขอบฟ้าถูกพื้นดินตัดเองตอนวาด ไม่ต้องตัดตรงนี้
+static void draw_fall(lv_layer_t *layer, ct_sky_phase_t phase, ct_wx_kind_t kind, float t)
+{
+    const int top = CT_SKY_DECK_BOTTOM, span = CT_SKY_HORIZON - CT_SKY_DECK_BOTTOM;
+    if (kind == CT_WX_RAIN) {
+        int shift = fall_shift(t, CT_SKY_RAIN_SPEED_PX_S);
+        for (int i = 0; i < CT_SKY_RAIN_COUNT; i++) {
+            int x = ct_sky_rain[i][0], len = ct_sky_rain[i][2];
+            int y = top + (ct_sky_rain[i][1] - top + shift) % span;
+            fill_rect(layer, x, y, x + CT_SKY_RAIN_W - 1, y + len - 1, CT_COL_STEEL, 0);
+        }
+        return;
+    }
+    // หิมะบนฟ้าที่สว่างต้องเป็นหมึกเข้ม ไม่ใช่ขาวบนขาว — เงื่อนไขสั้นกว่าของหน้าอากาศ
+    // เพราะที่นี่พายุกับหิมะเป็นคนละกลุ่มอยู่แล้ว เหลือแค่ "ช่วง day ไหม"
+    uint16_t color = phase == CT_SKY_DAY ? CT_COL_WX_FLAKE_INK : CT_COL_WX_FLAKE;
+    int shift = fall_shift(t, CT_SKY_SNOW_SPEED_PX_S);
+    for (int i = 0; i < CT_SKY_SNOW_COUNT; i++) {
+        int x = ct_sky_snow[i][0], s = ct_sky_snow[i][2];
+        int y = top + (ct_sky_snow[i][1] - top + shift) % span;
+        fill_rect(layer, x, y, x + s - 1, y + s - 1, color, 0);
+    }
+}
+
+// แถบหมอกนอนขวางจอ — ไม่มีแนวเมฆ หมอกคือสิ่งที่ *ไม่* มีรูปร่าง
+static void draw_fog(lv_layer_t *layer, ct_sky_phase_t phase)
+{
+    for (int i = 0; i < CT_SKY_FOG_BANDS_COUNT; i++) {
+        int y = ct_sky_fog_bands[i][0], h = ct_sky_fog_bands[i][1];
+        fill_rect(layer, 0, y, CT_SCREEN_WIDTH - 1, y + h - 1,
+                  sky_deck_color(phase, CT_WX_FOG), 0);
+    }
+}
+
+static void draw_bolt(lv_layer_t *layer)
+{
+    for (int i = 0; i < CT_SKY_BOLT_COUNT; i++) {
+        int x = ct_sky_bolt[i][0], y = ct_sky_bolt[i][1];
+        int w = ct_sky_bolt[i][2], h = ct_sky_bolt[i][3];
+        fill_rect(layer, x, y, x + w - 1, y + h - 1, CT_COL_ACCENT, 0);
+    }
+}
+
 // กอหญ้างอกขึ้นจากเส้นขอบฟ้าไปในฟ้า — ก้านกลางสูงสุด ขนาบด้วยก้านสั้นสองข้าง
 // งอกขึ้น ไม่ใช่ห้อยลง: หญ้าที่ยื่นลงไปในพื้นอ่านเป็นรอยขีดบนดิน ไม่ใช่ต้นไม้
-static void draw_grass(lv_layer_t *layer, ct_sky_phase_t phase)
+static void draw_grass_color(lv_layer_t *layer, uint16_t color)
 {
-    uint16_t color = SKY_GRASS[phase];
     int y = CT_SKY_HORIZON - 1;
     for (int i = 0; i < CT_SKY_GRASS_X_COUNT; i++) {
         int x = ct_sky_grass_x[i];
@@ -206,30 +309,64 @@ static void draw_grass(lv_layer_t *layer, ct_sky_phase_t phase)
     }
 }
 
+static void draw_grass(lv_layer_t *layer, ct_sky_phase_t phase)
+{
+    draw_grass_color(layer, SKY_GRASS[phase]);
+}
+
 static void sky_draw_cb(lv_event_t *e)
 {
     if (s_sky_phase == CT_SKY_NONE) return;  // ไม่มีฉาก = ปล่อยให้เป็นพื้นจอเปล่า
 
     lv_layer_t *layer = lv_event_get_layer(e);
     ct_sky_phase_t phase = s_sky_phase;
+    ct_wx_kind_t kind = s_wx;
+    float t = (float)s_cycle + s_phase;
     // ฟ้าเริ่มใต้แถบบน ไม่ใช่ที่ขอบบนของแถบมาสคอต — แถบมาสคอตนั่งต่ำกว่านั้นลงมามาก
-    fill_rect(layer, 0, CT_TOPBAR_HEIGHT, CT_SCREEN_WIDTH - 1, CT_SKY_HORIZON - 1,
-              SKY_BG[phase], 0);
+    // ฟ้าพายุแทนสีของช่วงเวลาทั้งย่าน เหมือนหน้าอากาศเป๊ะ — ผู้ใช้ปัดระหว่างสองหน้านี้
+    // พายุที่มืดสนิทหน้าหนึ่งแต่ฟ้าใสอีกหน้าอ่านเป็นข้อมูลขัดกัน ไม่ใช่สองมุมมอง
+    // ที่นี่ไม่มีตัวอักษรอยู่ในย่านฟ้าเลย (card.top = 144, แผงโควตา/นาฬิกาอยู่บนพื้นดิน)
+    // การกลับขั้วหมึกแบบ ADR-0009 จึงไม่ลามมาถึงหน้านี้ สิ่งเดียวที่ยืนบนฟ้าคือมาสคอต
+    uint16_t base = kind == CT_WX_STORM      ? CT_COL_WX_STORM_SKY
+                    : sky_is_dull(phase, kind) ? CT_COL_WX_DULL_SKY
+                                               : SKY_BG[phase];
+    fill_rect(layer, 0, CT_TOPBAR_HEIGHT, CT_SCREEN_WIDTH - 1, CT_SKY_HORIZON - 1, base, 0);
 
-    draw_stars(layer, phase);
+    draw_stars(layer, phase, kind);
     // เมฆก่อนดวง ไม่ใช่ดวงก่อนเมฆ — ตำแหน่งดวงคือเวลา ส่วนเมฆเป็นของประดับที่ลอยผ่าน
     // ของที่บังนาฬิกาได้มีได้อย่างเดียวคือตัวละคร (ตรงกับ tools/gen/sky.py:draw)
-    draw_clouds(layer, phase, (float)s_cycle + s_phase);
+    draw_clouds(layer, phase, t, kind);
     float x, y;
     uint16_t color;
     sky_disc(s_sky_hours, &x, &y, &color);
+    // ตอนพายุดวงอาทิตย์ใช้สีของดวงที่เตี้ย — ดวงยังต้องอยู่เพราะมันคือนาฬิกา แต่ดวงสีเต็ม
+    // บนฟ้าพายุอ่านเป็นข้อผิดพลาด ไม่ใช่แดดที่ส่องผ่านเมฆหนา · ดวงจันทร์หรี่อยู่แล้ว
+    if (kind == CT_WX_STORM && color == CT_COL_SUN) color = CT_COL_SUN_LOW;
     int cx = (int)lroundf(x), cy = (int)lroundf(y), r = CT_SKY_DISC_R;
     fill_rect(layer, cx - r, cy - r, cx + r, cy + r, color, LV_RADIUS_CIRCLE);
 
+    // แนวเมฆเป็นข้อยกเว้นเดียวของกติกา "ห้ามอะไรบังดวง" — และมันบังได้ *ทั้งดวง*
+    // ฟ้าที่ปิดสนิทแต่ยังเห็นดวงอาทิตย์คือฟ้าที่ขัดแย้งกับตัวเอง ฉากนี้บอกสภาพตอนนี้
+    // ส่วนเวลามีนาฬิกาบนแถบบนอยู่แล้ว (เคยตั้งเพดานไว้ไม่ให้บังหมด แล้วกลับคำ — ดู
+    // deck_bottom ใน layout.toml) · เมฆลอยยังอยู่ใต้ deck ตามเดิม ไม่ได้ถูกแทน:
+    // กลางวันที่ฟ้าปิดและไม่มีอะไรตกลงมาต้องยังมีอะไรขยับ ไม่งั้นจอนิ่งสนิททั้งวัน
+    if (sky_has_deck(kind)) draw_deck(layer, phase, kind);
+    if (kind == CT_WX_RAIN || kind == CT_WX_SNOW) draw_fall(layer, phase, kind, t);
+    if (kind == CT_WX_FOG) draw_fog(layer, phase);
+    if (kind == CT_WX_STORM) draw_bolt(layer);
+
     // พื้นดินวาดทับหลังสุด — ครึ่งล่างของดวงและเมฆที่ต่ำเกินไปถูกตัดที่เส้นขอบฟ้าเอง
+    // และฝนที่ตกถึงพื้นก็หายไปที่เส้นนั้นเอง ไม่ต้องมีใครตัดให้
     fill_rect(layer, 0, CT_SKY_HORIZON, CT_SCREEN_WIDTH - 1, CT_SCREEN_HEIGHT - 1,
-              SKY_GROUND[phase], 0);
-    draw_grass(layer, phase);
+              kind == CT_WX_STORM ? CT_COL_GROUND_NIGHT : SKY_GROUND[phase], 0);
+    // พายุยืมหญ้าของ dusk ไม่ใช่ของ night ด้วยเหตุผลที่หน้าอากาศบันทึกไว้แล้ว:
+    // เกณฑ์ของสีหญ้าคือ 2:1 กับฟ้าของช่วงนั้น และฟ้าพายุที่ขอบฟ้าคือแถบสว่างค้าง
+    // หญ้าของฟ้าครึ้มไม่ใช่หญ้าของช่วงไหนเลย — เกณฑ์คือ 2:1 กับฟ้า *ที่มันยืนอยู่หน้า*
+    if (sky_is_dull(phase, kind)) {
+        draw_grass_color(layer, CT_COL_WX_DULL_GRASS);
+    } else {
+        draw_grass(layer, kind == CT_WX_STORM ? CT_SKY_DUSK : phase);
+    }
 }
 
 // เงาใต้เท้า — ปักหมุดว่าพื้นอยู่ตรงไหน ทำให้ท่ากระโดดอ่านเป็นกระโดด ไม่ใช่ลอย
@@ -238,9 +375,12 @@ static void draw_shadow(lv_layer_t *layer, float body_cx)
 {
     if (s_sky_phase == CT_SKY_NONE) return;  // ไม่มีพื้นก็ไม่มีเงา
     float half = SHADOW_W_UNIT * CT_SLOTS_UNIT_PX / 2.0f;
+    // เงาจับคู่กับ *พื้น* ที่มันทาบอยู่ ไม่ใช่กับชั่วโมง — พายุใช้พื้นของ night
+    // ถ้าใช้ของช่วงเวลาต่อไปจะได้คราบม่วงบนพื้นเทากลางพายุตอนเย็น
+    ct_sky_phase_t sp = s_wx == CT_WX_STORM ? CT_SKY_NIGHT : s_sky_phase;
     fill_rect(layer, (int)lroundf(body_cx - half), CT_SKY_HORIZON,
               (int)lroundf(body_cx + half), CT_SKY_HORIZON + SHADOW_H - 1,
-              SKY_SHADOW[s_sky_phase], LV_RADIUS_CIRCLE);
+              SKY_SHADOW[sp], LV_RADIUS_CIRCLE);
 }
 
 // --- การวาดมาสคอต ------------------------------------------------------------
@@ -1017,6 +1157,19 @@ void ct_ui_set_connected(bool connected)
     lv_obj_invalidate(s_stroll);
 }
 
+// สภาพอากาศที่ฟ้าของหน้านี้จะวาด — ct_pages.c เป็นคนตัดสินว่าเฟรมที่แคชไว้ยังใช้ได้ไหม
+// (ยังไม่เคยได้ / ผู้ใช้ปิดหน้าอากาศ / เก่าเกิน stale) ที่นี่แค่วาดตามที่บอก
+//
+// `valid == false` -> CT_WX_CLEAR ซึ่งเป็นค่าเดียวกับฟ้าโล่งจริงๆ โดยตั้งใจ: ทั้งสอง
+// ต้องได้ฟ้าตามเวลาแบบก่อนหน้านี้เป๊ะ และหน้านี้ไม่มีที่พิมพ์ว่า "ไม่รู้อากาศ" อยู่แล้ว
+void ct_ui_set_weather(int code, bool valid)
+{
+    ct_wx_kind_t kind = valid ? ct_sky_bucket(code) : CT_WX_CLEAR;
+    if (kind == s_wx) return;  // รหัสที่เปลี่ยนแต่ยังกลุ่มเดิมไม่ใช่ภาพที่เปลี่ยน
+    s_wx = kind;
+    if (s_sky_phase != CT_SKY_NONE) lv_obj_invalidate(s_sky);
+}
+
 // วาดใหม่เฉพาะตอนข้อความเปลี่ยนจริง — หลังนาทีแรกตัวเลขนี้เปลี่ยนนาทีละครั้ง แต่ตัวโฮสต์
 // บอกมาทุกวินาที การ set_text ด้วยข้อความเดิมคือการ invalidate ป้าย 48pt ทิ้งเปล่าๆ
 void ct_ui_set_offline_secs(int secs)
@@ -1045,9 +1198,14 @@ void ct_ui_tick(int elapsed_ms)
 
     // ฟ้าวาดใหม่ตอนเมฆขยับถึงพิกเซลถัดไป (~4 ครั้ง/วิ) หรือตอนวินาทีเดิน (ดาวกะพริบ)
     // ไม่ใช่ทุกเฟรม — ที่ 60ms ต่อเฟรมจะได้ 16 ครั้ง/วิ โดยที่ภาพเปลี่ยนแค่ 4 ครั้ง
+    //
+    // **ยกเว้นตอนมีของตกลงมา**: ฝนเดิน 4px ต่อเฟรม หิมะ 1px จังหวะ 4 ครั้ง/วิ จะทำให้
+    // มันกระโดดทีละ 16px แทนที่จะไหล · ราคานี้จ่ายเฉพาะตอนฝน/หิมะจริง และไม่ใช่เฟรมใหม่
+    // เป็นการวาดย่านเดิมถี่ขึ้นในลูปที่หมุนอยู่แล้ว
     if (s_sky_phase != CT_SKY_NONE) {
+        bool falling = s_wx == CT_WX_RAIN || s_wx == CT_WX_SNOW;
         int shift = (int)(((float)s_cycle + s_phase) * (float)CT_SKY_CLOUD_SPEED_PX_S);
-        if (shift != s_cloud_shift || second_passed) {
+        if (falling || shift != s_cloud_shift || second_passed) {
             s_cloud_shift = shift;
             invalidate_sky_band();
         }

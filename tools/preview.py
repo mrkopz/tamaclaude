@@ -466,12 +466,31 @@ _fill_bars()
 # และเป็นตอนที่ฟ้าโล่งที่สุด ส่วนตอนถูกมาสคอตบังดูได้จาก screen_busy/waiting
 SKY_CLOCKS = {"dawn": "05:40", "day": "12:00", "dusk": "18:10", "night": "02:14"}
 
+# ฟ้าที่รู้จักสภาพอากาศแล้ว (ADR-0012) — **ไม่ใช่เมทริกซ์เต็ม** 6 bucket x 4 ช่วง = 24 ใบ
+# ที่ไม่มีใครไล่ดูครบ · หกใบนี้เลือกจากจุดที่การออกแบบพังได้จริง อีกสิบแปดช่องที่เหลือ
+# เป็นการรวมกันของสิ่งที่หกใบนี้พิสูจน์ไปแล้ว:
+#   cloud_day   ดวงตอนสูงสุดต้องโผล่ออกมาจากใต้ขอบ deck ไม่ถูกกลืนทั้งดวง
+#   cloud_night ดาวเหลือ 6 ดวงและยังกะพริบ (ไม่มีเมฆลอยตอนกลางคืน = ต้องมีอะไรขยับ)
+#   rain_day    แท่งฝนกับแนวเมฆบนฟ้าสว่าง + ฝนถูกพื้นดินตัดที่เส้นขอบฟ้า
+#   snow_night  เกล็ดสีขาวบนฟ้ามืด (ฝั่งกลับของ wx_flake_ink)
+#   fog_dusk    ทางเดียวที่ไม่มี deck เลย
+#   storm_day   palette ทั้งชุดถูกแทน: ฟ้า พื้นดิน หญ้า เงา + สายฟ้าที่ต้องไม่อยู่หลังมาสคอต
+SKY_WX = {
+    "cloud_day": ("12:00", 3),
+    "cloud_night": ("02:14", 3),
+    "rain_day": ("12:00", 61),
+    "snow_night": ("02:14", 73),
+    "fog_dusk": ("18:10", 45),
+    "storm_day": ("12:00", 95),
+}
 
-def sky_scene(clock: str) -> screen.Screen:
+
+def sky_scene(clock: str, code: int | None = None) -> screen.Screen:
     return screen.Screen(
         sessions=[],
         clock=clock,
         date="Mon 27 Jul",
+        weather_code=code,
         usage=[
             screen.Usage("Current", SESSION_WINDOW, 35, 3 * 3600 + 5 * 60),
             screen.Usage("Weekly", WEEKLY_WINDOW, 48, 31 * 3600),
@@ -641,8 +660,9 @@ def main() -> None:
                        append_images=frames[1:], duration=90, loop=0)
     print(f"calendar_*.png/gif    {len(CALENDAR_SCENES)} ฉาก  (320x240)")
 
-    for name, clock in SKY_CLOCKS.items():
-        sc = sky_scene(clock)
+    skies = {n: (c, None) for n, c in SKY_CLOCKS.items()} | SKY_WX
+    for name, (clock, code) in skies.items():
+        sc = sky_scene(clock, code)
         # เวลาเดียวกับภาพนิ่งของฉากที่ไม่มี session — ที่ cycle 0 มาสคอตยังอยู่นอกจอ
         # แล้วภาพตรวจจะไม่มีสิ่งที่ต้องตรวจ (มาสคอตยืนบนพื้น + contrast กับฟ้า)
         still = screen.stroll_still_t()
@@ -656,7 +676,7 @@ def main() -> None:
         ]
         frames[0].save(OUT / f"sky_{name}.gif", save_all=True,
                        append_images=frames[1:], duration=90, loop=0)
-    print(f"sky_*.png/gif         {len(SKY_CLOCKS)} ช่วงเวลา")
+    print(f"sky_*.png/gif         {len(skies)} ฉาก (ช่วงเวลา + สภาพอากาศ)")
     print(f"\nout/ -> {OUT}")
 
 

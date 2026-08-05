@@ -243,6 +243,10 @@ class Screen:
     card_overflow: int = 0
     # None = ไม่เคยได้ข้อมูลเลย -> ถอยไปเป็นนาฬิกาตั้งโต๊ะ ไม่ใช่โครงเปล่าที่ดูเหมือนพัง
     usage: list[Usage] | None = None
+    # รหัส WMO ของสภาพอากาศตอนนี้ — **ไม่ได้มากับ snapshot** แต่มาจากเฟรมของหน้าอากาศ
+    # ที่บอร์ดแคชไว้ (ADR-0012) · None = ยังไม่เคยได้เฟรม / ผู้ใช้ปิดหน้าอากาศ / เฟรม
+    # เก่าเกิน 2.5 ชม. — ทั้งสามได้ฟ้าตามเวลาแบบเดิม ตรงกับ `ct_ui_set_weather(_, false)`
+    weather_code: int | None = None
 
     def shown_cards(self) -> list[Card]:
         """การ์ดที่มีสิทธิ์ขึ้นจอ — ลิงก์หลุดแล้วเหลือศูนย์ใบ ดูที่ shown_usage()"""
@@ -315,7 +319,7 @@ def _slot(draw: ImageDraw.ImageDraw, i: int, sess: Session | None, s: Screen,
     # ด้วย ท่าที่ถือของชิ้นใหญ่จึงมีลำตัวเยื้องไปจากกึ่งกลาง slot
     bx0, _, bx1, _ = mascot.state_box(sess.state)
     body_cx = x + sw / 2 + (BODY_CX - (bx0 + bx1) / 2) * px
-    _shadow(draw, body_cx, sky.shadow_color(s.clock, s.connected))
+    _shadow(draw, body_cx, sky.shadow_color(s.clock, s.connected, s.weather_code))
 
     rects = mascot.build_centered(sess.state, p % 1.0, s.connected, cycle + int(p))
     draw_rects(draw, rects, px, ox, oy)
@@ -437,7 +441,7 @@ def _stroll(draw: ImageDraw.ImageDraw, s: Screen, phase: float, cycle: int) -> N
     foot_px = L.slots.top + L.slots.height - L.slots.baseline_pad
     ox = x - BOX_X0 * px
     # ตัวเดินเล่นใช้ build() ตรงๆ ไม่ผ่าน build_centered จึงไม่มี dx มาชดเชย
-    _shadow(draw, ox + BODY_CX * px, sky.shadow_color(s.clock, s.connected))
+    _shadow(draw, ox + BODY_CX * px, sky.shadow_color(s.clock, s.connected, s.weather_code))
     draw_rects(draw, mascot.build(state, phase, s.connected, cycle), px,
                ox, foot_px - BOX_Y1 * px)
 
@@ -746,7 +750,7 @@ def render(s: Screen, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     # การถูกบังคือระยะลึก ไม่ใช่ของหาย · แต่ตำแหน่งดวงคือ *เวลา* ไม่ใช่ของประดับ
     # ส่วนโค้งจึงถูกดันขึ้นให้ดวงพ้นหัวมาสคอตตลอดกลางวัน (ดู sky._arc) แทนที่จะแก้ที่
     # ลำดับการวาด — ดวงอาทิตย์ที่ลอยทับตัวละครไม่ใช่ระยะลึกอีกต่อไป มันคือสติกเกอร์
-    sky.draw(draw, s.clock, s.connected, cycle + phase)
+    sky.draw(draw, s.clock, s.connected, cycle + phase, s.weather_code)
     topbar.draw(draw, _bar(s), page=pages.LABELS["mascot"], connected=s.connected,
                 page_shows_clock=shows_idle_clock(s), page_shows_usage=shows_usage_panel(s))
     n = min(len(s.sessions), L.slots.count)
