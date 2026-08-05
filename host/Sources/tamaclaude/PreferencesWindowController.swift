@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import TamaCore
 
 /// หน้าตั้งค่าเต็มรูป — ที่เดียวของทุกสวิตช์ที่เคยอยู่หลังปุ่มเฟือง
@@ -9,133 +10,105 @@ import TamaCore
 ///
 /// controller ตัวนี้ไม่รู้จัก BLE, ไฟล์ หรือ UserDefaults เลย — ทุกอย่างเข้าออกผ่าน closure
 /// ที่ `MenuBarApp` ผูกให้ เพื่อให้ที่เก็บสถานะจริงยังมีที่เดียวเหมือนเดิม
+///
+/// เนื้อในเป็น SwiftUI ตั้งแต่รอบ redesign แต่ **หน้าตาสาธารณะของใบนี้ไม่เปลี่ยนสักตัว**:
+/// closure ชุดเดิม เมธอด `show*` ชุดเดิม `MenuBarApp` จึงไม่ต้องรู้เลยว่าข้างในเปลี่ยนไป
+/// เปลือกยังเป็น `NSWindowController` เพราะแอปนี้เป็น `.accessory` ที่ปกติไม่มีหน้าต่าง —
+/// `Settings` scene ของ SwiftUI ต้องการ `App` lifecycle ซึ่งใบนี้ไม่ได้ใช้
 final class PreferencesWindowController: NSWindowController {
-    // --- ทางออกไปหา MenuBarApp ---------------------------------------------
-    var onSelectBoard: ((UUID?) -> Void)?
-    var onBrightness: ((Int) -> Void)?
-    var onInterval: ((PollInterval) -> Void)?
-    var onSetSessionKey: (() -> Void)?
-    var onInstallHooks: (() -> Void)?
-    var onToggleStatusline: (() -> Void)?
-    var onToggleLogin: (() -> Void)?
-    var onToggleAutoStart: (() -> Void)?
-    var onOpenLog: (() -> Void)?
-    var onOpenProject: (() -> Void)?
+    /// สถานะทั้งหมดอยู่ที่นี่ใบเดียว — `show*` เขียนลงมัน แล้ว SwiftUI วาดตาม
+    private let model = SettingsModel()
 
-    var onScan: (() -> Void)?
-    var onJoin: ((String, String) -> Void)?
-    var onForget: ((String) -> Void)?
+    // --- ทางออกไปหา MenuBarApp ---------------------------------------------
+    var onSelectBoard: ((UUID?) -> Void)? {
+        get { model.onSelectBoard } set { model.onSelectBoard = newValue }
+    }
+    var onBrightness: ((Int) -> Void)? {
+        get { model.onBrightness } set { model.onBrightness = newValue }
+    }
+    var onInterval: ((PollInterval) -> Void)? {
+        get { model.onInterval } set { model.onInterval = newValue }
+    }
+    var onSetSessionKey: (() -> Void)? {
+        get { model.onSetSessionKey } set { model.onSetSessionKey = newValue }
+    }
+    var onInstallHooks: (() -> Void)? {
+        get { model.onInstallHooks } set { model.onInstallHooks = newValue }
+    }
+    var onToggleStatusline: (() -> Void)? {
+        get { model.onToggleStatusline } set { model.onToggleStatusline = newValue }
+    }
+    var onToggleLogin: (() -> Void)? {
+        get { model.onToggleLogin } set { model.onToggleLogin = newValue }
+    }
+    var onToggleAutoStart: (() -> Void)? {
+        get { model.onToggleAutoStart } set { model.onToggleAutoStart = newValue }
+    }
+    var onOpenLog: (() -> Void)? {
+        get { model.onOpenLog } set { model.onOpenLog = newValue }
+    }
+    var onOpenProject: (() -> Void)? {
+        get { model.onOpenProject } set { model.onOpenProject = newValue }
+    }
+    var onScan: (() -> Void)? {
+        get { model.onScan } set { model.onScan = newValue }
+    }
+    var onJoin: ((String, String) -> Void)? {
+        get { model.onJoin } set { model.onJoin = newValue }
+    }
+    var onForget: ((String) -> Void)? {
+        get { model.onForget } set { model.onForget = newValue }
+    }
     /// ที่อยู่บอร์ดที่ผู้ใช้กรอกเอง — สตริงว่างคือกลับไปให้แอปหาเอง
-    var onBoardHost: ((String) -> Void)?
+    var onBoardHost: ((String) -> Void)? {
+        get { model.onBoardHost } set { model.onBoardHost = newValue }
+    }
     /// ค่าตั้งของหน้าอากาศเปลี่ยน — หน้าต่างไม่รู้จัก UserDefaults เหมือนทุกอย่างที่นี่
-    var onWeather: ((WeatherSettings) -> Void)?
+    var onWeather: ((WeatherSettings) -> Void)? {
+        get { model.onWeather } set { model.onWeather = newValue }
+    }
     /// พฤติกรรมของจอเปลี่ยน (หน้าไหนเปิด ลำดับ รอบหมุน) — ทางเดียวกับทุกอย่างที่นี่
-    var onPages: ((PageSettings) -> Void)?
+    var onPages: ((PageSettings) -> Void)? {
+        get { model.onPages } set { model.onPages = newValue }
+    }
     /// watchlist ของหน้าคริปโตเปลี่ยน — ทั้งก้อนเสมอ ไม่ใช่ "เพิ่มตัวนี้" ทีละคำสั่ง
-    var onCrypto: ((CryptoSettings) -> Void)?
+    var onCrypto: ((CryptoSettings) -> Void)? {
+        get { model.onCrypto } set { model.onCrypto = newValue }
+    }
     /// watchlist ของหน้าหุ้นเปลี่ยน — ทั้งก้อนเหมือนคริปโต
-    var onStocks: ((StockSettings) -> Void)?
+    var onStocks: ((StockSettings) -> Void)? {
+        get { model.onStocks } set { model.onStocks = newValue }
+    }
     /// ผู้ใช้กดตั้ง key ของ Finnhub — ช่องกรอกแบบปิดบังเด้งจากฝั่ง `MenuBarApp`
     /// ด้วยเหตุผลเดียวกับ `sessionKey`: หน้าต่างนี้ไม่เคยแตะไฟล์เอง
-    var onFinnhubKey: (() -> Void)?
+    var onFinnhubKey: (() -> Void)? {
+        get { model.onFinnhubKey } set { model.onFinnhubKey = newValue }
+    }
     /// ปฏิทินที่ผู้ใช้ติ๊กให้ขึ้นจอเปลี่ยน — ทั้งก้อนเหมือน watchlist
-    var onCalendar: ((CalendarSettings) -> Void)?
+    var onCalendar: ((CalendarSettings) -> Void)? {
+        get { model.onCalendar } set { model.onCalendar = newValue }
+    }
     /// ผู้ใช้กดขอสิทธิ์ปฏิทิน — กล่องของระบบเด้งจากฝั่ง `MenuBarApp` ไม่ใช่จากที่นี่
-    var onCalendarAccess: (() -> Void)?
-
-    // --- General ------------------------------------------------------------
-    private let boardPopup = NSPopUpButton()
-    private let brightness = NSSlider(value: 100, minValue: 5, maxValue: 100, target: nil,
-                                      action: nil)
-    private let intervalPopup = NSPopUpButton()
-    private let statuslineBox = NSButton(checkboxWithTitle: "Read quota from the statusline",
-                                         target: nil, action: nil)
-    private let autoStartBox = NSButton(checkboxWithTitle: "Auto-start a session when idle",
-                                        target: nil, action: nil)
-    private let loginBox = NSButton(checkboxWithTitle: "Launch at login", target: nil,
-                                    action: nil)
-    private let keyLabel = NSTextField(labelWithString: "")
-
-    // --- Pages --------------------------------------------------------------
-    /// รายการหน้าถูกสร้างใหม่ทั้งแถบทุกครั้งที่ค่าเปลี่ยน — ไม่กี่แถวและลำดับก็ขยับได้
-    /// การมี view ต่อหน้าที่ต้องคอยย้ายที่เองแลกไม่คุ้มกับความซับซ้อนที่ตามมา
-    private let pageList = NSStackView()
-    private let rotationField = NSTextField()
-    private let holdField = NSTextField()
-    private let jumpBox = NSButton(checkboxWithTitle: "Jump to the mascot when it needs a hand",
-                                   target: nil, action: nil)
-    /// ค่าที่หน้าต่างกำลังแสดงอยู่ — ปุ่มลูกศรกับติ๊กถูกแก้ *ของก้อนนี้* แล้วส่งออกทั้งก้อน
-    private var pages = PageSettings()
-    private let placeField = NSTextField()
-    private let unitPopup = NSPopUpButton()
-    private let weatherStatus = NSTextField(labelWithString: "")
-
-    // --- Crypto --------------------------------------------------------------
-    /// watchlist ได้แท็บของตัวเอง ไม่ได้ต่อท้ายแท็บ Pages เหมือนเมืองของหน้าอากาศ —
-    /// เหตุผลเดียวกับที่ Wi-Fi ต้องมีแท็บ: รายการที่ยาวไม่แน่นอนพร้อมปุ่มของแต่ละแถว
-    /// ไม่มีที่ยืนใต้ของอื่นในหน้าต่างสูง 520 pt ส่วนหน้าอากาศมีแค่สองช่อง
-    private let coinList = NSStackView()
-    private let coinField = NSTextField()
-    private let addButton = NSButton(title: "Add", target: nil, action: nil)
-    /// เมนูของตัวที่ *มี logo* — ทางเข้าที่สองของ watchlist ที่อยู่ข้างช่องพิมพ์ ไม่ใช่แทนมัน
-    /// (`buildCatalogPopup` เป็นเจ้าของเหตุผลว่าทำไมเป็นเมนู ไม่ใช่ combo box)
-    private let coinPopup = NSPopUpButton()
-    private let cryptoStatus = NSTextField(labelWithString: "")
-    /// หน้านี้เปิดอยู่ไหม — ปุ่มของทุกแถวถูกสร้างใหม่ตอน `rebuildCoinList` ซึ่งเกิดตอนที่
-    /// ผู้เรียกยังไม่ได้บอกค่านี้เข้ามาก็ได้ จึงต้องจำไว้ ไม่ใช่ส่งผ่านเป็นพารามิเตอร์
-    private var cryptoOn = true
-    /// ค่าที่หน้าต่างกำลังแสดงอยู่ — ปุ่มทุกปุ่มแก้ของก้อนนี้แล้วส่งออกทั้งก้อน
-    private var crypto = CryptoSettings()
-
-    // --- Stocks --------------------------------------------------------------
-    /// รูปเดียวกับแท็บ Crypto ทุกส่วน บวกปุ่ม key — หน้าหุ้นเป็นหน้าเดียวที่ต้องมี
-    /// credential ของผู้ใช้ก่อนถึงจะมีตัวเลขให้ดู
-    private let symbolList = NSStackView()
-    private let symbolField = NSTextField()
-    private let addSymbolButton = NSButton(title: "Add", target: nil, action: nil)
-    /// เมนูเดียวกับแท็บ Crypto คนละชุด — `LogoCatalog` แยกไว้ให้แล้วว่าใบไหนเป็นหุ้น
-    private let symbolPopup = NSPopUpButton()
-    private let stocksStatus = NSTextField(labelWithString: "")
-    private let stockKeyLabel = NSTextField(labelWithString: "")
-    private var stocksOn = true
-    private var stocks = StockSettings()
-
-    // --- Calendar ------------------------------------------------------------
-    /// รายการปฏิทินเป็นติ๊ก ไม่ใช่ช่องพิมพ์: ผู้ใช้ไม่ได้ตั้งชื่อปฏิทินเอง เขาเลือกจากที่
-    /// macOS sync มาให้ (ADR-0005) และชื่อที่พิมพ์ผิดจะกลายเป็นหน้าที่ว่างโดยไม่บอกอะไร
-    private let calendarList = NSStackView()
-    private let accessButton = NSButton(title: "Allow access", target: nil, action: nil)
-    private let calendarStatus = NSTextField(labelWithString: "")
-    /// id ของแต่ละแถวเรียงตามที่วาด — ปุ่มติ๊กพก `tag` เป็นตัวเลขได้อย่างเดียว
-    private var calendarIDs: [String] = []
-    private var calendarOn = true
-    private var calendars = CalendarSettings()
-
-    // --- Wi-Fi --------------------------------------------------------------
-    private let statusLabel = NSTextField(labelWithString: "")
-    private let ipLabel = NSTextField(labelWithString: "")
-    private let table = NSTableView()
-    private let spinner = NSProgressIndicator()
-    private let password = NSSecureTextField()
-    private let joinButton = NSButton(title: "Connect", target: nil, action: nil)
-    private let forgetButton = NSButton(title: "Forget", target: nil, action: nil)
-    private let hostField = NSTextField()
-    private let routeLabel = NSTextField(labelWithString: "")
-
-    private var boards: [Board] = []
-    private var selectedBoard: UUID?
-    private var list = NetworkList()
-    private var status: WiFiStatus?
-    private var linked = false
-    private var route: LanRoute = .none
+    var onCalendarAccess: (() -> Void)? {
+        get { model.onCalendarAccess } set { model.onCalendarAccess = newValue }
+    }
 
     init() {
+        // ย่อขยายได้ และจำขนาดไว้ — ของเดิมล็อก 460x520 ใบเดียวให้ทุกแท็บ ซึ่งแปลว่า
+        // แท็บ Wi-Fi (ตาราง + รหัสผ่าน + ปุ่มสี่ปุ่ม) อัดแน่นในกรอบเดียวกับแท็บที่มี
+        // สองบรรทัด · ไม่มี `.miniaturizable`: หน้าต่างตั้งค่าที่ย่อลง Dock ได้คือหน้าต่าง
+        // ที่ผู้ใช้หาไม่เจอตอนกด Settings… ซ้ำแล้วไม่มีอะไรเกิดขึ้น
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 520),
-            styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 520),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.title = "TamaClaude Settings"
+        window.setFrameAutosaveName("TamaClaudeSettings")
         super.init(window: window)
-        window.contentView = buildTabs()
+
+        let host = NSHostingController(rootView: SettingsView(model: model))
+        window.contentViewController = host
+        window.contentMinSize = NSSize(width: 660, height: 460)
+        window.setContentSize(NSSize(width: 720, height: 520))
         window.center()
     }
 
@@ -153,1018 +126,81 @@ final class PreferencesWindowController: NSWindowController {
         onScan?()
     }
 
-    // --- โครงหน้าต่าง -------------------------------------------------------
-    private func buildTabs() -> NSView {
-        let tabs = NSTabView()
-        tabs.translatesAutoresizingMaskIntoConstraints = false
-
-        let general = NSTabViewItem(identifier: "general")
-        general.label = "General"
-        general.view = pad(buildGeneral())
-        tabs.addTabViewItem(general)
-
-        let pagesTab = NSTabViewItem(identifier: "pages")
-        pagesTab.label = "Pages"
-        pagesTab.view = pad(buildPages())
-        tabs.addTabViewItem(pagesTab)
-
-        let cryptoTab = NSTabViewItem(identifier: "crypto")
-        cryptoTab.label = "Crypto"
-        cryptoTab.view = pad(buildCrypto())
-        tabs.addTabViewItem(cryptoTab)
-
-        let stocksTab = NSTabViewItem(identifier: "stocks")
-        stocksTab.label = "Stocks"
-        stocksTab.view = pad(buildStocks())
-        tabs.addTabViewItem(stocksTab)
-
-        let calendarTab = NSTabViewItem(identifier: "calendar")
-        calendarTab.label = "Calendar"
-        calendarTab.view = pad(buildCalendar())
-        tabs.addTabViewItem(calendarTab)
-
-        let wifi = NSTabViewItem(identifier: "wifi")
-        wifi.label = "Wi-Fi"
-        wifi.view = pad(buildWiFi())
-        tabs.addTabViewItem(wifi)
-
-        let container = NSView()
-        container.addSubview(tabs)
-        NSLayoutConstraint.activate([
-            tabs.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-            tabs.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-            tabs.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
-            tabs.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
-        ])
-        return container
-    }
-
-    private func pad(_ view: NSView) -> NSView {
-        let host = NSView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        host.addSubview(view)
-        NSLayoutConstraint.activate([
-            view.leadingAnchor.constraint(equalTo: host.leadingAnchor, constant: 16),
-            view.trailingAnchor.constraint(equalTo: host.trailingAnchor, constant: -16),
-            view.topAnchor.constraint(equalTo: host.topAnchor, constant: 16),
-            view.bottomAnchor.constraint(equalTo: host.bottomAnchor, constant: -16),
-        ])
-        return host
-    }
-
-    private func row(_ title: String, _ control: NSView) -> NSView {
-        let label = NSTextField(labelWithString: title)
-        label.alignment = .right
-        label.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let stack = NSStackView(views: [label, control])
-        stack.orientation = .horizontal
-        stack.spacing = 8
-        label.widthAnchor.constraint(equalToConstant: 130).isActive = true
-        return stack
-    }
-
-    private func buildGeneral() -> NSView {
-        boardPopup.target = self
-        boardPopup.action = #selector(boardChanged)
-
-        brightness.target = self
-        brightness.action = #selector(brightnessChanged)
-        brightness.isContinuous = false  // ส่งตอนปล่อยเมาส์ ไม่ใช่ทุกพิกเซลที่ลาก
-
-        intervalPopup.target = self
-        intervalPopup.action = #selector(intervalChanged)
-        for interval in PollInterval.allCases {
-            intervalPopup.addItem(withTitle: interval.title)
-            intervalPopup.lastItem?.representedObject = interval.rawValue
-        }
-
-        let key = NSButton(title: "Set session key…", target: self,
-                           action: #selector(setSessionKey))
-        let hooks = NSButton(title: "Install hooks in settings.json", target: self,
-                             action: #selector(installHooks))
-        hooks.toolTip = "~/.claude/settings.json"
-        let log = NSButton(title: "Open log", target: self, action: #selector(openLog))
-        // ปลายทางอยู่ในชื่อปุ่ม ไม่ใช่คำว่า "GitHub" — แอปนี้ขอ credential เต็มบัญชี
-        // ลิงก์ที่ซ่อนปลายทางไว้หลังคำสวยๆ เป็นท่าเดียวกับที่ผู้ใช้ควรระวัง
-        let project = NSButton(title: PanelText.projectLink, target: self,
-                               action: #selector(openProject))
-        for button in [key, hooks, log, project] { button.bezelStyle = .rounded }
-
-        for box in [statuslineBox, autoStartBox, loginBox] { box.target = self }
-        statuslineBox.action = #selector(statuslineToggled)
-        autoStartBox.action = #selector(autoStartToggled)
-        loginBox.action = #selector(loginToggled)
-
-        // ช่องกรอก key เป็นแบบปิดบังตัวอักษรและไม่เคยถูกเติมกลับ บรรทัดนี้จึงเป็น
-        // ทางเดียวที่ผู้ใช้รู้ว่ากด Save แล้วเข้าไหม
-        keyLabel.font = .systemFont(ofSize: 11)
-        keyLabel.textColor = .secondaryLabelColor
-
-        let stack = NSStackView(views: [
-            row("Board", boardPopup),
-            row("Brightness", brightness),
-            row("Refresh quota", intervalPopup),
-            row("Session key", key),
-            row("", keyLabel),
-            separator(),
-            row("", statuslineBox),
-            row("", autoStartBox),
-            row("", loginBox),
-            separator(),
-            row("", hooks),
-            row("", log),
-            row("", project),
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        return stack
-    }
-
-    /// หน้าบนจอ — ทุกค่าที่นี่ไปจบที่ `UserDefaults` และแอปเป็นบรรณาธิการเดียว
-    ///
-    /// เมืองเป็นชื่อที่พิมพ์เอง ไม่ใช่ CoreLocation: เลี่ยง TCC อีกใบ และของตั้งโต๊ะไม่ได้
-    /// ย้ายที่ · ปิดหน้าไหนแล้วบอร์ดถูกสั่งให้ลืมมันจริงๆ ไม่ใช่แค่หยุดส่งของใหม่
-    private func buildPages() -> NSView {
-        pageList.orientation = .vertical
-        pageList.alignment = .leading
-        pageList.spacing = 4
-
-        for field in [rotationField, holdField] {
-            field.target = self
-            field.action = #selector(pagesChanged)
-            field.alignment = .right
-            field.widthAnchor.constraint(equalToConstant: 60).isActive = true
-            let numbers = NumberFormatter()
-            numbers.allowsFloats = false
-            field.formatter = numbers
-        }
-        jumpBox.target = self
-        jumpBox.action = #selector(pagesChanged)
-
-        placeField.placeholderString = "City (e.g. Bangkok)"
-        placeField.target = self
-        placeField.action = #selector(weatherChanged)
-
-        unitPopup.target = self
-        unitPopup.action = #selector(weatherChanged)
-        for unit in TempUnit.allCases {
-            unitPopup.addItem(withTitle: unit.title)
-            unitPopup.lastItem?.representedObject = unit.rawValue
-        }
-
-        weatherStatus.font = .systemFont(ofSize: 11)
-        weatherStatus.textColor = .secondaryLabelColor
-
-        let hint = NSTextField(wrappingLabelWithString:
-            "The board keeps its own clock, so the screen keeps turning while this Mac sleeps. "
-            + "Weather figures come from Open-Meteo, fetched here every 15 minutes — the board "
-            + "never goes online itself, and the page always says how old the figures are.")
-        hint.font = .systemFont(ofSize: 11)
-        hint.textColor = .secondaryLabelColor
-
-        let stack = NSStackView(views: [
-            pageList,
-            row("Turn every", measure(rotationField, "seconds")),
-            row("Hold a swipe for", measure(holdField, "minutes")),
-            row("", jumpBox),
-            separator(),
-            row("City", placeField),
-            row("Units", unitPopup),
-            row("", weatherStatus),
-            separator(),
-            hint,
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        placeField.widthAnchor.constraint(equalToConstant: 220).isActive = true
-        hint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        return stack
-    }
-
-    /// ช่องตัวเลขกับหน่วยของมัน — หน่วยอยู่ *หลัง* ช่อง ไม่ใช่ในป้ายซ้าย ผู้ใช้ที่พิมพ์ทับ
-    /// ต้องเห็นว่ากำลังพิมพ์วินาทีหรือนาที ตอนที่สายตาอยู่ที่ช่อง ไม่ใช่ตอนอ่านหัวแถว
-    private func measure(_ field: NSTextField, _ unit: String) -> NSView {
-        let label = NSTextField(labelWithString: unit)
-        label.font = .systemFont(ofSize: 11)
-        label.textColor = .secondaryLabelColor
-        let stack = NSStackView(views: [field, label])
-        stack.orientation = .horizontal
-        stack.spacing = 6
-        return stack
-    }
-
-    /// วาดรายการหน้าใหม่ทั้งแถบจากค่าที่ถืออยู่
-    ///
-    /// หน้ามาสคอตมีติ๊กที่กดไม่ได้ ไม่ใช่ไม่มีติ๊ก — แถวที่ไม่มีติ๊กอ่านว่า "ยังไม่รองรับ"
-    /// ส่วนติ๊กที่ติดค้างและกดไม่ลงบอกตรงๆ ว่ามันปิดไม่ได้
-    private func rebuildPageList() {
-        for view in pageList.arrangedSubviews { view.removeFromSuperview() }
-        for (index, kind) in pages.order.enumerated() {
-            let box = NSButton(checkboxWithTitle: kind.title, target: self,
-                               action: #selector(pageToggled))
-            box.state = pages.isOn(kind) ? .on : .off
-            box.tag = kind.rawValue
-            box.isEnabled = kind != .mascot
-            box.widthAnchor.constraint(equalToConstant: 140).isActive = true
-
-            let up = NSButton(title: "▲", target: self, action: #selector(movePageUp))
-            let down = NSButton(title: "▼", target: self, action: #selector(movePageDown))
-            for button in [up, down] {
-                button.bezelStyle = .rounded
-                button.tag = kind.rawValue
-                button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-            }
-            up.isEnabled = index > 0
-            down.isEnabled = index < pages.order.count - 1
-
-            let row = NSStackView(views: [box, up, down])
-            row.orientation = .horizontal
-            row.spacing = 4
-            pageList.addArrangedSubview(row)
-        }
-    }
-
-    /// เมนู "เพิ่มจากลิสต์" ของแท็บที่มี watchlist — สองแท็บใช้ตัวนี้ใบเดียวกัน
-    ///
-    /// เป็น **pull-down** ไม่ใช่ pop-up ที่จำค่าไว้รอปุ่ม Add: ปุ่ม Add ปุ่มเดียวที่รับของจาก
-    /// สองแหล่งคือปุ่มที่ไม่มีอะไรบอกว่ามันกำลังจะเพิ่มตัวไหน · เลือกแล้วเพิ่มเลย ผิดก็กด
-    /// Remove ในแถวที่เพิ่งโผล่ ซึ่งอยู่เหนือปุ่มนี้พอดี
-    ///
-    /// และเป็น **เมนู ไม่ใช่ `NSComboBox`**: combo box วาดแถวเป็นข้อความล้วน ซึ่งฆ่า
-    /// เหตุผลทั้งหมดที่ลิสต์นี้มีอยู่ — คนกางมันมาเพื่อดูว่า *อันไหนมี icon* ส่วนการพิมพ์เอง
-    /// ยังทำได้ที่ช่องข้างๆ ซึ่งเป็นทางที่ตรงข้ามกันโดยตั้งใจ (พิมพ์ = ยอมรับจานเปล่า)
-    private func buildCatalogPopup(_ popup: NSPopUpButton) {
-        popup.pullsDown = true
-        popup.bezelStyle = .rounded
-        popup.widthAnchor.constraint(equalToConstant: 150).isActive = true
-    }
-
-    /// กางเมนูใหม่ทั้งใบทุกครั้งที่ watchlist ขยับ — เหตุผลเดียวกับที่รายการถูกสร้างใหม่ทั้งแถบ
-    ///
-    /// ตัวที่มีอยู่แล้วถูก **disable ไม่ใช่ถอดออก**: เมนูที่รายการหายไปเรื่อยๆ ทำให้ตำแหน่งที่
-    /// มือจำไว้ขยับทุกครั้งที่เพิ่ม ส่วนแถวจางบอกว่า "ตัวนี้มีแล้ว" ตรงๆ
-    private func rebuildCatalogMenu(
-        _ popup: NSPopUpButton,
-        entries: [LogoCatalog.Entry],
-        taken: [String],
-        action: Selector
-    ) {
-        let menu = NSMenu()
-        menu.autoenablesItems = false  // ไม่งั้น AppKit เปิดทุกแถวคืนให้เอง แถวที่มีแล้วก็กดได้
-        // แถวแรกของ pull-down คือหน้าปุ่ม ไม่ใช่ตัวเลือก — ผู้ใช้ไม่มีวันเห็นมันในเมนู
-        menu.addItem(withTitle: "Add from list", action: nil, keyEquivalent: "")
-
-        let have = Set(taken.map { $0.uppercased() })
-        for (index, entry) in entries.enumerated() {
-            // ชื่อที่ซ้ำกับสัญลักษณ์ (XRP, BNB, AMD) ไม่ต้องพูดสองครั้ง — สัญลักษณ์มาก่อน
-            // เพราะมันคือของที่ลงไปใน watchlist จริงและคือของที่ขึ้นบนจอ ชื่อเต็มเป็นแค่
-            // ตัวยืนยันว่าเลือกไม่ผิดตัว
-            let title = entry.name == entry.symbol
-                ? entry.symbol : "\(entry.symbol) — \(entry.name)"
-            let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
-            item.target = self
-            item.tag = index
-            item.image = LogoIconImage.menuImage(for: entry.symbol)
-            item.isEnabled = !have.contains(entry.symbol)
-            menu.addItem(item)
-        }
-        popup.menu = menu
-    }
-
-    /// watchlist ของหน้าคริปโต — เพิ่ม ลบ จัดลำดับ และเพดานห้าตัวที่กดผ่านไม่ได้
-    ///
-    /// ผู้ใช้พิมพ์ชื่อที่เขาเรียกมันเอง ("btc", "bitcoin") ไม่ใช่ id ของบริการ การแปลงเป็น id
-    /// เกิดครั้งเดียวใน `CryptoService` แล้วถูกจำไว้ — คนซื้อคริปโตไม่ได้จำ slug ของ CoinGecko
-    private func buildCrypto() -> NSView {
-        coinList.orientation = .vertical
-        coinList.alignment = .leading
-        coinList.spacing = 4
-
-        coinField.placeholderString = "Coin (e.g. btc)"
-        coinField.target = self
-        coinField.action = #selector(addCoin)
-        coinField.widthAnchor.constraint(equalToConstant: 180).isActive = true
-
-        addButton.target = self
-        addButton.action = #selector(addCoin)
-        addButton.bezelStyle = .rounded
-
-        buildCatalogPopup(coinPopup)
-
-        cryptoStatus.font = .systemFont(ofSize: 11)
-        cryptoStatus.textColor = .secondaryLabelColor
-
-        let entry = NSStackView(views: [coinPopup, coinField, addButton])
-        entry.orientation = .horizontal
-        entry.spacing = 6
-
-        let hint = NSTextField(wrappingLabelWithString:
-            "Prices come from CoinGecko, fetched here every 60 seconds around the clock — the "
-            + "crypto market never closes. Five coins at most: that is what keeps one request "
-            + "per round and one frame per page. Gains and losses are told apart by the arrow "
-            + "as well as the colour.")
-        hint.font = .systemFont(ofSize: 11)
-        hint.textColor = .secondaryLabelColor
-
-        let stack = NSStackView(views: [
-            coinList,
-            entry,
-            cryptoStatus,
-            separator(),
-            hint,
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        hint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        return stack
-    }
-
-    /// วาดรายการเหรียญใหม่ทั้งแถบจากค่าที่ถืออยู่ — เหตุผลเดียวกับรายการหน้า:
-    /// ไม่กี่แถว ลำดับขยับได้ และ view ที่ต้องคอยย้ายที่เองแลกไม่คุ้ม
-    private func rebuildCoinList() {
-        rebuildCatalogMenu(
-            coinPopup, entries: LogoCatalog.crypto, taken: crypto.coins,
-            action: #selector(addCoinFromList))
-        for view in coinList.arrangedSubviews { view.removeFromSuperview() }
-        for (index, coin) in crypto.coins.enumerated() {
-            // รูปเดียวกับที่จะขึ้นบนจอ — เหรียญนอกชุดได้จานเปล่าตรงนี้ *และ* ตรงนั้น
-            // ผู้ใช้จึงรู้ตั้งแต่ตอนเพิ่มว่าตัวไหนมี logo โดยไม่ต้องมีคำเตือนมาบอกซ้ำ
-            let icon = NSImageView(image: LogoIconImage.image(for: coin) ?? NSImage())
-            icon.imageScaling = .scaleNone
-            icon.widthAnchor.constraint(equalToConstant: CGFloat(LogoIconImage.px)).isActive = true
-            icon.heightAnchor.constraint(equalToConstant: CGFloat(LogoIconImage.px)).isActive = true
-            icon.alphaValue = cryptoOn ? 1.0 : 0.4
-
-            let label = NSTextField(labelWithString: coin)
-            label.widthAnchor.constraint(equalToConstant: 140).isActive = true
-
-            let up = NSButton(title: "▲", target: self, action: #selector(moveCoinUp))
-            let down = NSButton(title: "▼", target: self, action: #selector(moveCoinDown))
-            let remove = NSButton(title: "Remove", target: self, action: #selector(removeCoin))
-            for button in [up, down, remove] {
-                button.bezelStyle = .rounded
-                button.tag = index
-                button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-            }
-            up.isEnabled = cryptoOn && index > 0
-            down.isEnabled = cryptoOn && index < crypto.coins.count - 1
-            remove.isEnabled = cryptoOn
-            label.textColor = cryptoOn ? .labelColor : .disabledControlTextColor
-
-            let row = NSStackView(views: [icon, label, up, down, remove])
-            row.orientation = .horizontal
-            row.spacing = 4
-            coinList.addArrangedSubview(row)
-        }
-    }
-
-    /// watchlist ของหน้าหุ้น — เพิ่ม ลบ จัดลำดับ เพดานห้าตัว และ key ของผู้ใช้
-    ///
-    /// key อยู่ในแท็บนี้ ไม่ใช่แท็บ General ที่ `sessionKey` อยู่: มันเป็นของหน้านี้หน้าเดียว
-    /// และคนที่มาตั้งค่าหน้าหุ้นคือคนที่กำลังจะเจอว่าต้องมีมัน
-    private func buildStocks() -> NSView {
-        symbolList.orientation = .vertical
-        symbolList.alignment = .leading
-        symbolList.spacing = 4
-
-        symbolField.placeholderString = "Symbol (e.g. AAPL)"
-        symbolField.target = self
-        symbolField.action = #selector(addSymbol)
-        symbolField.widthAnchor.constraint(equalToConstant: 180).isActive = true
-
-        addSymbolButton.target = self
-        addSymbolButton.action = #selector(addSymbol)
-        addSymbolButton.bezelStyle = .rounded
-
-        buildCatalogPopup(symbolPopup)
-
-        let key = NSButton(title: "Set Finnhub key…", target: self,
-                           action: #selector(setFinnhubKey))
-        key.bezelStyle = .rounded
-
-        for label in [stocksStatus, stockKeyLabel] {
-            label.font = .systemFont(ofSize: 11)
-            label.textColor = .secondaryLabelColor
-        }
-
-        let entry = NSStackView(views: [symbolPopup, symbolField, addSymbolButton])
-        entry.orientation = .horizontal
-        entry.spacing = 6
-
-        let hint = NSTextField(wrappingLabelWithString:
-            "Quotes come from Finnhub with your own key, so the quota spent is yours — get a "
-            + "free one at finnhub.io. The key is stored readable only by you and never leaves "
-            + "this Mac. Five symbols at most: Finnhub answers one symbol per request, and "
-            + "nothing is asked at all outside US market hours, when prices do not move. "
-            + "The free plan covers US listings only.")
-        hint.font = .systemFont(ofSize: 11)
-        hint.textColor = .secondaryLabelColor
-
-        let stack = NSStackView(views: [
-            symbolList,
-            entry,
-            stocksStatus,
-            separator(),
-            key,
-            stockKeyLabel,
-            separator(),
-            hint,
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        hint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        return stack
-    }
-
-    /// วาดรายการหุ้นใหม่ทั้งแถบ — เหตุผลเดียวกับรายการหน้าและ watchlist ของคริปโต
-    private func rebuildSymbolList() {
-        rebuildCatalogMenu(
-            symbolPopup, entries: LogoCatalog.stocks, taken: stocks.symbols,
-            action: #selector(addSymbolFromList))
-        for view in symbolList.arrangedSubviews { view.removeFromSuperview() }
-        for (index, symbol) in stocks.symbols.enumerated() {
-            // รูปเดียวกับที่จะขึ้นบนจอ เหมือนรายการเหรียญเป๊ะ — ตารางรูปใบเดียวกันด้วย
-            // (tools/logos) · หน้านี้ตรงกว่าหน้าคริปโตด้วยซ้ำ: Finnhub รับ ticker ตรงๆ
-            // สิ่งที่พิมพ์คือสิ่งที่ค้น ไม่มีขั้นแปลงชื่อมาคั่นให้ผิดได้
-            let icon = NSImageView(image: LogoIconImage.image(for: symbol) ?? NSImage())
-            icon.imageScaling = .scaleNone
-            icon.widthAnchor.constraint(equalToConstant: CGFloat(LogoIconImage.px)).isActive = true
-            icon.heightAnchor.constraint(equalToConstant: CGFloat(LogoIconImage.px)).isActive = true
-            icon.alphaValue = stocksOn ? 1.0 : 0.4
-
-            let label = NSTextField(labelWithString: symbol)
-            label.widthAnchor.constraint(equalToConstant: 140).isActive = true
-
-            let up = NSButton(title: "▲", target: self, action: #selector(moveSymbolUp))
-            let down = NSButton(title: "▼", target: self, action: #selector(moveSymbolDown))
-            let remove = NSButton(title: "Remove", target: self, action: #selector(removeSymbol))
-            for button in [up, down, remove] {
-                button.bezelStyle = .rounded
-                button.tag = index
-                button.setContentHuggingPriority(.defaultHigh, for: .horizontal)
-            }
-            up.isEnabled = stocksOn && index > 0
-            down.isEnabled = stocksOn && index < stocks.symbols.count - 1
-            remove.isEnabled = stocksOn
-            label.textColor = stocksOn ? .labelColor : .disabledControlTextColor
-
-            let row = NSStackView(views: [icon, label, up, down, remove])
-            row.orientation = .horizontal
-            row.spacing = 4
-            symbolList.addArrangedSubview(row)
-        }
-    }
-
-    /// ปฏิทินใบไหนได้ขึ้นจอบ้าง — ติ๊กทีละใบ พร้อมปุ่มขอสิทธิ์ตอนที่ยังไม่มี
-    ///
-    /// ไม่มีปุ่ม "เลือกทั้งหมด": จอนี้วางให้คนอื่นเห็นได้ การเปิดทุกใบด้วยการกดครั้งเดียว
-    /// คือการเผลอเอาปฏิทินหมอกับปฏิทินครอบครัวขึ้นจอพร้อมกันโดยไม่ได้อ่านชื่อสักใบ
-    private func buildCalendar() -> NSView {
-        calendarList.orientation = .vertical
-        calendarList.alignment = .leading
-        calendarList.spacing = 4
-
-        accessButton.target = self
-        accessButton.action = #selector(askCalendarAccess)
-        accessButton.bezelStyle = .rounded
-
-        calendarStatus.font = .systemFont(ofSize: 11)
-        calendarStatus.textColor = .secondaryLabelColor
-
-        let hint = NSTextField(wrappingLabelWithString:
-            "Appointments are read from the calendars macOS already syncs, so TamaClaude never "
-            + "holds a calendar password of its own — add the account in System Settings and "
-            + "tick it here. The page shows the next four appointments within seven days, "
-            + "read-only: nothing on the desk can change an appointment.")
-        hint.font = .systemFont(ofSize: 11)
-        hint.textColor = .secondaryLabelColor
-
-        let stack = NSStackView(views: [
-            calendarList,
-            accessButton,
-            calendarStatus,
-            separator(),
-            hint,
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        hint.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        return stack
-    }
-
-    /// วาดรายการปฏิทินใหม่ทั้งแถบ — เหตุผลเดียวกับรายการหน้าและ watchlist
-    private func rebuildCalendarList(_ available: [CalendarInfo]) {
-        for view in calendarList.arrangedSubviews { view.removeFromSuperview() }
-        calendarIDs = available.map(\.id)
-        for (index, info) in available.enumerated() {
-            // ชื่อบัญชีต่อท้ายเสมอ — ปฏิทินชื่อ "Calendar" สองใบจากคนละบัญชีแยกกันไม่ออก
-            // ถ้าไม่บอกว่ามาจากไหน แล้วผู้ใช้จะติ๊กใบผิดขึ้นจอที่คนอื่นมองเห็น
-            let title = info.source.isEmpty ? info.title : "\(info.title)  (\(info.source))"
-            let box = NSButton(
-                checkboxWithTitle: title, target: self, action: #selector(calendarTicked))
-            box.tag = index
-            box.state = calendars.isOn(info.id) ? .on : .off
-            box.isEnabled = calendarOn
-            calendarList.addArrangedSubview(box)
-        }
-    }
-
-    @objc private func calendarTicked(_ sender: NSButton) {
-        guard calendarIDs.indices.contains(sender.tag) else { return }
-        calendars.setOn(calendarIDs[sender.tag], sender.state == .on)
-        onCalendar?(calendars)
-    }
-
-    @objc private func askCalendarAccess() { onCalendarAccess?() }
-
-    private func buildWiFi() -> NSView {
-        statusLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        ipLabel.font = .systemFont(ofSize: 11)
-        ipLabel.textColor = .secondaryLabelColor
-
-        table.addTableColumn(NSTableColumn(identifier: NSUserInterfaceItemIdentifier("ssid")))
-        table.headerView = nil
-        table.rowHeight = 20
-        table.dataSource = self
-        table.delegate = self
-        table.target = self
-        table.doubleAction = #selector(join)
-
-        let scroll = NSScrollView()
-        scroll.documentView = table
-        scroll.hasVerticalScroller = true
-        scroll.borderType = .bezelBorder
-        scroll.heightAnchor.constraint(equalToConstant: 150).isActive = true
-
-        spinner.style = .spinning
-        spinner.controlSize = .small
-        spinner.isDisplayedWhenStopped = false
-
-        let rescan = NSButton(title: "Rescan", target: self, action: #selector(rescan))
-        rescan.bezelStyle = .rounded
-        joinButton.target = self
-        joinButton.action = #selector(join)
-        joinButton.bezelStyle = .rounded
-        joinButton.keyEquivalent = "\r"
-        forgetButton.target = self
-        forgetButton.action = #selector(forget)
-        forgetButton.bezelStyle = .rounded
-
-        password.placeholderString = "Network password"
-
-        let buttons = NSStackView(views: [rescan, spinner, NSView(), forgetButton, joinButton])
-        buttons.orientation = .horizontal
-        buttons.spacing = 8
-
-        // เขียนไว้ตรงนี้ ไม่ใช่ในกล่องข้อผิดพลาดตอนล้ม — เน็ตที่เปิด client isolation
-        // (โรงแรม ออฟฟิศ) ให้บอร์ดขึ้นเน็ตได้ตามปกติแล้วเงียบทีหลัง ผู้ใช้ควรรู้ล่วงหน้า
-        let hint = NSTextField(wrappingLabelWithString:
-            "The board only talks to this Mac over your LAN — it never contacts claude.ai "
-            + "itself, so your session key stays here. Networks that isolate clients from "
-            + "each other will connect but stay unreachable.")
-        hint.font = .systemFont(ofSize: 11)
-        hint.textColor = .secondaryLabelColor
-
-        routeLabel.font = .systemFont(ofSize: 11)
-        routeLabel.textColor = .secondaryLabelColor
-
-        // ช่องกรอกที่อยู่เอง: mDNS เป็นสิ่งแรกที่หายไปเมื่อมี VLAN ของแขก, subnet ที่สอง
-        // หรือเราเตอร์ที่กรอง multicast — และตอนนั้น BLE ก็ตายไปแล้ว ไม่มีทางอื่นเหลือ
-        hostField.placeholderString = "Board address (leave empty to find it automatically)"
-        hostField.target = self
-        hostField.action = #selector(hostChanged)
-
-        let stack = NSStackView(views: [
-            statusLabel, ipLabel, scroll, password, buttons, separator(), routeLabel,
-            hostField, hint,
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 10
-        for view in [scroll, password, buttons, hostField, hint] {
-            view.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
-        }
-        return stack
-    }
-
-    private func separator() -> NSView {
-        let line = NSBox()
-        line.boxType = .separator
-        return line
-    }
-
     // --- ให้ MenuBarApp ป้อนสถานะเข้ามา ------------------------------------
     func showBoards(_ list: [Board], selected: UUID?) {
-        boards = list
-        selectedBoard = selected
-        boardPopup.removeAllItems()
-        boardPopup.addItem(withTitle: "Any board")
-        boardPopup.lastItem?.representedObject = nil
-        for board in list {
-            boardPopup.addItem(withTitle: board.name + (board.isCurrent ? " ✓" : ""))
-            boardPopup.lastItem?.representedObject = board.id.uuidString
-        }
-        let index = list.firstIndex { $0.id == selected }
-        boardPopup.selectItem(at: index.map { $0 + 1 } ?? 0)
+        model.boards = list
+        model.selectedBoard = selected
     }
 
-    func showBrightness(_ value: Int) { brightness.integerValue = value }
+    func showBrightness(_ value: Int) { model.brightness = value }
 
-    func showInterval(_ interval: PollInterval) {
-        let index = PollInterval.allCases.firstIndex(of: interval) ?? 0
-        intervalPopup.selectItem(at: index)
-    }
+    func showInterval(_ interval: PollInterval) { model.interval = interval }
 
     func showToggles(statusline: Bool, autoStart: Bool, login: Bool) {
-        statuslineBox.state = statusline ? .on : .off
-        autoStartBox.state = autoStart ? .on : .off
-        loginBox.state = login ? .on : .off
+        model.statusline = statusline
+        model.autoStart = autoStart
+        model.login = login
     }
 
-    func showBoardHost(_ host: String) { hostField.stringValue = host }
+    func showBoardHost(_ host: String) { model.boardHost = host }
 
-    /// นาทีเข้า วินาทีออก — ค่าบนสายเป็นวินาทีเสมอ ส่วนช่องนี้ถามเป็นนาทีเพราะ
-    /// ค่าตั้งต้นคือ 5 นาที และไม่มีใครอยากอ่านหรือพิมพ์เลข 300
-    private static let holdStep = 60
-
-    func showPages(_ settings: PageSettings) {
-        pages = settings
-        rebuildPageList()
-        rotationField.integerValue = settings.rotation
-        holdField.integerValue = settings.hold / Self.holdStep
-        jumpBox.state = settings.attentionJump ? .on : .off
-    }
+    func showPages(_ settings: PageSettings) { model.pages = settings }
 
     func showWeather(_ settings: WeatherSettings, status: String?, supported: Bool, on: Bool) {
-        placeField.stringValue = settings.place
-        unitPopup.selectItem(at: TempUnit.allCases.firstIndex(of: settings.unit) ?? 0)
-        placeField.isEnabled = on
-        unitPopup.isEnabled = on
-
-        // เหตุผลที่หน้านี้ยังไม่ขึ้นจอมีได้สามอย่าง และผู้ใช้แก้ได้คนละแบบ: firmware เก่า
-        // (ต้องแฟลช) · ยังไม่พิมพ์ชื่อเมือง (พิมพ์) · ดึงไม่สำเร็จ (รอ หรือแก้ชื่อเมือง)
-        if !supported {
-            weatherStatus.stringValue =
-                "The board's firmware does not know this page yet — flash it to use it."
-        } else if let status {
-            weatherStatus.stringValue = status
-        } else if on && !settings.isUsable {
-            weatherStatus.stringValue = "Type a city to start."
-        } else {
-            weatherStatus.stringValue = ""
-        }
+        model.weather = settings
+        model.weatherSupported = supported
+        model.weatherStatus = status ?? ""
     }
 
     func showCrypto(_ settings: CryptoSettings, status: String?, supported: Bool, on: Bool) {
-        crypto = settings
-        cryptoOn = on
-        rebuildCoinList()
-        // ปิดหน้านี้แล้วยังแก้ watchlist ได้ครึ่งเดียวคือหน้าต่างที่บอกคนละเรื่องกับตัวเอง —
-        // ปุ่มทุกปุ่มดับพร้อมกัน เหมือนช่องเมืองกับหน่วยของหน้าอากาศ
-        let room = settings.coins.count < CryptoSettings.maxCoins
-        coinField.isEnabled = on && room
-        addButton.isEnabled = on && room
-        coinPopup.isEnabled = on && room
-
-        // เหตุผลที่หน้านี้ยังไม่ขึ้นจอมีได้สี่อย่าง และผู้ใช้แก้ได้คนละแบบ: firmware เก่า
-        // (ต้องแฟลช) · ยังไม่ใส่เหรียญ (ใส่) · เต็มเพดานแล้ว (ลบก่อน) · ดึงไม่สำเร็จ
-        if !supported {
-            cryptoStatus.stringValue =
-                "The board's firmware does not know this page yet — flash it to use it."
-        } else if let status {
-            cryptoStatus.stringValue = status
-        } else if on && !settings.isUsable {
-            cryptoStatus.stringValue = "Add a coin to start."
-        } else if settings.coins.count >= CryptoSettings.maxCoins {
-            cryptoStatus.stringValue = "Five coins is the most this page shows."
-        } else {
-            cryptoStatus.stringValue = ""
-        }
+        model.crypto = settings
+        model.cryptoSupported = supported
+        model.cryptoStatus = status ?? ""
     }
 
     func showStocks(
         _ settings: StockSettings, status: String?, hasKey: Bool, keyRejected: Bool,
         supported: Bool, on: Bool
     ) {
-        stocks = settings
-        stocksOn = on
-        rebuildSymbolList()
-        let room = settings.symbols.count < StockSettings.maxSymbols
-        symbolField.isEnabled = on && room
-        addSymbolButton.isEnabled = on && room
-        symbolPopup.isEnabled = on && room
-
-        // บรรทัดใต้ปุ่มเป็นทางเดียวที่ผู้ใช้รู้ว่า key เข้าไหม — ช่องกรอกปิดบังตัวอักษร
-        // และไม่เคยถูกเติมกลับ (กติกาเดียวกับ `sessionKey`)
-        if keyRejected {
-            stockKeyLabel.stringValue = "Finnhub refused this key — paste a new one."
-            stockKeyLabel.textColor = .systemRed
-        } else if hasKey {
-            stockKeyLabel.stringValue = "A key is stored, readable only by you."
-            stockKeyLabel.textColor = .secondaryLabelColor
-        } else {
-            stockKeyLabel.stringValue = "No key yet — get a free one at finnhub.io."
-            stockKeyLabel.textColor = .secondaryLabelColor
-        }
-
-        // เหตุผลที่หน้านี้ยังไม่ขึ้นจอมีได้ห้าอย่าง และผู้ใช้แก้ได้คนละแบบ: firmware เก่า
-        // (ต้องแฟลช) · ยังไม่มี key (ไปเอามา) · ยังไม่ใส่สัญลักษณ์ (ใส่) · เต็มเพดานแล้ว
-        // (ลบก่อน) · ดึงไม่สำเร็จหรือตลาดปิด (ซึ่ง `StocksService` เป็นคนพูด)
-        if !supported {
-            stocksStatus.stringValue =
-                "The board's firmware does not know this page yet — flash it to use it."
-        } else if let status {
-            stocksStatus.stringValue = status
-        } else if on && !hasKey {
-            stocksStatus.stringValue = "Add a Finnhub key to start."
-        } else if on && !settings.isUsable {
-            stocksStatus.stringValue = "Add a symbol to start."
-        } else if settings.symbols.count >= StockSettings.maxSymbols {
-            stocksStatus.stringValue = "Five symbols is the most this page shows."
-        } else {
-            stocksStatus.stringValue = ""
-        }
+        model.stocks = settings
+        model.stocksSupported = supported
+        model.stocksStatus = status ?? ""
+        model.hasStockKey = hasKey
+        model.stockKeyRejected = keyRejected
     }
 
     func showCalendar(
         _ settings: CalendarSettings, available: [CalendarInfo], access: CalendarAccess,
         status: String?, supported: Bool, on: Bool
     ) {
-        calendars = settings
-        calendarOn = on
-        rebuildCalendarList(available)
-
-        // ปุ่มขอสิทธิ์มีความหมายครั้งเดียวในชีวิตของแอป — หลังผู้ใช้ปฏิเสธไปแล้ว macOS
-        // จะไม่ถามซ้ำ กดอีกกี่ครั้งก็ไม่มีอะไรเกิดขึ้น ปุ่มจึงต้องดับและประโยคต้องเปลี่ยน
-        accessButton.isHidden = access == .granted
-        accessButton.isEnabled = on && access == .notDetermined
-
-        // ประโยคของแต่ละสภาพมาจาก `CalendarService` ที่เดียว — หน้าต่างเติมเฉพาะสิ่งที่
-        // มันรู้อยู่คนเดียว: firmware ที่ยังไม่รู้จักหน้านี้ (ต้องแฟลช) และทางออกของสิทธิ์
-        // ที่ถูกปฏิเสธ ซึ่งยาวเกินกว่าจะขึ้นจอ 320px ได้
-        if !supported {
-            calendarStatus.stringValue =
-                "The board's firmware does not know this page yet — flash it to use it."
-        } else if access == .denied {
-            calendarStatus.stringValue =
-                "Calendar access was refused. Turn TamaClaude on in System Settings > "
-                + "Privacy & Security > Calendars."
-        } else {
-            calendarStatus.stringValue = status ?? ""
-        }
+        model.calendars = settings
+        model.availableCalendars = available
+        model.calendarAccess = access
+        model.calendarSupported = supported
+        model.calendarStatus = status ?? ""
     }
 
-    func showKey(_ state: SessionKeyState) {
-        keyLabel.stringValue = state.line
-        keyLabel.textColor = state.isProblem ? .systemRed : .secondaryLabelColor
-    }
+    func showKey(_ state: SessionKeyState) { model.keyState = state }
 
     /// ทางที่ snapshot เดินอยู่จริง — คนละเรื่องกับ "บอร์ดต่อ WiFi แล้ว"
     ///
     /// บอร์ดที่ขึ้นเน็ตสำเร็จแต่ Mac หาไม่เจอ (client isolation, คนละ subnet) จะดูดีทุกอย่าง
     /// บนหน้านี้ทั้งที่ทางสำรองใช้ไม่ได้เลย บรรทัดนี้เป็นที่เดียวที่แยกสองอย่างนั้นออก
     func showRoute(_ route: LanRoute, detail: String?) {
-        self.route = route
-        routeLabel.stringValue = detail ?? PanelText.board(route: route)
+        model.route = route
+        model.routeDetail = detail ?? ""
     }
 
     func showLink(_ connected: Bool) {
-        linked = connected
-        if !connected { list.linkLost() }
-        redraw()
+        model.linked = connected
+        // สปินเนอร์ที่หมุนค้างหลังลิงก์หลุดคือคำโกหก
+        if !connected { model.networks.linkLost() }
     }
 
     func apply(_ event: BoardEvent) {
-        list.apply(event)
-        if case .wifi(let status) = event { self.status = status }
-        redraw()
+        model.networks.apply(event)
+        if case .wifi(let status) = event { model.wifi = status }
     }
 
-    func beginScan() {
-        list.beginScan()
-        redraw()
-    }
-
-    private func redraw() {
-        table.reloadData()
-        if list.scanning { spinner.startAnimation(nil) } else { spinner.stopAnimation(nil) }
-
-        guard linked else {
-            statusLabel.stringValue = "No board connected over Bluetooth"
-            ipLabel.stringValue = "Wi-Fi can only be set up while the board is in range."
-            return
-        }
-        guard let status else {
-            statusLabel.stringValue = "Asking the board…"
-            ipLabel.stringValue = ""
-            return
-        }
-        switch status.state {
-        case .connected:
-            statusLabel.stringValue = "Connected to \(status.ssid)"
-            ipLabel.stringValue = "Board address \(status.ip)"
-        case .connecting:
-            statusLabel.stringValue = "Connecting to \(status.ssid)…"
-            ipLabel.stringValue = ""
-        case .failed:
-            statusLabel.stringValue = "\(status.ssid): \(status.error ?? "failed")"
-            // ไม่ต้องบอกให้กดลองใหม่ — firmware ลองเองเรื่อยๆ อยู่แล้ว
-            ipLabel.stringValue = "The board keeps retrying on its own."
-        case .off:
-            statusLabel.stringValue = "No network saved yet"
-            ipLabel.stringValue = ""
-        }
-    }
-
-    private var selectedSSID: String? {
-        let row = table.selectedRow
-        guard row >= 0, row < list.found.count else { return nil }
-        return list.found[row].ssid
-    }
-
-    // --- การกระทำ ----------------------------------------------------------
-    @objc private func boardChanged() {
-        let raw = boardPopup.selectedItem?.representedObject as? String
-        onSelectBoard?(raw.flatMap(UUID.init(uuidString:)))
-    }
-
-    @objc private func brightnessChanged() { onBrightness?(brightness.integerValue) }
-
-    @objc private func intervalChanged() {
-        let raw = intervalPopup.selectedItem?.representedObject as? Int
-        onInterval?(PollInterval.stored(raw))
-    }
-
-    @objc private func weatherChanged() {
-        let raw = unitPopup.selectedItem?.representedObject as? String
-        onWeather?(
-            WeatherSettings(
-                place: placeField.stringValue.trimmingCharacters(in: .whitespaces),
-                unit: TempUnit(rawValue: raw ?? "") ?? .celsius))
-    }
-
-    /// รอบหมุนกับ hold ถูกอ่านจากช่องทุกครั้งที่มีอะไรในแท็บนี้เปลี่ยน — ผู้ใช้ที่พิมพ์เลข
-    /// แล้วกดติ๊กต่อโดยไม่กด Enter ต้องได้ทั้งสองอย่าง ไม่ใช่ได้ติ๊กแล้วเลขหาย
-    @objc private func pagesChanged() {
-        pages.rotation = rotationField.integerValue
-        pages.hold = holdField.integerValue * Self.holdStep
-        pages.attentionJump = jumpBox.state == .on
-        emitPages()
-    }
-
-    @objc private func pageToggled(_ sender: NSButton) {
-        guard let kind = PageKind(rawValue: sender.tag) else { return }
-        pages.setOn(kind, sender.state == .on)
-        pagesChanged()
-    }
-
-    // ชื่อ `pageUp`/`pageDown` ใช้ไม่ได้ — `NSResponder` มีเมธอดชื่อนั้นอยู่แล้ว
-    @objc private func movePageUp(_ sender: NSButton) { movePage(sender, by: -1) }
-    @objc private func movePageDown(_ sender: NSButton) { movePage(sender, by: 1) }
-
-    private func movePage(_ sender: NSButton, by step: Int) {
-        guard let kind = PageKind(rawValue: sender.tag) else { return }
-        pages.move(kind, by: step)
-        pagesChanged()
-    }
-
-    /// ค่าที่ส่งออกถูกบีบเข้าช่วงที่ยอมรับได้ระหว่างทาง — แสดงกลับเสมอ ไม่ใช่เฉพาะตอนเปิด
-    /// หน้าต่าง ไม่งั้นช่องจะค้างเลข 9999 ที่ไม่มีใครใช้ทั้งที่จอหมุนตาม 600
-    private func emitPages() {
-        let settled = PageSettings(
-            order: pages.order, off: pages.off, rotation: pages.rotation, hold: pages.hold,
-            attentionJump: pages.attentionJump)
-        onPages?(settled)
-        showPages(settled)
-    }
-
-    @objc private func addCoin() {
-        // ช่องถูกล้างเฉพาะตอนที่เหรียญเข้าไปจริง — คำที่ถูกปฏิเสธ (ซ้ำ หรือเต็มแล้ว)
-        // ต้องยังอยู่ให้ผู้ใช้เห็นว่าเขาพิมพ์อะไรไป พร้อมเหตุผลในบรรทัดสถานะ
-        guard crypto.add(coinField.stringValue) else { return }
-        coinField.stringValue = ""
-        emitCrypto()
-    }
-
-    /// เลือกจากเมนู = เพิ่มทันที · ลง watchlist เป็น **สัญลักษณ์** ไม่ใช่ชื่อเต็มหรือ id ของ
-    /// CoinGecko — `coins` ยังเป็นชนิดเดียวอยู่ (คำที่มนุษย์เรียกเหรียญ) ไม่ว่าจะมาจาก
-    /// เมนูหรือช่องพิมพ์ และรูปตรงทันทีทั้งในรายการนี้และบนบอร์ด
-    @objc private func addCoinFromList(_ sender: NSMenuItem) {
-        guard LogoCatalog.crypto.indices.contains(sender.tag) else { return }
-        guard crypto.add(LogoCatalog.crypto[sender.tag].symbol) else { return }
-        emitCrypto()
-    }
-
-    @objc private func removeCoin(_ sender: NSButton) {
-        crypto.remove(sender.tag)
-        emitCrypto()
-    }
-
-    @objc private func moveCoinUp(_ sender: NSButton) { moveCoin(sender, by: -1) }
-    @objc private func moveCoinDown(_ sender: NSButton) { moveCoin(sender, by: 1) }
-
-    private func moveCoin(_ sender: NSButton, by step: Int) {
-        crypto.move(sender.tag, by: step)
-        emitCrypto()
-    }
-
-    /// วาดรายการใหม่ทันทีแล้วค่อยบอกออกไป — สถานะที่เหลือ (firmware รู้จักหน้านี้ไหม
-    /// หน้านี้เปิดอยู่ไหม ดึงข้อมูลสำเร็จไหม) ไม่ใช่ของหน้าต่างนี้ `MenuBarApp` จะป้อน
-    /// กลับมาเองผ่าน `showCrypto` เหมือนทุกอย่างที่นี่
-    private func emitCrypto() {
-        rebuildCoinList()
-        onCrypto?(crypto)
-    }
-
-    @objc private func addSymbol() {
-        // ช่องถูกล้างเฉพาะตอนที่สัญลักษณ์เข้าไปจริง — คำที่ถูกปฏิเสธ (ซ้ำ หรือเต็มแล้ว)
-        // ต้องยังอยู่ให้ผู้ใช้เห็นว่าเขาพิมพ์อะไรไป พร้อมเหตุผลในบรรทัดสถานะ
-        guard stocks.add(symbolField.stringValue) else { return }
-        symbolField.stringValue = ""
-        emitStocks()
-    }
-
-    /// รูปเดียวกับ `addCoinFromList` — ฝั่งหุ้นไม่มีการแปลงอะไรเลย สัญลักษณ์ที่ Finnhub
-    /// รับคือสิ่งเดียวกับชื่อไฟล์ logo อยู่แล้ว
-    @objc private func addSymbolFromList(_ sender: NSMenuItem) {
-        guard LogoCatalog.stocks.indices.contains(sender.tag) else { return }
-        guard stocks.add(LogoCatalog.stocks[sender.tag].symbol) else { return }
-        emitStocks()
-    }
-
-    @objc private func removeSymbol(_ sender: NSButton) {
-        stocks.remove(sender.tag)
-        emitStocks()
-    }
-
-    @objc private func moveSymbolUp(_ sender: NSButton) { moveSymbol(sender, by: -1) }
-    @objc private func moveSymbolDown(_ sender: NSButton) { moveSymbol(sender, by: 1) }
-
-    private func moveSymbol(_ sender: NSButton, by step: Int) {
-        stocks.move(sender.tag, by: step)
-        emitStocks()
-    }
-
-    /// วาดรายการใหม่ทันทีแล้วค่อยบอกออกไป — สถานะที่เหลือ `MenuBarApp` ป้อนกลับมาเอง
-    /// ผ่าน `showStocks` เหมือนทุกอย่างที่นี่
-    private func emitStocks() {
-        rebuildSymbolList()
-        onStocks?(stocks)
-    }
-
-    @objc private func setFinnhubKey() { onFinnhubKey?() }
-
-    @objc private func setSessionKey() { onSetSessionKey?() }
-    @objc private func installHooks() { onInstallHooks?() }
-    @objc private func statuslineToggled() { onToggleStatusline?() }
-    @objc private func autoStartToggled() { onToggleAutoStart?() }
-    @objc private func loginToggled() { onToggleLogin?() }
-    @objc private func openLog() { onOpenLog?() }
-    @objc private func openProject() { onOpenProject?() }
-
-    @objc private func rescan() {
-        beginScan()
-        onScan?()
-    }
-
-    @objc private func join() {
-        guard let ssid = selectedSSID else { return }
-        onJoin?(ssid, password.stringValue)
-        password.stringValue = ""
-    }
-
-    @objc private func hostChanged() {
-        onBoardHost?(hostField.stringValue.trimmingCharacters(in: .whitespaces))
-    }
-
-    @objc private func forget() {
-        guard let ssid = selectedSSID else { return }
-        onForget?(ssid)
-    }
-}
-
-extension PreferencesWindowController: NSTableViewDataSource, NSTableViewDelegate {
-    func numberOfRows(in tableView: NSTableView) -> Int { list.found.count }
-
-    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int)
-        -> NSView?
-    {
-        let ap = list.found[row]
-        // เครือข่ายที่บอร์ดจำไว้ต้องแยกออกจากที่เพิ่งเห็น ไม่งั้นผู้ใช้ไม่รู้ว่าต้องพิมพ์รหัส
-        // ซ้ำไหม และปุ่ม Forget จะดูเหมือนใช้ได้กับทุกแถว
-        var marks: [String] = []
-        if list.saved.contains(ap.ssid) { marks.append("saved") }
-        if ap.secured { marks.append("locked") }
-        marks.append("\(ap.rssi) dBm")
-        let text = "\(ap.ssid)   —   \(marks.joined(separator: ", "))"
-        let label = NSTextField(labelWithString: text)
-        label.font = .systemFont(ofSize: 12)
-        label.lineBreakMode = .byTruncatingTail
-        return label
-    }
+    func beginScan() { model.networks.beginScan() }
 }
