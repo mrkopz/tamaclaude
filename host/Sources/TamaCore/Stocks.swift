@@ -10,23 +10,35 @@ public struct StockQuote: Equatable, Sendable {
     public var price: Double
     /// เปอร์เซ็นต์เปลี่ยนแปลงจากราคาปิดครั้งก่อน — บวกคือขึ้น
     public var change: Double
+    /// ต่ำสุด/สูงสุดของวันนี้ — `/quote` ให้มาในคำตอบเดิมทุกครั้ง (`l` / `h`)
+    ///
+    /// ศูนย์ทั้งคู่คือ "ไม่ได้ให้มา" ไม่ใช่ "ราคาเป็นศูนย์": ก่อนตลาดเปิด Finnhub ยังไม่มี
+    /// ช่วงของวันจะให้ และหน้าจอต้องซ่อนแถบนั้นไปเลย ไม่ใช่วาดรางที่ปลายทั้งสองเท่ากัน
+    public var low: Double
+    public var high: Double
 
-    public init(symbol: String, price: Double, change: Double) {
+    public init(symbol: String, price: Double, change: Double, low: Double = 0,
+                high: Double = 0) {
         self.symbol = symbol
         self.price = price
         self.change = change
+        self.low = low
+        self.high = high
     }
 }
 
 /// page frame ของหน้าหุ้น
 ///
 /// ```
-/// {"a":42,"c":[{"d":-21,"p":"189.44","s":"AAPL"}],"g":4,"k":1}
+/// {"a":42,"c":[{"d":-21,"p":"189.44","s":"AAPL"}],"g":4,"k":1,"r":{"h":"193","l":"184","t":60}}
 /// ```
 ///
-/// เหมือนหน้าคริปโตทุกอย่าง บวกคีย์เดียว: `k` คือ "ตลาดปิดอยู่" ซึ่งเป็นเหตุผลที่ตัวเลข
-/// ชุดนี้จะไม่ขยับอีกจนกว่าตลาดจะเปิด — อายุข้อมูลที่โตขึ้นเรื่อยๆ ตอนตลาดปิดไม่ได้แปลว่า
-/// ท่อพัง และหน้าจอต้องแยกสองอย่างนี้ให้ผู้ใช้เห็น ไม่ใช่ให้เขาไปเปิดปฏิทินตลาดเอง
+/// เหมือนหน้าคริปโตทุกอย่าง บวกสองคีย์:
+/// - `k` คือ "ตลาดปิดอยู่" ซึ่งเป็นเหตุผลที่ตัวเลขชุดนี้จะไม่ขยับอีกจนกว่าตลาดจะเปิด —
+///   อายุข้อมูลที่โตขึ้นเรื่อยๆ ตอนตลาดปิดไม่ได้แปลว่าท่อพัง และหน้าจอต้องแยกสองอย่างนี้
+///   ให้ผู้ใช้เห็น ไม่ใช่ให้เขาไปเปิดปฏิทินตลาดเอง
+/// - `r` คือช่วงราคาของวันของ *แถวแรก* ซึ่งเป็นสิ่งที่หน้านี้วาดแทน sparkline ของคริปโต
+///   (ดู `DayRange` และ [stocks] ใน layout.toml)
 public struct StocksFrame: PageFrame, Equatable, Codable, Sendable {
     public var kind: PageKind { .stocks }
 
@@ -66,11 +78,33 @@ public struct StocksFrame: PageFrame, Equatable, Codable, Sendable {
         }
     }
 
+    /// ช่วงราคาของวันอย่างที่มันเดินทางไปบอร์ด — ปลายทั้งสองจัดรูปแล้ว บวกตำแหน่งสำเร็จรูป
+    ///
+    /// **บอร์ดไม่ได้รับราคาดิบไปเทียบเอง** ด้วยเหตุผลสองชั้น: ราคาบนสายมีจุลภาคคั่นหลักพัน
+    /// (`"1,204.55"`) ซึ่ง `atof()` อ่านไม่ได้ · และการตัดสินว่า "ราคานี้ยืนตรงไหน" เป็น
+    /// เรื่อง *เนื้อหา* ซึ่ง daemon เป็นเจ้าของทั้งหมด (ดู CLAUDE.md) บอร์ดวางหมุดที่
+    /// เปอร์เซ็นต์ที่ได้รับ ไม่ได้คิดเอง
+    public struct DayRange: Equatable, Codable, Sendable {
+        /// ปลายล่างที่ปัด *ลง* และปลายบนที่ปัด *ขึ้น* — หมุดจึงอยู่ในรางเสมอโดยโครงสร้าง
+        /// ไม่ใช่โดยบังเอิญ และราคาที่พิมพ์อยู่ข้างๆ ไม่มีวันหลุดออกนอกช่วงที่พิมพ์คู่กัน
+        public var low: String
+        public var high: String
+        /// 0..100 — ราคาปัจจุบันยืนตรงไหนระหว่างต่ำสุดกับสูงสุด *ก่อน* ปัด
+        public var position: Int
+
+        enum CodingKeys: String, CodingKey {
+            case low = "l"
+            case high = "h"
+            case position = "t"
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
         case kindID = "g"
         case age = "a"
         case rows = "c"
         case closed = "k"
+        case range = "r"
     }
 
     public init(from decoder: Decoder) throws {
@@ -88,10 +122,15 @@ public struct StocksFrame: PageFrame, Equatable, Codable, Sendable {
                 symbol: $0.symbol, price: Double($0.price) ?? 0,
                 change: Double($0.change ?? 0) / 10)
         }
+        // ปลายช่วงกลับมาเป็นสตริงที่ปัดแล้ว แปลงกลับเป็น `Double` ของ `StockQuote` ไม่ได้
+        // โดยไม่โกหก — ฝั่งถอดรหัสมีไว้ตรวจว่าสิ่งที่ส่งไปอ่านกลับได้ ไม่ใช่เพื่อสร้าง
+        // `StocksFrame` ที่เข้ารหัสซ้ำแล้วได้ไบต์ชุดเดิม (ราคาก็เสียทศนิยมไปแล้วเหมือนกัน)
+        _ = try c.decodeIfPresent(DayRange.self, forKey: .range)
     }
 
     public func encode(to encoder: Encoder) throws {
-        try Payload(frame: self, trim: 0, percent: true, count: quotes.count).encode(to: encoder)
+        try Payload(frame: self, trim: 0, percent: true, range: true, count: quotes.count)
+            .encode(to: encoder)
     }
 
     /// จำนวนทศนิยมของราคาหุ้น — **สองตำแหน่งเสมอ** ซึ่งคือหน่วยที่ตลาดซื้อขายกันจริง
@@ -101,6 +140,38 @@ public struct StocksFrame: PageFrame, Equatable, Codable, Sendable {
     /// ที่ปัดสตางค์ทิ้งอ่านเป็นราคาคนละตัวกับที่ผู้ใช้เห็นในโบรกเกอร์ ส่วนความยาวที่เพิ่มมา
     /// สามตัวเป็นเรื่องของเลย์เอาต์ ซึ่งการ์ดแก้ด้วยการหั่นฟอนต์สองขนาดไปแล้ว
     public static func decimals(for price: Double) -> Int { 2 }
+
+    /// ทศนิยมของ *ปลายช่วง* ซึ่งหยาบกว่าราคาโดยตั้งใจ
+    ///
+    /// ปลายช่วงเป็นตัวบอกทิศให้สายตา ไม่ใช่ตัวเลขที่ใครเอาไปตัดสินใจ — ความละเอียดเป็นของ
+    /// ตัวเลขใหญ่ตัวเดียวบนการ์ด · และมันต้องสั้นพอจะยืนคู่คำว่า HIGH ในบล็อกกว้าง 84px
+    /// ได้ทุกราคา ("1,204" พอดี "1,204.55" ไม่พอดี) · ต่ำกว่า 100 ยังต้องมีหนึ่งตำแหน่ง
+    /// ไม่งั้นหุ้นราคา 8 บาทได้ช่วง "8" ถึง "9" ซึ่งหยาบจนไม่เหลือข้อมูล
+    static func rangeDecimals(high: Double) -> Int { high >= 100 ? 0 : 1 }
+
+    /// ปลายช่วงหนึ่งด้าน — `up` = ปัดขึ้น (ปลายบน), ไม่งั้นปัดลง (ปลายล่าง)
+    ///
+    /// ปัด *ออกนอก* ช่วงเสมอ ไม่ใช่ปัดใกล้สุด: ปัดใกล้สุดทำให้ราคา 189.44 ที่แตะจุดสูงสุด
+    /// ของวันพอดี ได้ป้าย HIGH ว่า "189" แล้วราคาที่พิมพ์ตัวใหญ่อยู่ข้างๆ ดูล้นช่วงของตัวเอง
+    public static func rangeText(_ value: Double, high: Double, up: Bool) -> String {
+        let places = rangeDecimals(high: high)
+        let scale = pow(10.0, Double(places))
+        let rounded = (up ? (value * scale).rounded(.up) : (value * scale).rounded(.down)) / scale
+        return Text.grouped(String(format: "%.\(places)f", rounded))
+    }
+
+    /// ช่วงราคาของแถวแรก — `nil` เมื่อไม่มีอะไรจริงให้วาด
+    ///
+    /// `high <= low` คือทั้ง "Finnhub ยังไม่ให้ช่วงของวันมา" (ศูนย์ทั้งคู่ ก่อนตลาดเปิด)
+    /// และหุ้นที่ยังไม่มีการซื้อขายเลยวันนี้ — รางที่ปลายสองข้างเท่ากันไม่มีตำแหน่งให้บอก
+    public var dayRange: DayRange? {
+        guard let q = quotes.first, q.high > q.low else { return nil }
+        let t = (q.price - q.low) / (q.high - q.low) * 100
+        return DayRange(
+            low: Self.rangeText(q.low, high: q.high, up: false),
+            high: Self.rangeText(q.high, high: q.high, up: true),
+            position: min(max(Int(t.rounded()), 0), 100))
+    }
 
     /// `trim` ไม่มีผลกับหุ้น — ทศนิยมถูกตรึงไว้ที่สองตำแหน่ง
     ///
@@ -124,22 +195,27 @@ public struct StocksFrame: PageFrame, Equatable, Codable, Sendable {
 
     /// เฟรมนี้พอดีหนึ่ง MTU ด้วยลำดับการบีบที่ *ไม่* แตะสัญลักษณ์
     ///
-    /// ลำดับต่างจากหน้าคริปโตหนึ่งขั้น เพราะของที่ทิ้งได้ต่างกัน:
-    /// 1. ลดทศนิยมของราคาทุกแถว (189.44 -> 189 ยังเป็นราคาที่ใช้ตัดสินใจได้)
-    /// 2. ทิ้งเปอร์เซ็นต์ทั้งคอลัมน์ (ราคายังอยู่ครบ ส่วนทิศทางหายไปทั้งหน้า ไม่ใช่บางแถว
+    /// ลำดับต่างจากหน้าคริปโตสองขั้น เพราะของที่ทิ้งได้ต่างกัน:
+    /// 1. ทิ้งช่วงราคาของวัน (`r`) — มันเป็น *บริบท* ของแถวเดียว ส่วนคอลัมน์ที่เหลือเป็น
+    ///    ข้อเท็จจริงของทุกแถว ของที่คนน้อยที่สุดพึ่งพาต้องไปก่อน
+    /// 2. ลดทศนิยมของราคาทุกแถว (189.44 -> 189 ยังเป็นราคาที่ใช้ตัดสินใจได้)
+    /// 3. ทิ้งเปอร์เซ็นต์ทั้งคอลัมน์ (ราคายังอยู่ครบ ส่วนทิศทางหายไปทั้งหน้า ไม่ใช่บางแถว
     ///    ซึ่งจะอ่านว่าแถวนั้นนิ่ง)
-    /// 3. ตัดแถวท้ายทิ้งทั้งแถว (หายไปทั้งใบดีกว่าค้างอยู่ครึ่งใบ)
-    /// ทั้งสามขั้นไม่เคยตัดตัวอักษรของสัญลักษณ์ออกแม้ตัวเดียว
+    /// 4. ตัดแถวท้ายทิ้งทั้งแถว (หายไปทั้งใบดีกว่าค้างอยู่ครึ่งใบ)
+    /// ทั้งสี่ขั้นไม่เคยตัดตัวอักษรของสัญลักษณ์ออกแม้ตัวเดียว
     public func encoded(maxBytes: Int = Wire.maxPayload) throws -> Data {
         let encoder = Wire.encoder()
         var count = quotes.count
         while true {
             for percent in [true, false] {
                 for trim in 0...2 {
-                    let payload = Payload(
-                        frame: self, trim: trim, percent: percent, count: count)
-                    let data = try encoder.encode(payload)
-                    if data.count <= maxBytes { return data }
+                    for range in [true, false] {
+                        let payload = Payload(
+                            frame: self, trim: trim, percent: percent, range: range,
+                            count: count)
+                        let data = try encoder.encode(payload)
+                        if data.count <= maxBytes { return data }
+                    }
                 }
             }
             guard count > 0 else { throw StocksError.frameTooLong }
@@ -153,6 +229,7 @@ public struct StocksFrame: PageFrame, Equatable, Codable, Sendable {
         let frame: StocksFrame
         let trim: Int
         let percent: Bool
+        let range: Bool
         let count: Int
 
         func encode(to encoder: Encoder) throws {
@@ -162,6 +239,10 @@ public struct StocksFrame: PageFrame, Equatable, Codable, Sendable {
             try c.encode(frame.rows(trim: trim, percent: percent, count: count), forKey: .rows)
             // ตลาดเปิดคือสภาพปกติ จึงเป็น "ไม่มีคีย์" ไม่ใช่ `"k":0`
             if frame.marketClosed { try c.encode(1, forKey: .closed) }
+            // ไม่มีคีย์ = บอร์ดซ่อนแถบทั้งแถบ ซึ่งถูกทั้งตอนถูกบีบทิ้งและตอน Finnhub ไม่ให้
+            // ช่วงมา — สองเหตุผลนี้ไม่ต้องแยกกันบนจอ ผลลัพธ์ที่ผู้ใช้เห็นเหมือนกันและจริง
+            // ทั้งคู่ · แถบต้องเป็นของแถวแรกเท่านั้น จึงหายไปด้วยเมื่อบีบจนไม่เหลือแถวเลย
+            if range, count > 0, let r = frame.dayRange { try c.encode(r, forKey: .range) }
         }
     }
 }
@@ -277,8 +358,12 @@ public enum StocksSource {
         // `dp` เป็น null ได้ตอนที่ยังไม่มีราคาปิดครั้งก่อนให้เทียบ (หุ้นที่เพิ่ง IPO วันนี้) —
         // ศูนย์ในความหมาย "ยังไม่ขยับเท่าที่รู้" ราคายังจริงและยังต้องขึ้นจอ
         let change = (object["dp"] as? NSNumber)?.doubleValue ?? 0
+        // `h`/`l` = สูงสุด/ต่ำสุดของวันนี้ มาในคำตอบเดิมมาตลอด · หายไปได้ก่อนตลาดเปิด
+        // (ยังไม่มีการซื้อขายให้มีช่วง) ซึ่งเป็นสภาพจริงที่หน้าจอต้องซ่อนแถบนั้นไปเลย
+        let high = (object["h"] as? NSNumber)?.doubleValue ?? 0
+        let low = (object["l"] as? NSNumber)?.doubleValue ?? 0
         return StockQuote(
             symbol: symbol.trimmingCharacters(in: .whitespaces).uppercased(), price: price,
-            change: change)
+            change: change, low: low, high: high)
     }
 }

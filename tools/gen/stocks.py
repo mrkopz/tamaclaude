@@ -12,8 +12,9 @@
 - บรรทัดล่างบอกได้ว่าตัวเลขค้างเพราะตลาดปิด ไม่ใช่เพราะท่อพัง
 - ตลาดปิด = ตัวเลขหยุดเดินโดยชอบธรรม การ์ดจึงกลับไปเป็นพื้นกลาง ทั้งที่ลิงก์ยังอยู่
   (คริปโตไม่มีสภาพนี้ ตลาดมันไม่มีเวลาปิด)
-- **ไม่มีรูป 24 ชม.** เพราะไม่มีประวัติจะวาด (เหตุผลอยู่ที่ [stocks] ใน layout.toml)
-  ช่องของมันเหลือว่างไว้ ไม่มีอะไรเลื่อนเข้าไปแทน
+- **บล็อกขวาล่างของการ์ดเป็นช่วงราคาของวัน ไม่ใช่รูป 24 ชม.** — Finnhub ไม่มีประวัติให้
+  พล็อต แต่มี `h`/`l` ของวันนี้ให้ทุกครั้ง แถบนี้จึงตอบคำถามคนละข้อกับ sparkline:
+  ไม่ใช่ "ราคาเดินทางยังไง" แต่คือ "ตอนนี้ยืนตรงไหนของสวิงวันนี้" (ดู [stocks])
 """
 
 from __future__ import annotations
@@ -37,6 +38,24 @@ CLOSED = "market closed"
 # หน้าต่างเวลาของเปอร์เซ็นต์บนการ์ด — ต้องตรงกับ CT_STOCKS_WINDOW_TEXT ใน ct_stocks_ui.c
 WINDOW = "today"
 
+# คำกำกับสองด้านของแถบช่วงราคา — ต้องตรงกับ CT_STOCKS_RANGE_*_TEXT ใน ct_stocks_ui.c
+HIGH = "HIGH"
+LOW = "LOW"
+
+
+@dataclass(slots=True)
+class DayRange:
+    """ช่วงราคาของวันนี้อย่างที่มันมาถึงบอร์ด — ปลายทั้งสองเป็นสตริงที่ Mac จัดรูปมาแล้ว
+
+    `pos` คือ 0..100 ที่ Mac คำนวณมา ไม่ใช่ราคาให้บอร์ดไปเทียบเอง — ราคาบนสายมีจุลภาค
+    คั่นหลักพันแล้ว (`"1,204.55"`) บอร์ดจึงแปลงกลับเป็นตัวเลขไม่ได้โดยไม่เขียน parser
+    ของตัวเอง และการตัดสินเรื่อง *เนื้อหา* เป็นงานของ daemon อยู่แล้ว (ดู CLAUDE.md)
+    """
+
+    low: str
+    high: str
+    pos: int
+
 
 @dataclass(slots=True)
 class Stock:
@@ -57,6 +76,12 @@ class Stocks:
     """หน้าหุ้นหนึ่งใบ — `has_frame=False` คือยังไม่เคยได้ข้อมูลเลย"""
 
     rows: list[Stock] = field(default_factory=list)
+    # ช่วงราคาวันนี้ของ *ตัวแรก* เท่านั้น — อยู่บนเฟรมชั้นนอก ไม่ใช่ในแถว เพราะมีการ์ดใบ
+    # เดียวที่วาดมัน การแบกช่วงราคาของอีกสี่แถวไปด้วยคือไบต์ที่ไม่มีพิกเซลไหนได้ใช้
+    #
+    # `None` = Finnhub ไม่ได้ให้ h/l มา (ก่อนตลาดเปิด หรือสัญลักษณ์ที่มันไม่รู้จัก) แล้ว
+    # บล็อกทั้งบล็อกหายไป ไม่ใช่รางเปล่าที่มีหมุดค้างอยู่ปลายซ้าย — อย่างหลังคือตัวเลขปลอม
+    day_range: DayRange | None = None
     age: int = 35
     # ตลาดปิดอยู่ตอนที่ Mac อ่านค่าชุดนี้มา
     market_closed: bool = False
@@ -86,8 +111,43 @@ def _window(draw: ImageDraw.ImageDraw, text: str, arrow_x: float, cfg, connected
               font=screen.font(cfg.win_font_pil), fill=col, anchor="mm")
 
 
-def _hero(img: Image.Image, draw: ImageDraw.ImageDraw, row: Stock, connected: bool,
-          live: bool) -> None:
+def _range(draw: ImageDraw.ImageDraw, rng: DayRange, change: int | None, cfg,
+           connected: bool) -> None:
+    """แถบช่วงราคาของวันนี้ — ช่องเดียวกับที่หน้าคริปโตวาง sparkline
+
+    สองบรรทัดกับหนึ่งราง: HIGH บน LOW ล่าง หมุดบนรางบอกว่าราคาตอนนี้ยืนตรงไหนระหว่าง
+    สองค่านั้น · หมุดใช้สีทิศทางชุดเดียวกับลูกศรและเปอร์เซ็นต์ (`trend.tone`) เพราะมันเป็น
+    ตัวแทนของ "ราคาตอนนี้" ตัวเดียวกับที่ตัวเลขใหญ่พูดถึง ไม่ใช่ของใหม่ที่ต้องเรียนรู้สี
+    ส่วนรางเป็นเทาเข้มเสมอ — มาตราส่วนไม่มีทิศทาง
+    """
+    # ตัวเลขได้ `text` เต็ม ไม่ใช่ `text_dim` — มันเป็นราคาจริงเท่ากับที่แถวเล็กแสดง และ
+    # ที่ฟอนต์ 14 ข้างราคา 36px ตัวหนา มันไม่มีทางแย่งลำดับสายตาไปได้อยู่แล้ว · ส่วนคำกำกับ
+    # เป็น `text_dim` ไม่ใช่ `gray`: gray ได้อัตราส่วนความต่าง 2.44:1 กับพื้นการ์ด ซึ่งอ่าน
+    # ไม่ออกจริงบนจอ 320x240 ที่ระยะโต๊ะ (text_dim = 4.28:1)
+    cap = PAL.text_dim if connected else PAL.gray
+    val = PAL.text if connected else PAL.gray
+    for text, value, y in ((HIGH, rng.high, cfg.range_hi_y), (LOW, rng.low, cfg.range_lo_y)):
+        # คำกำกับกับตัวเลขคนละขนาด จัดก้นเสมอกันด้วย cap_dy ไม่ใช่หัวเสมอกัน
+        screen.line(draw, (cfg.range_cap_x, y + cfg.range_cap_dy), text,
+                    pil=cfg.range_cap_font_pil, board=cfg.range_cap_font, fill=cap, anchor="lt")
+        screen.line(draw, (cfg.range_val_x, y), value, pil=cfg.range_val_font_pil,
+                    board=cfg.range_val_font, fill=val, anchor="rt")
+
+    x1 = cfg.range_x + cfg.range_w - 1
+    rail = PAL.gray if connected else PAL.gray_dark
+    draw.rectangle([cfg.range_x, cfg.range_rail_y, x1, cfg.range_rail_y + cfg.range_rail_h - 1],
+                   fill=quantize565(rail))
+    # หมุดอยู่ใน *ราง* ทั้งตัวเสมอ ไม่ใช่จัดกึ่งกลางที่ตำแหน่งแล้วล้นออกไปครึ่งตัวที่ปลาย —
+    # ปลายรางคือค่าที่มีความหมาย (ต่ำสุด/สูงสุดของวัน) หมุดที่ล้นออกไปอ่านว่าทะลุช่วงไปแล้ว
+    pos = min(max(rng.pos, 0), 100)
+    mx = cfg.range_x + (pos * (cfg.range_w - cfg.range_mark_w) + 50) // 100
+    draw.rectangle([mx, cfg.range_mark_y, mx + cfg.range_mark_w - 1,
+                    cfg.range_mark_y + cfg.range_mark_h - 1],
+                   fill=quantize565(tone(change if change is not None else 0, connected)))
+
+
+def _hero(img: Image.Image, draw: ImageDraw.ImageDraw, row: Stock, rng: DayRange | None,
+          connected: bool, live: bool) -> None:
     """การ์ดของหุ้นตัวแรกในลิสต์ — คู่ขนานกับ `gen/crypto.py:_hero` ที่เขียนแยกกัน
 
     `live` = ตัวเลขชุดนี้ยังเดินอยู่จริงไหม ซึ่ง **ไม่ใช่** `connected`: ตลาดที่ปิดแล้ว
@@ -138,6 +198,8 @@ def _hero(img: Image.Image, draw: ImageDraw.ImageDraw, row: Stock, connected: bo
         x += draw.textlength(head, font=big)
     screen.bold_text(draw, (x, cfg.price_base_y), tail, screen.font(cfg.frac_font_pil), text)
 
+    if rng is not None:
+        _range(draw, rng, row.change, cfg, connected)
 
 
 def _row(img: Image.Image, draw: ImageDraw.ImageDraw, row: Stock, top: int,
@@ -190,7 +252,8 @@ def render(s: Stocks, phase: float = 0.0, cycle: int = 0) -> Image.Image:
             age.draw_age(draw, s.age, L.stocks.refresh_s, frozen)
         return img
 
-    _hero(img, draw, rows[0], s.connected, live=s.connected and not s.market_closed)
+    _hero(img, draw, rows[0], s.day_range, s.connected,
+          live=s.connected and not s.market_closed)
     for i, row in enumerate(rows[1:]):
         _row(img, draw, row, L.stocks.row_y + i * L.stocks.row_h, s.connected)
     if len(rows) == 1:

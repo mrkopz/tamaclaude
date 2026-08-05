@@ -2995,6 +2995,71 @@ func runAllTests() {
             "and it round trips")
     }
 
+    // แถบช่วงราคาคือสิ่งที่หน้าหุ้นวาดแทน sparkline ของคริปโต — Finnhub ไม่มีประวัติให้พล็อต
+    // แต่ให้ h/l ของวันมาทุกครั้ง · สิ่งที่ต้องพิสูจน์คือหมุดไม่มีวันหลุดออกนอกช่วงที่พิมพ์คู่กัน
+    suite("the day range rounds outward so the price never reads outside its own band") {
+        // ปัดออกนอก: 184.21 ลงเป็น 184 และ 192.01 ขึ้นเป็น 193 — ปัดใกล้สุดจะได้ 192
+        // แล้วราคา 192.01 ที่พิมพ์ตัวใหญ่อยู่ข้างๆ จะดูล้นเพดานของตัวเอง
+        let frame = StocksFrame(quotes: [
+            StockQuote(symbol: "AAPL", price: 189.44, change: -2.13, low: 184.21, high: 192.01),
+        ])
+        let r = frame.dayRange
+        equal(r?.low, "184", "the low rounds down")
+        equal(r?.high, "193", "and the high rounds up, never the other way")
+        equal(r?.position, 67, "the mark sits where the price is, measured before the rounding")
+
+        // ตัวคั่นหลักพันเหมือนราคา — สองบรรทัดบนการ์ดเดียวกันต้องอ่านเป็นตัวเลขชนิดเดียวกัน
+        equal(
+            StocksFrame(quotes: [
+                StockQuote(symbol: "NVDA", price: 1204.55, change: 7.4, low: 1121.4,
+                           high: 1204.55),
+            ]).dayRange?.low, "1,121", "four digits get the same comma the price gets")
+
+        // ต่ำกว่า 100 ยังต้องมีทศนิยมหนึ่งตำแหน่ง — "8" ถึง "9" คือช่วงที่ไม่เหลือข้อมูล
+        let penny = StocksFrame(quotes: [
+            StockQuote(symbol: "F", price: 8.9, change: 1.2, low: 8.42, high: 9.17),
+        ]).dayRange
+        equal(penny?.low, "8.4", "a cheap stock keeps one decimal")
+        equal(penny?.high, "9.2", "on both ends")
+
+        // ปลายรางคือค่าที่มีความหมาย หมุดจึงหนีบที่ 0 กับ 100 ไม่ใช่ล้นออกไป — ราคานอกช่วง
+        // เกิดจริงหลังเวลาทำการ ที่ `c` ขยับต่อแต่ h/l ของวันหยุดไปแล้ว
+        equal(
+            StocksFrame(quotes: [
+                StockQuote(symbol: "X", price: 200, change: 1, low: 180, high: 190),
+            ]).dayRange?.position, 100, "a price above the day's high pins the mark to the end")
+
+        // ช่วงที่ปลายสองข้างเท่ากันไม่มีตำแหน่งให้บอก — ก่อนตลาดเปิดเป็นแบบนั้นทั้งกระดาน
+        expect(
+            StocksFrame(quotes: [
+                StockQuote(symbol: "PRE", price: 31.5, change: 0),
+            ]).dayRange == nil, "no day range yet means no band at all, not a rail of zeroes")
+    }
+
+    suite("the day range travels as one key and is the first thing dropped when it must be") {
+        let quotes = [
+            StockQuote(symbol: "AAPL", price: 189.44, change: -2.13, low: 184.21, high: 192.01),
+            StockQuote(symbol: "MSFT", price: 412.9, change: 1.1, low: 408.0, high: 414.5),
+        ]
+        let frame = StocksFrame(quotes: quotes, age: 42)
+        let text = String(decoding: try frame.encoded(), as: UTF8.self)
+        equal(
+            text,
+            #"{"a":42,"c":[{"d":-21,"p":"189.44","s":"AAPL"},{"d":11,"p":"412.90","s":"MSFT"}],"#
+                + #""g":4,"r":{"h":"193","l":"184","t":67}}"#,
+            "one key for the head of the list, because one card is what draws it")
+
+        // ช่วงราคาเป็น *บริบท* ของแถวเดียว ส่วนเปอร์เซ็นต์เป็นข้อเท็จจริงของทุกแถว —
+        // ของที่คนน้อยที่สุดพึ่งพาต้องไปก่อนเสมอ
+        let tight = String(decoding: try frame.encoded(maxBytes: text.utf8.count - 1), as: UTF8.self)
+        expect(!tight.contains("\"r\""), "the band goes before the percentages do")
+        expect(tight.contains("\"d\""), "and the percentages are still there when it does")
+
+        // บีบจนไม่เหลือแถวแล้วต้องไม่มีแถบของแถวที่ไม่มีอยู่ค้างอยู่บนสาย
+        let hard = String(decoding: try frame.encoded(maxBytes: 60), as: UTF8.self)
+        expect(!hard.contains("\"r\""), "a band without its row never ships")
+    }
+
     suite("the stock watchlist is capped at five and keeps the order the user gave it") {
         var settings = StockSettings(
             symbols: ["aapl", "MSFT", "AAPL", "  ", "nvda", "tsla", "spy", "qqq"])
@@ -3033,8 +3098,15 @@ func runAllTests() {
             """.utf8)
         equal(
             try StocksSource.quote(symbol: "aapl", from: quote),
-            StockQuote(symbol: "AAPL", price: 189.44, change: -2.134),
+            StockQuote(symbol: "AAPL", price: 189.44, change: -2.134, low: 188.2, high: 191.0),
             "the symbol is upper case even when the user typed it in lower")
+
+        // ช่วงของวันมาในคำตอบเดิมทุกครั้ง — เคยถูกโยนทิ้ง ตอนนี้เป็นแถบบนการ์ด
+        // ก่อนตลาดเปิด Finnhub ไม่มีช่วงจะให้ ซึ่งต้องอ่านเป็น "ไม่มี" ไม่ใช่ "ศูนย์ถึงศูนย์"
+        equal(
+            try StocksSource.quote(
+                symbol: "PRE", from: Data(#"{"c":31.5,"dp":0.5,"pc":31.34}"#.utf8)).high, 0,
+            "a quote with no day range yet says so with zeroes")
 
         // หุ้นที่เพิ่งเข้าตลาดวันนี้ยังไม่มีราคาปิดครั้งก่อนให้เทียบ — ราคายังจริงและต้องขึ้นจอ
         equal(

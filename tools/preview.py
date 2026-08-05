@@ -324,7 +324,8 @@ CRYPTO_SCENES: dict[str, crypto.Crypto] = {
 
 # หน้าหุ้น — โครงเดียวกับหน้าคริปโต บวกสิ่งที่หุ้นมีแต่คริปโตไม่มี: ตลาดที่ปิดได้
 # ฉากถูกเลือกให้ครบสิ่งที่ต้องตัดสินด้วยตา: ขึ้น ลง นิ่งในจอเดียว · ตลาดปิดที่ต้องไม่อ่าน
-# ว่าท่อพัง · เฟรมที่ถูกบีบจนไม่มีคอลัมน์เปอร์เซ็นต์ · หน้าที่ยังไม่เคยได้ข้อมูล · ลิงก์หลุด
+# ว่าท่อพัง · เฟรมที่ถูกบีบจนไม่มีคอลัมน์เปอร์เซ็นต์ · หน้าที่ยังไม่เคยได้ข้อมูล · ลิงก์หลุด ·
+# แถบช่วงราคาที่ตัวเลขยาวสุดและหมุดชนปลายราง ซึ่งเป็นสองขีดจำกัดของบล็อกนั้น
 STOCK_SCENES: dict[str, stocks.Stocks] = {
     "full": stocks.Stocks(rows=[
         stocks.Stock("AAPL", "189.44", -21),
@@ -332,19 +333,27 @@ STOCK_SCENES: dict[str, stocks.Stocks] = {
         stocks.Stock("NVDA", "1,204.55", 30),
         stocks.Stock("TSLA", "177.02", -152),
         stocks.Stock("BRK.B", "412.10", 0),
-    ], age=25, mascot_state="thinking"),
+    ], day_range=stocks.DayRange("184", "193", 60), age=25, mascot_state="thinking"),
     # สองตัวต้องดูเหมือน watchlist สองตัว ไม่ใช่ห้าตัวที่หายไปสาม
     "short": stocks.Stocks(rows=[
         stocks.Stock("AAPL", "189.44", 3),
         stocks.Stock("SPY", "534.21", -8),
-    ], age=8),
+    ], day_range=stocks.DayRange("187", "191", 61), age=8),
+    # ขีดจำกัดของแถบช่วงราคา: ตัวเลขห้าหลักที่ยาวสุดเท่าที่บล็อกรับไหว และหมุดที่ชนปลายราง
+    # ขวาพอดี (ราคาปิดที่จุดสูงสุดของวัน ซึ่งเกิดจริงในวันที่ขึ้นแรง) — หมุดต้องไม่ล้นออกไป
+    "range_edge": stocks.Stocks(rows=[
+        stocks.Stock("NVDA", "1,204.55", 74),
+        stocks.Stock("AAPL", "189.44", 3),
+    ], day_range=stocks.DayRange("1,121", "1,204", 100), age=12),
     # ตลาดปิด: ราคาเก่าเป็นชั่วโมงคือเรื่องปกติ บรรทัดล่างต้องอธิบาย ไม่ใช่ตะโกนว่า stale
     "closed": stocks.Stocks(rows=[
         stocks.Stock("AAPL", "189.44", -21),
         stocks.Stock("MSFT", "412.90", 11),
         stocks.Stock("NVDA", "1,204.55", 30),
-    ], age=11 * 3600, market_closed=True, mascot_state="sleeping"),
-    # เฟรมที่ถูกบีบจนต้องทิ้งคอลัมน์เปอร์เซ็นต์ — ราคายังครบ ทิศทางหายไปทั้งหน้า
+    ], day_range=stocks.DayRange("186", "192", 57), age=11 * 3600, market_closed=True,
+        mascot_state="sleeping"),
+    # เฟรมที่ถูกบีบจนต้องทิ้งคอลัมน์เปอร์เซ็นต์ — ราคายังครบ ทิศทางหายไปทั้งหน้า และ
+    # ช่วงราคาก็ถูกทิ้งไปกับมันในขั้นก่อนหน้า (ดู `StocksFrame.encoded`) บล็อกจึงหายทั้งบล็อก
     "no_pct": stocks.Stocks(rows=[
         stocks.Stock("AAPL", "189.44", None),
         stocks.Stock("MSFT", "412.90", None),
@@ -353,10 +362,11 @@ STOCK_SCENES: dict[str, stocks.Stocks] = {
     # ยังไม่เคยได้เฟรมของหน้านี้เลย — ห้ามเป็นจอเปล่าหรือโครงว่าง (ADR-0002)
     "empty": stocks.Stocks(has_frame=False),
     # Mac หายไป: ตัวเลขค้างอยู่แต่ไม่มีใครรับรองแล้ว ลูกศรยังบอกทิศได้โดยไม่ต้องมีสี
+    # หมุดชนปลายซ้าย = ปิดที่จุดต่ำสุดของวัน ซึ่งเข้ากับ -2.1% ที่อยู่ข้างบนพอดี
     "offline": stocks.Stocks(rows=[
         stocks.Stock("AAPL", "189.44", -21),
         stocks.Stock("MSFT", "412.90", 11),
-    ], age=45 * 60, connected=False),
+    ], day_range=stocks.DayRange("189", "196", 0), age=45 * 60, connected=False),
 }
 
 

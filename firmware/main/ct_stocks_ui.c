@@ -21,6 +21,10 @@
 // จึงหยุดเดินตอนตลาดปิด และช่วงสุดสัปดาห์มันคือการเคลื่อนไหวของวันศุกร์
 #define CT_STOCKS_WINDOW_TEXT "today"
 
+// คำกำกับสองด้านของแถบช่วงราคา — ต้องตรงกับ HIGH/LOW ใน tools/gen/stocks.py
+#define CT_STOCKS_RANGE_HIGH_TEXT "HIGH"
+#define CT_STOCKS_RANGE_LOW_TEXT "LOW"
+
 // ตัวเลขราคาแบบตัวหนา — ป้ายสองใบซ้อนกัน เยื้องลงขวา 1px · สำเนาของ ct_crypto_ui.c
 // ด้วยเหตุผลเดียวกับที่ทุกอย่างในไฟล์นี้เป็นสำเนา (ดู [stocks] ใน layout.toml)
 // LVGL ที่คอมไพล์มาไม่มี montserrat ตัวหนาสักขนาด และน้ำหนักคือสิ่งที่ราคาใช้แทนขนาด
@@ -44,10 +48,14 @@ typedef struct {
 
 // การ์ดของหุ้นตัวแรก — ราคาแยกสองป้ายคนละขนาดที่นั่งเส้นฐานเดียวกัน เหมือนหน้าคริปโต
 //
-// **ไม่มีผืนวาดรูป 24 ชั่วโมง และนั่นคือความต่างข้อเดียวของเลย์เอาต์สองหน้า** — Finnhub
-// เหลือแต่ /quote ที่ให้ราคาปัจจุบัน ไม่มีประวัติจะวาด กล่องรูปที่เป็นเส้นเปล่าถาวรบอกว่า
-// มีอะไรพัง ทั้งที่ไม่มีอะไรพัง · คอลัมน์ที่เหลือยังตรงกับหน้าคริปโตทุกพิกเซล คนที่ปัดสลับ
-// สองหน้าต้องเห็นของอยู่ที่เดิม (ดู [stocks] ใน layout.toml)
+// **ช่องขวาล่างเป็นแถบช่วงราคาของวัน ไม่ใช่ผืนวาดรูป 24 ชั่วโมง** — Finnhub เหลือแต่
+// /quote ที่ไม่มีประวัติจะพล็อต แต่มี h/l ของวันนี้มาในคำตอบเดิมทุกครั้ง แถบนี้จึงตอบ
+// คำถามคนละข้อกับ sparkline: ราคาตอนนี้ยืนตรงไหนของสวิงวันนี้ ไม่ใช่มันเดินทางมายังไง
+// · คอลัมน์ที่เหลือยังตรงกับหน้าคริปโตทุกพิกเซล คนที่ปัดสลับสองหน้าต้องเห็นของอยู่ที่เดิม
+// (ดู [stocks] ใน layout.toml)
+//
+// วาดด้วย lv_obj สี่เหลี่ยมสองใบ ไม่ใช่ผืนวาดแบบลูกศร/sparkline — ที่นั่นต้องมีผืนเพราะ
+// รูปทรงเปลี่ยนตามข้อมูล ส่วนที่นี่มีแค่สองกล่องที่ *ตำแหน่ง* เปลี่ยน ซึ่ง LVGL ย้ายให้เอง
 typedef struct {
     lv_obj_t *card;
     lv_obj_t *icon;
@@ -57,6 +65,12 @@ typedef struct {
     lv_obj_t *arrow;
     lv_obj_t *pct;
     lv_obj_t *win;  // แคปซูลบอกหน้าต่างเวลา เกาะซ้ายลูกศร
+    lv_obj_t *hi_cap;
+    lv_obj_t *hi_val;
+    lv_obj_t *lo_cap;
+    lv_obj_t *lo_val;
+    lv_obj_t *rail;  // มาตราส่วนของช่วงราคา — ไม่มีทิศทาง จึงเทาเสมอ
+    lv_obj_t *mark;  // ราคาปัจจุบันบนมาตราส่วนนั้น — สีทิศทางชุดเดียวกับลูกศร
 } ct_stocks_hero_ui_t;
 
 static ct_stocks_hero_ui_t s_hero;
@@ -167,6 +181,18 @@ static lv_obj_t *logo_icon(lv_obj_t *parent, int x, int y)
     return o;
 }
 
+// สี่เหลี่ยมทึบใบเดียว ไม่มีขอบไม่มีมุมมน — รางกับหมุดของแถบช่วงราคาเป็นรูปทรงแบบนี้ทั้งคู่
+static lv_obj_t *bar(lv_obj_t *parent, int x, int y, int w, int h)
+{
+    lv_obj_t *o = lv_obj_create(parent);
+    lv_obj_remove_style_all(o);
+    lv_obj_set_size(o, w, h);
+    lv_obj_set_pos(o, x, y);
+    lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+    return o;
+}
+
 static lv_obj_t *canvas(lv_obj_t *parent, int x, int y, int w, int h, lv_event_cb_t cb,
                         int index)
 {
@@ -239,6 +265,32 @@ void ct_stocks_ui_init(lv_obj_t *parent, const ct_stocks_t *frame, const bool *h
     lv_label_set_text(win_text, CT_STOCKS_WINDOW_TEXT);
     lv_obj_center(win_text);
 
+    // --- แถบช่วงราคาของวัน ---
+    // คำกำกับถ่วงลง cap_dy เพราะฟอนต์เล็กกว่าตัวเลข 2px — ก้นตัวอักษรต้องเสมอกัน ไม่ใช่หัว
+    // ตัวเลขได้ CT_COL_TEXT เต็ม ไม่ใช่ text_dim: มันคือราคาจริงเท่ากับที่แถวเล็กแสดง และ
+    // ที่ฟอนต์ 14 ข้างราคา 36px ตัวหนา มันแย่งลำดับสายตาไปไม่ได้อยู่แล้ว
+    _Static_assert(CT_STOCKS_RANGE_CAP_FONT == 12, "layout.toml and the font here must agree");
+    _Static_assert(CT_STOCKS_RANGE_VAL_FONT == 14, "layout.toml and the font here must agree");
+    s_hero.hi_cap = label(parent, ct_font_text_12(), CT_COL_TEXT_DIM, CT_STOCKS_RANGE_CAP_X,
+                          CT_STOCKS_RANGE_HI_Y + CT_STOCKS_RANGE_CAP_DY);
+    lv_label_set_text(s_hero.hi_cap, CT_STOCKS_RANGE_HIGH_TEXT);
+    s_hero.lo_cap = label(parent, ct_font_text_12(), CT_COL_TEXT_DIM, CT_STOCKS_RANGE_CAP_X,
+                          CT_STOCKS_RANGE_LO_Y + CT_STOCKS_RANGE_CAP_DY);
+    lv_label_set_text(s_hero.lo_cap, CT_STOCKS_RANGE_LOW_TEXT);
+    // กรอบเริ่มที่ขอบขวาของคำกำกับ ไม่ใช่ขอบซ้ายของบล็อก — ตัวเลขยาวผิดปกติต้องถูกกรอบตัด
+    // ไม่ใช่วิ่งไปทับคำว่า HIGH
+    int val_w = CT_STOCKS_RANGE_VAL_X - CT_STOCKS_RANGE_CAP_X -
+                lv_text_get_width(CT_STOCKS_RANGE_HIGH_TEXT,
+                                  lv_strlen(CT_STOCKS_RANGE_HIGH_TEXT), ct_font_text_12(), 0);
+    s_hero.hi_val = right_label(parent, ct_font_text_14(), CT_COL_TEXT, CT_STOCKS_RANGE_VAL_X,
+                                CT_STOCKS_RANGE_HI_Y, val_w);
+    s_hero.lo_val = right_label(parent, ct_font_text_14(), CT_COL_TEXT, CT_STOCKS_RANGE_VAL_X,
+                                CT_STOCKS_RANGE_LO_Y, val_w);
+    s_hero.rail = bar(parent, CT_STOCKS_RANGE_X, CT_STOCKS_RANGE_RAIL_Y, CT_STOCKS_RANGE_W,
+                      CT_STOCKS_RANGE_RAIL_H);
+    s_hero.mark = bar(parent, CT_STOCKS_RANGE_X, CT_STOCKS_RANGE_MARK_Y, CT_STOCKS_RANGE_MARK_W,
+                      CT_STOCKS_RANGE_MARK_H);
+
     for (int i = 0; i < CT_STOCKS_LIST_ROWS; i++) {
         int top = CT_STOCKS_ROW_Y + i * CT_STOCKS_ROW_H;
         int ty = top + CT_STOCKS_ROW_TEXT_DY;
@@ -301,6 +353,50 @@ static int32_t text_w(lv_obj_t *l, const char *s)
     return lv_text_get_width(s, lv_strlen(s), lv_obj_get_style_text_font(l, LV_PART_MAIN), 0);
 }
 
+static void show_range(bool on)
+{
+    show(s_hero.hi_cap, on);
+    show(s_hero.hi_val, on);
+    show(s_hero.lo_cap, on);
+    show(s_hero.lo_val, on);
+    show(s_hero.rail, on);
+    show(s_hero.mark, on);
+}
+
+// แถบช่วงราคาของวัน — พอร์ตคู่กับ `_range()` ใน tools/gen/stocks.py
+//
+// หมุดใช้สีทิศทางชุดเดียวกับลูกศรและเปอร์เซ็นต์ (`ct_trend_tone`) เพราะมันเป็นตัวแทนของ
+// "ราคาตอนนี้" ตัวเดียวกับที่ตัวเลขใหญ่พูดถึง ไม่ใช่ของใหม่ที่ต้องเรียนรู้สี · รางเป็นเทาเสมอ
+// มาตราส่วนไม่มีทิศทาง
+static void draw_range(const ct_stocks_row_t *data)
+{
+    show_range(*s_has_frame && s_frame->has_range);
+    if (!*s_has_frame || !s_frame->has_range) return;
+
+    const ct_stocks_range_t *r = &s_frame->range;
+    uint16_t cap = s_connected ? CT_COL_TEXT_DIM : CT_COL_GRAY;
+    uint16_t val = s_connected ? CT_COL_TEXT : CT_COL_GRAY;
+    lv_obj_set_style_text_color(s_hero.hi_cap, ct_color(cap), 0);
+    lv_obj_set_style_text_color(s_hero.lo_cap, ct_color(cap), 0);
+    lv_obj_set_style_text_color(s_hero.hi_val, ct_color(val), 0);
+    lv_obj_set_style_text_color(s_hero.lo_val, ct_color(val), 0);
+    lv_label_set_text(s_hero.hi_val, r->high);
+    lv_label_set_text(s_hero.lo_val, r->low);
+
+    lv_obj_set_style_bg_color(s_hero.rail,
+                              ct_color(s_connected ? CT_COL_GRAY : CT_COL_GRAY_DARK), 0);
+    // หมุดอยู่ใน *ราง* ทั้งตัวเสมอ ไม่ใช่จัดกึ่งกลางที่ตำแหน่งแล้วล้นออกไปครึ่งตัวที่ปลาย —
+    // ปลายรางคือค่าที่มีความหมาย (ต่ำสุด/สูงสุดของวัน) หมุดที่ล้นอ่านว่าทะลุช่วงไปแล้ว
+    // ปัดครึ่งขึ้นด้วย +50 ก่อนหาร เหมือน `_range()` ฝั่ง Python (round() ของมันปัดไปเลขคู่
+    // จึงห้ามใช้ — ดู `trend.fold` ที่เจอปัญหาเดียวกันมาก่อน)
+    lv_obj_set_x(s_hero.mark,
+                 CT_STOCKS_RANGE_X +
+                     (r->pos * (CT_STOCKS_RANGE_W - CT_STOCKS_RANGE_MARK_W) + 50) / 100);
+    lv_obj_set_style_bg_color(
+        s_hero.mark,
+        ct_color(ct_trend_tone(data->has_change ? data->change : 0, s_connected)), 0);
+}
+
 static void draw_hero(const ct_stocks_row_t *data, bool live)
 {
     uint16_t text = s_connected ? CT_COL_TEXT : CT_COL_GRAY;
@@ -332,6 +428,10 @@ static void draw_hero(const ct_stocks_row_t *data, bool live)
     // วัดจากใบบน ไม่ใช่ใบล่าง — ใบล่างเยื้องไป 1px แล้ว
     bold_set_x(&s_hero.price_frac,
                CT_STOCKS_PRICE_X + (head[0] ? text_w(s_hero.price_int.over, head) : 0));
+
+    // ช่วงราคาไม่ได้ผูกกับเปอร์เซ็นต์ แม้ตอนบีบเฟรม Mac จะทิ้งช่วงราคาไปก่อนก็ตาม —
+    // การผูกสองอย่างนี้ในตัววาดคือการเดาลำดับการบีบของอีกฝั่ง ซึ่งเป็นสิ่งที่เปลี่ยนได้
+    draw_range(data);
 
     show(s_hero.pct, data->has_change);
     show(s_hero.arrow, data->has_change);
@@ -401,6 +501,7 @@ void ct_stocks_ui_redraw(void)
         show(s_hero.pct, false);
         show(s_hero.arrow, false);
         show(s_hero.win, false);
+        show_range(false);
     }
 
     for (int i = 0; i < CT_STOCKS_LIST_ROWS; i++) {

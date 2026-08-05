@@ -47,6 +47,23 @@ bool ct_stocks_parse(const char *json, int len, ct_stocks_t *out)
     const cJSON *closed = cJSON_GetObjectItem(root, "k");
     tmp.market_closed = cJSON_IsNumber(closed) && closed->valueint != 0;
 
+    // ช่วงราคาของวัน — ต้องครบทั้งสามฟิลด์ถึงจะวาดได้ ปลายเดียวกับหมุดที่ไม่รู้ตำแหน่ง
+    // อ่านเป็นมาตราส่วนที่โกหก ซึ่งแย่กว่าไม่มีบล็อกนั้นเลย
+    const cJSON *range = cJSON_GetObjectItem(root, "r");
+    if (cJSON_IsObject(range)) {
+        const cJSON *lo = cJSON_GetObjectItem(range, "l");
+        const cJSON *hi = cJSON_GetObjectItem(range, "h");
+        const cJSON *pos = cJSON_GetObjectItem(range, "t");
+        if (cJSON_IsString(lo) && lo->valuestring && cJSON_IsString(hi) && hi->valuestring &&
+            cJSON_IsNumber(pos)) {
+            strncpy(tmp.range.low, lo->valuestring, sizeof(tmp.range.low) - 1);
+            strncpy(tmp.range.high, hi->valuestring, sizeof(tmp.range.high) - 1);
+            // หนีบที่นี่ ไม่ใช่ตอนวาด — เฟรมพังต้องหยุดที่ด่านที่แปลงมันเป็นข้อมูล
+            tmp.range.pos = pos->valueint < 0 ? 0 : (pos->valueint > 100 ? 100 : pos->valueint);
+            tmp.has_range = true;
+        }
+    }
+
     cJSON_Delete(root);
     *out = tmp;  // เขียนทับทีเดียวตอนท้าย — JSON พังกลางทางต้องไม่ทิ้งภาพครึ่งๆ
     return true;

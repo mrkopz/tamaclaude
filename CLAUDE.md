@@ -244,9 +244,12 @@ look at `out/`. It proves the *design*, not the C renderer.
 - **The 24h shape is 16 levels wide on all three sides.** `[crypto] spark_cols` sizes the C
   array, `CryptoFrame.sparkPoints` caps what the Mac sends, and a 17th point is bytes the board
   drops — same shape as the weather strip, and `tamatest` reads `layout.h` to check. **The
-  stocks page has no shape at all**: Finnhub's free tier has no history endpoint, and a
-  permanently empty chart box reads as breakage. Everything else on the two pages stays pixel
-  for pixel identical, because the user swipes between them.
+  stocks page draws a day-range band in that same box instead**: Finnhub's free tier has no
+  history endpoint to plot, but every `/quote` carries today's `h`/`l`, so the box answers a
+  different question — where the price stands in today's swing, not how it got there. It ships
+  as one `"r"` key for the hero row only, and it is the first thing the squeeze drops.
+  Everything else on the two pages stays pixel for pixel identical, because the user swipes
+  between them.
 - **A sparkline's baseline is its first point**, which is the 24h open. That is what makes the
   last bar agree with the printed percentage by construction rather than by luck, and it is why
   `fold` must keep both ends (`gen/trend.py` ↔ `ct_trend.c` ↔ `CryptoSource.spark`, all three
