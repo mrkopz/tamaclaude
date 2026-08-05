@@ -27,6 +27,23 @@ def font(size: int) -> ImageFont.FreeTypeFont:
     return _FONTS[size]
 
 
+def bold_text(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str,
+              fnt: ImageFont.FreeTypeFont, fill: str, anchor: str = "ls") -> None:
+    """ตัวหนาแบบที่บอร์ดทำได้ — วาดซ้ำเยื้อง 1px ลงขวา
+
+    LVGL ที่คอมไพล์มาไม่มี montserrat ตัวหนาสักขนาด และการเพิ่มเข้าไปแปลว่าแฟลชอีกก้อน
+    ต่อหนึ่งขนาด · ฝั่งบอร์ดคือป้ายสองใบซ้อนกัน (`bold_pair` ใน ct_crypto_ui.c)
+
+    **ไม่ใช่ `stroke_width=1`** ซึ่งเป็นท่าที่แผงโควตาใช้อยู่ (`_usage_row`) — stroke
+    หนาออกทุกทิศรวมทั้งซ้ายบน ป้ายซ้อนหนาลงขวาอย่างเดียว ที่ 24px ต่างกันจนมองไม่ออก
+    แต่ตัวเลขราคา 36px ต่างกันเป็นน้ำหนักคนละระดับ · ที่นี่เลือกให้ตรงกับบอร์ด
+    """
+    x, y = xy
+    col = quantize565(fill)
+    draw.text((x, y), text, font=fnt, fill=col, anchor=anchor)
+    draw.text((x + 1, y + 1), text, font=fnt, fill=col, anchor=anchor)
+
+
 def _drawable_only(**fields: str) -> None:
     """กันข้อความสาธิตที่ฟอนต์บนบอร์ดวาดไม่ได้ — จะได้กล่องสี่เหลี่ยมแทน
 

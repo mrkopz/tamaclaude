@@ -15,6 +15,20 @@
 // แถวเล็กที่อยู่ใต้การ์ด — หุ้นตัวแรกได้การ์ด ที่เหลือได้แถว
 #define CT_STOCKS_LIST_ROWS (CT_STOCKS_ROWS - 1)
 
+// หน้าต่างเวลาของเปอร์เซ็นต์บนการ์ด — ต้องตรงกับ WINDOW ใน gen/stocks.py
+// **ไม่ใช่ "24h" เหมือนหน้าคริปโต** — `dp` ของ Finnhub เทียบราคาปิดครั้งก่อน ตัวเลขนี้
+// จึงหยุดเดินตอนตลาดปิด และช่วงสุดสัปดาห์มันคือการเคลื่อนไหวของวันศุกร์
+#define CT_STOCKS_WINDOW_TEXT "today"
+
+// ตัวเลขราคาแบบตัวหนา — ป้ายสองใบซ้อนกัน เยื้องลงขวา 1px · สำเนาของ ct_crypto_ui.c
+// ด้วยเหตุผลเดียวกับที่ทุกอย่างในไฟล์นี้เป็นสำเนา (ดู [stocks] ใน layout.toml)
+// LVGL ที่คอมไพล์มาไม่มี montserrat ตัวหนาสักขนาด และน้ำหนักคือสิ่งที่ราคาใช้แทนขนาด
+// 48px เดิม หลังหน้าคริปโตมี logo มายืนบนการ์ด
+typedef struct {
+    lv_obj_t *under;  // สร้างก่อน = ถูกวาดก่อน = อยู่ล่าง
+    lv_obj_t *over;
+} ct_bold_t;
+
 static const ct_stocks_t *s_frame;
 static const bool *s_has_frame;
 static bool s_connected;
@@ -35,10 +49,11 @@ typedef struct {
 typedef struct {
     lv_obj_t *card;
     lv_obj_t *sym;
-    lv_obj_t *price_int;
-    lv_obj_t *price_frac;
+    ct_bold_t price_int;
+    ct_bold_t price_frac;
     lv_obj_t *arrow;
     lv_obj_t *pct;
+    lv_obj_t *win;  // แคปซูลบอกหน้าต่างเวลา เกาะซ้ายลูกศร
 } ct_stocks_hero_ui_t;
 
 static ct_stocks_hero_ui_t s_hero;
@@ -99,7 +114,7 @@ static lv_obj_t *right_label(lv_obj_t *parent, const lv_font_t *font, uint16_t c
 
 // ป้ายที่วางด้วย **เส้นฐาน** ไม่ใช่ขอบบน — สองป้ายที่ฟอนต์คนละขนาดจะเรียงเป็นตัวเลข
 // ก้อนเดียวกันได้ก็ต่อเมื่อเส้นฐานตรงกัน · ไม่ผ่าน `ct_label_set_pos` เพราะฟอนต์พวกนี้
-// (montserrat 24/48) ไม่มี fallback ไทย และไม่ต้องมี — มันวาดแต่ตัวเลขที่ Mac จัดรูปมาแล้ว
+// (montserrat 18/24/36) ไม่มี fallback ไทย และไม่ต้องมี — มันวาดแต่ตัวเลขที่ Mac จัดรูปมาแล้ว
 static lv_obj_t *baseline_label(lv_obj_t *parent, const lv_font_t *font, uint16_t color, int x,
                                 int baseline)
 {
@@ -109,6 +124,33 @@ static lv_obj_t *baseline_label(lv_obj_t *parent, const lv_font_t *font, uint16_
     lv_label_set_text(l, "");
     lv_obj_set_pos(l, x, baseline - (font->line_height - font->base_line));
     return l;
+}
+
+static ct_bold_t bold_label(lv_obj_t *parent, const lv_font_t *font, uint16_t color, int x,
+                            int baseline)
+{
+    ct_bold_t b;
+    b.under = baseline_label(parent, font, color, x + 1, baseline + 1);
+    b.over = baseline_label(parent, font, color, x, baseline);
+    return b;
+}
+
+static void bold_set_text(ct_bold_t *b, const char *s)
+{
+    lv_label_set_text(b->under, s);
+    lv_label_set_text(b->over, s);
+}
+
+static void bold_set_color(ct_bold_t *b, uint16_t color)
+{
+    lv_obj_set_style_text_color(b->under, ct_color(color), 0);
+    lv_obj_set_style_text_color(b->over, ct_color(color), 0);
+}
+
+static void bold_set_x(ct_bold_t *b, int x)
+{
+    lv_obj_set_x(b->under, x + 1);
+    lv_obj_set_x(b->over, x);
 }
 
 static lv_obj_t *canvas(lv_obj_t *parent, int x, int y, int w, int h, lv_event_cb_t cb,
@@ -128,10 +170,10 @@ void ct_stocks_ui_init(lv_obj_t *parent, const ct_stocks_t *frame, const bool *h
     s_frame = frame;
     s_has_frame = has_frame;
 
-    _Static_assert(CT_STOCKS_INT_FONT == 48, "layout.toml and the font here must agree");
-    _Static_assert(CT_STOCKS_FRAC_FONT == 24, "layout.toml and the font here must agree");
+    _Static_assert(CT_STOCKS_INT_FONT == 36, "layout.toml and the font here must agree");
+    _Static_assert(CT_STOCKS_FRAC_FONT == 18, "layout.toml and the font here must agree");
     _Static_assert(CT_STOCKS_PCT_FONT == 24, "layout.toml and the font here must agree");
-    _Static_assert(CT_STOCKS_SYM_FONT == 14, "layout.toml and the font here must agree");
+    _Static_assert(CT_STOCKS_SYM_FONT == 24, "layout.toml and the font here must agree");
     _Static_assert(CT_STOCKS_ROW_FONT == 14, "layout.toml and the font here must agree");
 
     // การ์ดต้องเกิดก่อนทุกอย่างที่วางทับมัน — LVGL วาดลูกตามลำดับที่ถูกสร้าง
@@ -144,19 +186,37 @@ void ct_stocks_ui_init(lv_obj_t *parent, const ct_stocks_t *frame, const bool *h
     lv_obj_set_style_border_width(s_hero.card, 1, 0);
     lv_obj_set_style_border_opa(s_hero.card, LV_OPA_COVER, 0);
 
-    s_hero.sym = label(parent, ct_font_text_14(), CT_COL_TEXT, CT_STOCKS_SYM_X, CT_STOCKS_SYM_Y);
-    lv_obj_set_width(s_hero.sym, CT_STOCKS_SYM_W);
-    lv_label_set_long_mode(s_hero.sym, LV_LABEL_LONG_DOT);
+    // ไม่ใช่ `ct_font_text_14()` เหมือนแถวเล็ก — 24px ไม่มีบิตแมปไทย และไม่ต้องมี
+    // สัญลักษณ์เป็น ASCII ที่บริการเป็นคนบอก (ดู `sym_base_y` ใน layout.toml)
+    s_hero.sym = baseline_label(parent, &lv_font_montserrat_24, CT_COL_TEXT, CT_STOCKS_SYM_X,
+                                CT_STOCKS_SYM_BASE_Y);
 
-    s_hero.price_int = baseline_label(parent, &lv_font_montserrat_48, CT_COL_TEXT,
-                                      CT_STOCKS_PRICE_X, CT_STOCKS_PRICE_BASE_Y);
-    s_hero.price_frac = baseline_label(parent, &lv_font_montserrat_24, CT_COL_TEXT,
-                                       CT_STOCKS_PRICE_X, CT_STOCKS_PRICE_BASE_Y);
+    s_hero.price_int = bold_label(parent, &lv_font_montserrat_36, CT_COL_TEXT,
+                                  CT_STOCKS_PRICE_X, CT_STOCKS_PRICE_BASE_Y);
+    s_hero.price_frac = bold_label(parent, &lv_font_montserrat_18, CT_COL_TEXT,
+                                   CT_STOCKS_PRICE_X, CT_STOCKS_PRICE_BASE_Y);
     s_hero.pct = baseline_label(parent, &lv_font_montserrat_24, CT_COL_TEXT_DIM, 0,
                                 CT_STOCKS_PCT_BASE_Y);
     s_hero.arrow =
         canvas(parent, 0, CT_STOCKS_ARROW_Y, CT_STOCKS_ARROW_GRID * CT_STOCKS_ARROW_PX,
                CT_STOCKS_ARROW_GRID * CT_STOCKS_ARROW_PX, arrow_draw_cb, 0);
+    // แคปซูล: กล่องขอบ 1px รัศมีครึ่งความสูง พื้นโปร่ง + ป้ายจัดกลางข้างใน
+    // สูงเท่าแถบที่หมึกของเปอร์เซ็นต์กินจริง (ดู `win_y`/`win_h` ใน layout.toml) ปลายบน
+    // ล่างจึงเสมอกันกับตัวเลข ไม่ใช่จัดกลางโดยประมาณ · เลื่อนทั้งกล่องตามลูกศรตอนวาด
+    s_hero.win = lv_obj_create(parent);
+    lv_obj_remove_style_all(s_hero.win);
+    lv_obj_set_size(s_hero.win, CT_STOCKS_WIN_W, CT_STOCKS_WIN_H);
+    lv_obj_set_y(s_hero.win, CT_STOCKS_WIN_Y);
+    lv_obj_remove_flag(s_hero.win, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_radius(s_hero.win, CT_STOCKS_WIN_R, 0);
+    lv_obj_set_style_border_width(s_hero.win, 1, 0);
+    lv_obj_set_style_border_opa(s_hero.win, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(s_hero.win, ct_color(CT_COL_TEXT_DIM), 0);
+    lv_obj_t *win_text = lv_label_create(s_hero.win);
+    lv_obj_set_style_text_font(win_text, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(win_text, ct_color(CT_COL_TEXT_DIM), 0);
+    lv_label_set_text(win_text, CT_STOCKS_WINDOW_TEXT);
+    lv_obj_center(win_text);
 
     for (int i = 0; i < CT_STOCKS_LIST_ROWS; i++) {
         int top = CT_STOCKS_ROW_Y + i * CT_STOCKS_ROW_H;
@@ -188,9 +248,12 @@ void ct_stocks_ui_init(lv_obj_t *parent, const ct_stocks_t *frame, const bool *h
     ct_mini_attach(parent);
 
     s_age = ct_age_label(parent);
-    s_empty = label(parent, ct_font_text_14(), CT_COL_TEXT, CT_STOCKS_SYM_X, CT_STOCKS_EMPTY_Y);
+    // ไม่ใช่ SYM_X — สัญลักษณ์เยื้องไป 58 เพื่อจองช่อง logo ให้ตรงกับหน้าคริปโต แต่
+    // หน้าจอตอนไม่มีข้อมูลไม่มีอะไรให้จอง (ดู CT_STOCKS_EMPTY_X ใน layout.toml)
+    s_empty =
+        label(parent, ct_font_text_14(), CT_COL_TEXT, CT_STOCKS_EMPTY_X, CT_STOCKS_EMPTY_Y);
     lv_label_set_text(s_empty, "No stocks yet");
-    s_empty_sub = label(parent, ct_font_text_12(), CT_COL_TEXT_DIM, CT_STOCKS_SYM_X,
+    s_empty_sub = label(parent, ct_font_text_12(), CT_COL_TEXT_DIM, CT_STOCKS_EMPTY_X,
                         CT_STOCKS_EMPTY_SUB_Y);
     lv_label_set_text(s_empty_sub, "add symbols in the mac app");
 
@@ -201,6 +264,12 @@ static void show(lv_obj_t *obj, bool on)
 {
     if (on) lv_obj_remove_flag(obj, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void bold_show(ct_bold_t *b, bool on)
+{
+    show(b->under, on);
+    show(b->over, on);
 }
 
 // ความกว้างของ *ตัวหนังสือ* ไม่ใช่ของกรอบ — ป้ายชิดขวาที่กรอบกว้างคงที่จะรายงานความกว้าง
@@ -227,17 +296,19 @@ static void draw_hero(const ct_stocks_row_t *data, bool live)
     char head[CT_STOCKS_PRICE_LEN], tail[CT_STOCKS_PRICE_LEN];
     ct_trend_split_price(data->price, CT_STOCKS_INT_DIGITS_MAX, head, sizeof(head), tail,
                          sizeof(tail));
-    lv_label_set_text(s_hero.price_int, head);
-    lv_label_set_text(s_hero.price_frac, tail);
-    lv_obj_set_style_text_color(s_hero.price_int, ct_color(text), 0);
-    lv_obj_set_style_text_color(s_hero.price_frac, ct_color(text), 0);
-    show(s_hero.price_int, head[0] != '\0');
+    bold_set_text(&s_hero.price_int, head);
+    bold_set_text(&s_hero.price_frac, tail);
+    bold_set_color(&s_hero.price_int, text);
+    bold_set_color(&s_hero.price_frac, text);
+    bold_show(&s_hero.price_int, head[0] != '\0');
     // ก้อนเล็กเริ่มตรงที่ก้อนใหญ่จบ ไม่ใช่ที่พิกัดคงที่ — ความกว้างของจำนวนเต็มเปลี่ยนตามราคา
-    lv_obj_set_x(s_hero.price_frac,
-                 CT_STOCKS_PRICE_X + (head[0] ? text_w(s_hero.price_int, head) : 0));
+    // วัดจากใบบน ไม่ใช่ใบล่าง — ใบล่างเยื้องไป 1px แล้ว
+    bold_set_x(&s_hero.price_frac,
+               CT_STOCKS_PRICE_X + (head[0] ? text_w(s_hero.price_int.over, head) : 0));
 
     show(s_hero.pct, data->has_change);
     show(s_hero.arrow, data->has_change);
+    show(s_hero.win, data->has_change);
     if (!data->has_change) return;
 
     char pct[16];
@@ -248,8 +319,11 @@ static void draw_hero(const ct_stocks_row_t *data, bool live)
     // ลูกศรเกาะตัวเลข: วัดความกว้างจริงก่อนแล้วค่อยวาง ไม่ใช่ตั้งพิกัดตายตัวไว้ทางซ้าย
     int32_t pw = text_w(s_hero.pct, pct);
     lv_obj_set_x(s_hero.pct, CT_STOCKS_PCT_X - pw);
-    lv_obj_set_x(s_hero.arrow, CT_STOCKS_PCT_X - pw - CT_STOCKS_ARROW_GAP -
-                                   CT_STOCKS_ARROW_GRID * CT_STOCKS_ARROW_PX);
+    int32_t ax = CT_STOCKS_PCT_X - pw - CT_STOCKS_ARROW_GAP -
+                 CT_STOCKS_ARROW_GRID * CT_STOCKS_ARROW_PX;
+    lv_obj_set_x(s_hero.arrow, ax);
+    // ขอบขวาของป้ายอยู่ที่ ax - win_gap · กรอบชิดขวา ตำแหน่งจึงเป็นขอบขวาลบความกว้างกรอบ
+    lv_obj_set_x(s_hero.win, ax - CT_STOCKS_WIN_GAP - CT_STOCKS_WIN_W);
     lv_obj_invalidate(s_hero.arrow);
 }
 
@@ -288,13 +362,14 @@ void ct_stocks_ui_redraw(void)
 
     show(s_hero.card, count > 0);
     show(s_hero.sym, count > 0);
-    show(s_hero.price_frac, count > 0);
+    bold_show(&s_hero.price_frac, count > 0);
     if (count > 0) {
         draw_hero(&s_frame->rows[0], live);
     } else {
-        show(s_hero.price_int, false);
+        bold_show(&s_hero.price_int, false);
         show(s_hero.pct, false);
         show(s_hero.arrow, false);
+        show(s_hero.win, false);
     }
 
     for (int i = 0; i < CT_STOCKS_LIST_ROWS; i++) {

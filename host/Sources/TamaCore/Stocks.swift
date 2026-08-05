@@ -107,7 +107,8 @@ public struct StocksFrame: PageFrame, Equatable, Codable, Sendable {
     /// พารามิเตอร์ยังอยู่เพราะลำดับการบีบเฟรมเรียกมันเป็นขั้นแรกอยู่ (`encoded`) การลบทิ้ง
     /// แปลว่าต้องแยกลูปบีบของสองหน้าออกจากกัน ทั้งที่ขั้นที่เหลือยังเหมือนกันทุกขั้น
     public static func priceText(_ price: Double, trim: Int = 0) -> String {
-        String(format: "%.\(decimals(for: price))f", price)
+        // ตัวคั่นหลักพันเหมือนหน้าคริปโต — สองหน้านี้ผู้ใช้ปัดสลับไปมา ตัวเลขต้องอ่านเหมือนกัน
+        Text.grouped(String(format: "%.\(decimals(for: price))f", price))
     }
 
     private func rows(trim: Int, percent: Bool, count: Int) -> [Row] {

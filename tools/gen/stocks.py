@@ -34,6 +34,9 @@ pct_text = trend.pct_text
 # ข้อความที่บอกว่าทำไมตัวเลขถึงค้าง — ต้องตรงกับ ct_stocks_ui.c
 CLOSED = "market closed"
 
+# หน้าต่างเวลาของเปอร์เซ็นต์บนการ์ด — ต้องตรงกับ CT_STOCKS_WINDOW_TEXT ใน ct_stocks_ui.c
+WINDOW = "today"
+
 
 @dataclass(slots=True)
 class Stock:
@@ -67,6 +70,22 @@ class Stocks:
     bar: topbar.Bar = field(default_factory=topbar.Bar)
 
 
+def _window(draw: ImageDraw.ImageDraw, text: str, arrow_x: float, cfg, connected: bool) -> None:
+    """แคปซูลบอกหน้าต่างเวลาของเปอร์เซ็นต์ — คู่ขนานกับ `gen/crypto.py:_window` ที่เขียนแยกกัน
+
+    **คำข้างในไม่ใช่ "24h"** — `dp` ของ Finnhub เทียบกับราคาปิดครั้งก่อน ตัวเลขนี้จึงหยุด
+    เดินตอนตลาดปิด และช่วงสุดสัปดาห์มันคือการเคลื่อนไหวของวันศุกร์ (ดู `WINDOW`)
+    """
+    col = quantize565(PAL.text_dim if connected else PAL.gray)
+    x1 = arrow_x - cfg.win_gap
+    x0 = x1 - cfg.win_w
+    y1 = cfg.win_y + cfg.win_h - 1
+    draw.rounded_rectangle([x0, cfg.win_y, x1 - 1, y1], radius=cfg.win_r, outline=col, width=1)
+    # กึ่งกลางกล่อง ไม่ใช่เส้นฐาน — ข้างในแคปซูลไม่มีอะไรให้เรียงเส้นฐานด้วย
+    draw.text(((x0 + x1) / 2, (cfg.win_y + y1) / 2 + 1), text,
+              font=screen.font(cfg.win_font_pil), fill=col, anchor="mm")
+
+
 def _hero(draw: ImageDraw.ImageDraw, row: Stock, connected: bool, live: bool) -> None:
     """การ์ดของหุ้นตัวแรกในลิสต์ — คู่ขนานกับ `gen/crypto.py:_hero` ที่เขียนแยกกัน
 
@@ -84,8 +103,10 @@ def _hero(draw: ImageDraw.ImageDraw, row: Stock, connected: bool, live: bool) ->
         fill=quantize565(trend.card_fill(known, live and row.change is not None)),
         outline=quantize565(trend.card_edge(known, connected)), width=1)
 
-    screen.line(draw, (cfg.sym_x, cfg.sym_y), row.symbol, pil=cfg.sym_font_pil,
-                board=cfg.sym_font, fill=text, anchor="lt", max_w=cfg.sym_w)
+    # ไม่ผ่าน `screen.line` ด้วยเหตุผลเดียวกับราคาและเปอร์เซ็นต์ข้างล่าง (ฟอนต์ 24 ไม่มี
+    # บิตแมปไทย) และเป็นสำเนาของหน้าคริปโตทุกตัวเลข
+    draw.text((cfg.sym_x, cfg.sym_base_y), row.symbol, font=screen.font(cfg.sym_font_pil),
+              fill=quantize565(text), anchor="ls")
 
     if row.change is not None:
         # เปอร์เซ็นต์กับราคาไม่ผ่าน `screen.line` — ฟอนต์ 24/48 ไม่มีบิตแมปไทย และไม่ต้องมี
@@ -98,16 +119,18 @@ def _hero(draw: ImageDraw.ImageDraw, row: Stock, connected: bool, live: bool) ->
         ax = cfg.pct_x - pw - cfg.arrow_gap - cfg.arrow_grid * cfg.arrow_px
         draw_rects(draw, arrow(row.change, connected), cfg.arrow_px, ax, cfg.arrow_y)
 
+        # แคปซูลบอกหน้าต่างเวลา — ต้องตรงกับ CT_STOCKS_WINDOW_TEXT ใน ct_stocks_ui.c
+        _window(draw, WINDOW, ax, cfg, connected)
+
     # จำนวนเต็มใหญ่ ทศนิยมเล็ก นั่งเส้นฐานเดียวกัน (anchor "s") — ฟอนต์คนละขนาดที่จัด
     # ชิดขอบบนจะลอยคนละระดับ
     head, tail = trend.split_price(row.price, cfg.int_digits_max)
     x = cfg.price_x
     if head:
         big = screen.font(cfg.int_font_pil)
-        draw.text((x, cfg.price_base_y), head, font=big, fill=quantize565(text), anchor="ls")
+        screen.bold_text(draw, (x, cfg.price_base_y), head, big, text)
         x += draw.textlength(head, font=big)
-    draw.text((x, cfg.price_base_y), tail, font=screen.font(cfg.frac_font_pil),
-              fill=quantize565(text), anchor="ls")
+    screen.bold_text(draw, (x, cfg.price_base_y), tail, screen.font(cfg.frac_font_pil), text)
 
 
 
@@ -149,9 +172,9 @@ def render(s: Stocks, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     rows = s.rows[: L.stocks.rows] if s.has_frame else []
     if not rows:
         # ยังไม่เคยได้ข้อมูลของหน้านี้ ต้องมีหน้าตาของตัวเอง ห้ามเป็นจอเปล่า (ADR-0002)
-        screen.line(draw, (L.stocks.sym_x, L.stocks.empty_y), "No stocks yet",
+        screen.line(draw, (L.stocks.empty_x, L.stocks.empty_y), "No stocks yet",
                     pil=12, board=14, fill=PAL.text, anchor="lt")
-        screen.line(draw, (L.stocks.sym_x, L.stocks.empty_sub_y),
+        screen.line(draw, (L.stocks.empty_x, L.stocks.empty_sub_y),
                     "add symbols in the mac app", pil=10, board=12,
                     fill=PAL.text_dim, anchor="lt")
         if s.has_frame:

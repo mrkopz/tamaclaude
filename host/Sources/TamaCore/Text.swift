@@ -67,6 +67,31 @@ public enum Text {
         return cells.prefix(limit - 3).joined() + "..."
     }
 
+    /// เติมเครื่องหมายจุลภาคคั่นหลักพันในส่วนจำนวนเต็ม — `65343.56` -> `65,343.56`
+    ///
+    /// เขียนเองแทน `NumberFormatter` **เพราะ locale**: เครื่องที่ตั้งเป็นเยอรมัน/ไทยบางแบบ
+    /// จะได้ `65.343,56` ซึ่งบนจอกว้าง 320px ที่ไม่มีบริบทอะไรเลย อ่านเป็นราคาคนละตัว
+    /// ตัวคั่นบนจอนี้เป็นข้อตกลงของ *จอ* ไม่ใช่ของเครื่องที่บังเอิญรันเดมอนอยู่
+    ///
+    /// ทำงานบนสตริงที่จัดรูปแล้ว ไม่ใช่บน `Double` — จำนวนตำแหน่งทศนิยมถูกตัดสินไปแล้ว
+    /// ตามขนาดของราคา (`decimals(for:)` ของแต่ละหน้า) และขั้นนี้ต้องไม่ไปยุ่งกับมัน
+    public static func grouped(_ number: String) -> String {
+        let sign = number.hasPrefix("-") ? "-" : ""
+        let body = sign.isEmpty ? number : String(number.dropFirst())
+        guard let dot = body.firstIndex(of: ".") else { return grouped3(sign, body, "") }
+        return grouped3(sign, String(body[body.startIndex..<dot]), String(body[dot...]))
+    }
+
+    private static func grouped3(_ sign: String, _ whole: String, _ rest: String) -> String {
+        guard whole.count > 3, whole.allSatisfy(\.isNumber) else { return sign + whole + rest }
+        var out = ""
+        for (i, c) in whole.enumerated() {
+            if i > 0 && (whole.count - i) % 3 == 0 { out.append(",") }
+            out.append(c)
+        }
+        return sign + out + rest
+    }
+
     /// sanitize + ประกอบร่าง + clip ในขั้นตอนเดียว — ทุกข้อความที่ออกจาก daemon ต้องผ่านทางนี้
     ///
     /// การประกอบร่างไม่มีประตูของตัวเอง มันอยู่ใน `clip` ซึ่งอยู่ในนี้ ข้อความจึงออกทางเดิม

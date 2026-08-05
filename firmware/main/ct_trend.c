@@ -109,8 +109,13 @@ void ct_trend_split_price(const char *price, int int_digits_max, char *head, siz
                           char *tail, size_t tail_cap)
 {
     const char *dot = strchr(price, '.');
-    size_t digits = dot ? (size_t)(dot - price) : 0;
-    if (digits && price[0] == '-') digits--;
+    // นับ *หลัก* ไม่ใช่ตัวอักษร — Mac เติมจุลภาคคั่นหลักพันมาแล้ว ("65,343.56") และ
+    // เครื่องหมายลบก็ไม่ใช่หลัก · นับตัวอักษรแปลว่าราคาหกหลักถูกหั่นลงฟอนต์เล็กทั้งก้อน
+    // ก่อนถึงเพดานจริง (ต้องตรงกับ split_price() ใน tools/gen/trend.py)
+    size_t digits = 0;
+    for (const char *p = price; dot && p < dot; p++) {
+        if (*p >= '0' && *p <= '9') digits++;
+    }
     if (!dot || (int)digits > int_digits_max) {
         head[0] = '\0';
         lv_strlcpy(tail, price, tail_cap);

@@ -17,6 +17,7 @@ idf_component_register(
         "ct_weather_ui.c"
         "ct_crypto.c"
         "ct_crypto_ui.c"
+        "ct_coins.c"
         "ct_stocks.c"
         "ct_stocks_ui.c"
         "ct_trend.c"

@@ -433,6 +433,14 @@ final class PreferencesWindowController: NSWindowController {
     private func rebuildCoinList() {
         for view in coinList.arrangedSubviews { view.removeFromSuperview() }
         for (index, coin) in crypto.coins.enumerated() {
+            // รูปเดียวกับที่จะขึ้นบนจอ — เหรียญนอกชุดได้จานเปล่าตรงนี้ *และ* ตรงนั้น
+            // ผู้ใช้จึงรู้ตั้งแต่ตอนเพิ่มว่าตัวไหนมี logo โดยไม่ต้องมีคำเตือนมาบอกซ้ำ
+            let icon = NSImageView(image: CoinIconImage.image(for: coin) ?? NSImage())
+            icon.imageScaling = .scaleNone
+            icon.widthAnchor.constraint(equalToConstant: CGFloat(CoinIconImage.px)).isActive = true
+            icon.heightAnchor.constraint(equalToConstant: CGFloat(CoinIconImage.px)).isActive = true
+            icon.alphaValue = cryptoOn ? 1.0 : 0.4
+
             let label = NSTextField(labelWithString: coin)
             label.widthAnchor.constraint(equalToConstant: 140).isActive = true
 
@@ -449,7 +457,7 @@ final class PreferencesWindowController: NSWindowController {
             remove.isEnabled = cryptoOn
             label.textColor = cryptoOn ? .labelColor : .disabledControlTextColor
 
-            let row = NSStackView(views: [label, up, down, remove])
+            let row = NSStackView(views: [icon, label, up, down, remove])
             row.orientation = .horizontal
             row.spacing = 4
             coinList.addArrangedSubview(row)

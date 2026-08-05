@@ -286,8 +286,8 @@ _SPIKE = [2, 2, 3, 2, 4, 3, 5, 4, 7, 6, 9, 8, 12, 11, 15, 14]   # ขึ้น�
 # ราคา >= 1 มีทศนิยมสองตำแหน่งเสมอ ส่วนต่ำกว่า 1 ได้ความจริงเต็ม (ดู `decimals(for:)`)
 CRYPTO_SCENES: dict[str, crypto.Crypto] = {
     "full": crypto.Crypto(coins=[
-        crypto.Coin("BTC", "64230.00", -21, _DIP),
-        crypto.Coin("ETH", "3125.00", 11, _CLIMB),
+        crypto.Coin("BTC", "64,230.00", -21, _DIP),
+        crypto.Coin("ETH", "3,125.00", 11, _CLIMB),
         crypto.Coin("SOL", "172.05", 30, _CLIMB),
         crypto.Coin("DOGE", "0.1423", -5, _DIP),
         crypto.Coin("PEPE", "0.000008", 140, _SPIKE),
@@ -295,29 +295,29 @@ CRYPTO_SCENES: dict[str, crypto.Crypto] = {
     # สามตัวต้องดูเหมือน watchlist สามตัว ไม่ใช่ห้าตัวที่หายไปสอง
     # แถวเต็มความกว้างที่สุดของหน้านี้อยู่ใต้มาสคอตพอดี — ฉากนี้พิสูจน์ว่ามันไม่ทับกัน
     "short": crypto.Crypto(coins=[
-        crypto.Coin("BTC", "64230.00", 0, _FLAT),
-        crypto.Coin("ETH", "3125.00", -152, _DIP),
+        crypto.Coin("BTC", "64,230.00", 0, _FLAT),
+        crypto.Coin("ETH", "3,125.00", -152, _DIP),
         crypto.Coin("XRP", "2.41", 3, _CLIMB),
     ], age=8, mascot_state="waiting",
         bar=topbar.Bar(clock="17:04", overflow=3, has_usage=True, pct=92)),
     # เหรียญเดียว = หน้าที่ยังตั้งไม่เสร็จ ไม่ใช่ watchlist ที่ครบแล้ว — ฉากเดียวที่มีคำใบ้
     # และฉากเดียวที่จำนวนเต็มยาวเกิน `int_digits_max` จนราคาต้องลดทั้งก้อนลงมา
     "one": crypto.Crypto(coins=[
-        crypto.Coin("BTC", "104250.00", 62, _SPIKE),
+        crypto.Coin("BTC", "104,250.00", 62, _SPIKE),
     ], age=20, mascot_state="thinking"),
     # เก่าเกิน 10 เท่าของรอบดึง — ราคายังอ่านได้ แต่ต้องไม่มีใครเข้าใจว่ามันสด
     # และเป็นฉากที่บริการไม่ให้ประวัติมา: กล่องรูปต้องเป็นเส้นเปล่า ไม่ใช่กล่องว่าง
     "stale": crypto.Crypto(coins=[
-        crypto.Coin("BTC", "64230.00", -21),
-        crypto.Coin("ETH", "3125.00", 11),
+        crypto.Coin("BTC", "64,230.00", -21),
+        crypto.Coin("ETH", "3,125.00", 11),
     ], age=3 * 3600),
     # ยังไม่เคยได้เฟรมของหน้านี้เลย — ห้ามเป็นจอเปล่าหรือโครงว่าง (ADR-0002)
     "empty": crypto.Crypto(has_frame=False),
     # Mac หายไป: ตัวเลขค้างอยู่แต่ไม่มีใครรับรองแล้ว ลูกศรกับรูปยังบอกทิศได้โดยไม่ต้องมีสี
     # และการ์ดต้องกลับไปเป็นพื้นกลาง — ใบเขียวตอนไม่มีใครรับรองคือการโกหก
     "offline": crypto.Crypto(coins=[
-        crypto.Coin("BTC", "64230.00", -21, _DIP),
-        crypto.Coin("ETH", "3125.00", 11, _CLIMB),
+        crypto.Coin("BTC", "64,230.00", -21, _DIP),
+        crypto.Coin("ETH", "3,125.00", 11, _CLIMB),
     ], age=45 * 60, connected=False),
 }
 
@@ -329,7 +329,7 @@ STOCK_SCENES: dict[str, stocks.Stocks] = {
     "full": stocks.Stocks(rows=[
         stocks.Stock("AAPL", "189.44", -21),
         stocks.Stock("MSFT", "412.90", 11),
-        stocks.Stock("NVDA", "1204.55", 30),
+        stocks.Stock("NVDA", "1,204.55", 30),
         stocks.Stock("TSLA", "177.02", -152),
         stocks.Stock("BRK.B", "412.10", 0),
     ], age=25, mascot_state="thinking"),
@@ -342,13 +342,13 @@ STOCK_SCENES: dict[str, stocks.Stocks] = {
     "closed": stocks.Stocks(rows=[
         stocks.Stock("AAPL", "189.44", -21),
         stocks.Stock("MSFT", "412.90", 11),
-        stocks.Stock("NVDA", "1204.55", 30),
+        stocks.Stock("NVDA", "1,204.55", 30),
     ], age=11 * 3600, market_closed=True, mascot_state="sleeping"),
     # เฟรมที่ถูกบีบจนต้องทิ้งคอลัมน์เปอร์เซ็นต์ — ราคายังครบ ทิศทางหายไปทั้งหน้า
     "no_pct": stocks.Stocks(rows=[
         stocks.Stock("AAPL", "189.44", None),
         stocks.Stock("MSFT", "412.90", None),
-        stocks.Stock("NVDA", "1204.55", None),
+        stocks.Stock("NVDA", "1,204.55", None),
     ], age=40, bar=topbar.Bar(clock="06:20", has_usage=True, pct=None)),
     # ยังไม่เคยได้เฟรมของหน้านี้เลย — ห้ามเป็นจอเปล่าหรือโครงว่าง (ADR-0002)
     "empty": stocks.Stocks(has_frame=False),

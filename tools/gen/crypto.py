@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw
 
-from . import age, mini, pages, screen, topbar, trend
+from . import age, coins, mini, pages, screen, topbar, trend
 from .config import L, PAL
 from .render import draw_rects, quantize565
 
@@ -53,7 +53,23 @@ class Crypto:
     bar: topbar.Bar = field(default_factory=topbar.Bar)
 
 
-def _hero(draw: ImageDraw.ImageDraw, coin: Coin, connected: bool) -> None:
+def _window(draw: ImageDraw.ImageDraw, text: str, arrow_x: float, cfg, connected: bool) -> None:
+    """แคปซูลบอกหน้าต่างเวลาของเปอร์เซ็นต์ — เกาะขอบซ้ายของลูกศร
+
+    `gen/stocks.py` มีตัวคู่ขนานที่เขียนแยกกัน ด้วยเหตุผลเดียวกับ `_hero` — และที่นั่น
+    คำในแคปซูลเป็นคนละคำจริงๆ ("today") ไม่ใช่แค่ค่าคงที่คนละตัว
+    """
+    col = quantize565(PAL.text_dim if connected else PAL.gray)
+    x1 = arrow_x - cfg.win_gap
+    x0 = x1 - cfg.win_w
+    y1 = cfg.win_y + cfg.win_h - 1
+    draw.rounded_rectangle([x0, cfg.win_y, x1 - 1, y1], radius=cfg.win_r, outline=col, width=1)
+    # กึ่งกลางกล่อง ไม่ใช่เส้นฐาน — ข้างในแคปซูลไม่มีอะไรให้เรียงเส้นฐานด้วย
+    draw.text(((x0 + x1) / 2, (cfg.win_y + y1) / 2 + 1), text,
+              font=screen.font(cfg.win_font_pil), fill=col, anchor="mm")
+
+
+def _hero(img: Image.Image, draw: ImageDraw.ImageDraw, coin: Coin, connected: bool) -> None:
     """การ์ดของเหรียญแรกในลิสต์
 
     `gen/stocks.py` มีตัวคู่ขนานของฟังก์ชันนี้ **ที่เขียนแยกกัน ไม่ใช่เรียกตัวนี้** —
@@ -72,9 +88,16 @@ def _hero(draw: ImageDraw.ImageDraw, coin: Coin, connected: bool) -> None:
         fill=quantize565(trend.card_fill(coin.change, connected)),
         outline=quantize565(trend.card_edge(coin.change, connected)), width=1)
 
-    screen.line(draw, (cfg.sym_x, cfg.sym_y), coin.symbol,
-                pil=cfg.sym_font_pil, board=cfg.sym_font, fill=text, anchor="lt",
-                max_w=cfg.sym_w)
+    # logo หลังการ์ด ก่อนตัวหนังสือ — มันนั่งบนพื้นการ์ดที่เพิ่งวาด และอัลฟาของมันต้อง
+    # ผสมกับพื้นสีนั้น ไม่ใช่กับพื้นจอ (พื้นการ์ดเปลี่ยนสีตามทิศทางขึ้น/ลง)
+    coins.paste(img, coin.symbol, cfg.icon_x, cfg.icon_y, cfg.icon_px, connected)
+
+    # ไม่ผ่าน `screen.line` ด้วยเหตุผลเดียวกับราคาและเปอร์เซ็นต์ข้างล่าง — ฟอนต์ 24 ไม่มี
+    # บิตแมปไทย และสัญลักษณ์เป็น ASCII ที่บริการเป็นคนบอก ไม่ใช่ข้อความที่ผู้ใช้พิมพ์
+    # ไม่ตัดด้วย `sym_w` เพราะ `CryptoFrame.symbolLimit` = 5 ตัว ซึ่งที่ 22px กว้าง ~70px
+    # ในกรอบ 100px — ด่านอยู่ต้นทางแล้ว
+    draw.text((cfg.sym_x, cfg.sym_base_y), coin.symbol, font=screen.font(cfg.sym_font_pil),
+              fill=quantize565(text), anchor="ls")
 
     # เปอร์เซ็นต์กับราคาไม่ผ่าน `screen.line` — ฟอนต์ 24/48 ไม่มีบิตแมปไทย และไม่ต้องมี
     # (ตัวเลขล้วน) ประตูสองภาษาเป็นของป้ายที่รับข้อความจากผู้ใช้ ไม่ใช่ของตัวเลขที่ Mac จัดรูปมา
@@ -88,16 +111,19 @@ def _hero(draw: ImageDraw.ImageDraw, coin: Coin, connected: bool) -> None:
     ax = cfg.pct_x - pw - cfg.arrow_gap - cfg.arrow_grid * cfg.arrow_px
     draw_rects(draw, arrow(coin.change, connected), cfg.arrow_px, ax, cfg.arrow_y)
 
+    # แคปซูลบอกหน้าต่างเวลา — ต้องตรงกับ CT_CRYPTO_WINDOW_TEXT ใน ct_crypto_ui.c
+    # ค่าที่ CoinGecko ให้คือ price_change_percentage_24h ตรงๆ ไม่ใช่ที่เราคำนวณเอง
+    _window(draw, "24h", ax, cfg, connected)
+
     # จำนวนเต็มใหญ่ ทศนิยมเล็ก นั่งเส้นฐานเดียวกัน — ทั้งสองก้อนวาดจากเส้นฐาน (anchor "s")
     # ไม่ใช่จากขอบบน ฟอนต์คนละขนาดที่จัดชิดขอบบนจะลอยคนละระดับ
     head, tail = trend.split_price(coin.price, cfg.int_digits_max)
     x = cfg.price_x
     if head:
         big = screen.font(cfg.int_font_pil)
-        draw.text((x, cfg.price_base_y), head, font=big, fill=quantize565(text), anchor="ls")
+        screen.bold_text(draw, (x, cfg.price_base_y), head, big, text)
         x += draw.textlength(head, font=big)
-    draw.text((x, cfg.price_base_y), tail, font=screen.font(cfg.frac_font_pil),
-              fill=quantize565(text), anchor="ls")
+    screen.bold_text(draw, (x, cfg.price_base_y), tail, screen.font(cfg.frac_font_pil), text)
 
     draw_rects(draw, trend.spark(coin.spark or [], w=cfg.spark_w, h=cfg.spark_h,
                                  cols=cfg.spark_cols, pitch=cfg.spark_pitch,
@@ -105,11 +131,14 @@ def _hero(draw: ImageDraw.ImageDraw, coin: Coin, connected: bool) -> None:
                1.0, cfg.spark_x, cfg.spark_y)
 
 
-def _row(draw: ImageDraw.ImageDraw, coin: Coin, top: int, connected: bool) -> None:
+def _row(img: Image.Image, draw: ImageDraw.ImageDraw, coin: Coin, top: int,
+         connected: bool) -> None:
     """หนึ่งแถวเล็กใต้การ์ด — `gen/stocks.py` มีตัวคู่ขนานที่เขียนแยกกัน (ดู `_hero`)"""
     cfg = L.crypto
     text = PAL.text if connected else PAL.gray
     ty = top + cfg.row_text_dy
+    coins.paste(img, coin.symbol, cfg.row_icon_x, top + cfg.row_icon_dy, cfg.row_icon_px,
+                connected)
     screen.line(draw, (cfg.row_sym_x, ty), coin.symbol, pil=cfg.row_font_pil,
                 board=cfg.row_font, fill=text, anchor="lt", max_w=cfg.row_sym_w)
     # ราคาชิดขวา หลักหน่วยของทุกแถวจึงเรียงตรงกัน และเทียบข้ามแถวได้ด้วยการกวาดตา
@@ -140,22 +169,23 @@ def render(c: Crypto, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     # ว่าหน้านี้มีตัวเลขให้ดูหรือยัง
     mini.draw_mini(draw, c.mascot_state, c.connected, phase, cycle)
 
-    coins = c.coins[: L.crypto.rows] if c.has_frame else []
-    if not coins:
+    # ไม่ใช่ชื่อ `coins` — ชื่อนั้นเป็นของโมดูล logo เหรียญที่ไฟล์นี้ import มาแล้ว
+    rows = c.coins[: L.crypto.rows] if c.has_frame else []
+    if not rows:
         # ยังไม่เคยได้ข้อมูลของหน้านี้ ต้องมีหน้าตาของตัวเอง ห้ามเป็นจอเปล่า (ADR-0002)
-        screen.line(draw, (L.crypto.sym_x, L.crypto.empty_y), "No coins yet",
+        screen.line(draw, (L.crypto.empty_x, L.crypto.empty_y), "No coins yet",
                     pil=12, board=14, fill=PAL.text, anchor="lt")
-        screen.line(draw, (L.crypto.sym_x, L.crypto.empty_sub_y),
+        screen.line(draw, (L.crypto.empty_x, L.crypto.empty_sub_y),
                     "add coins in the mac app", pil=10, board=12,
                     fill=PAL.text_dim, anchor="lt")
         if c.has_frame:
             age.draw_age(draw, c.age, L.crypto.refresh_s)
         return img
 
-    _hero(draw, coins[0], c.connected)
-    for i, coin in enumerate(coins[1:]):
-        _row(draw, coin, L.crypto.row_y + i * L.crypto.row_h, c.connected)
-    if len(coins) == 1:
+    _hero(img, draw, rows[0], c.connected)
+    for i, coin in enumerate(rows[1:]):
+        _row(img, draw, coin, L.crypto.row_y + i * L.crypto.row_h, c.connected)
+    if len(rows) == 1:
         # ขึ้นเฉพาะตอนไม่มีแถวเล็กเลย ไม่ใช่ทุกครั้งที่เหลือช่องว่าง (ดู `hint_y`)
         screen.line(draw, (L.crypto.hint_x, L.crypto.hint_y), "add more in the mac app",
                     pil=10, board=12, fill=PAL.text_dim, anchor="lt")

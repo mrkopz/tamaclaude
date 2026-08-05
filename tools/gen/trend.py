@@ -148,7 +148,9 @@ def split_price(price: str, int_digits_max: int) -> tuple[str, str]:
     หรือราคาไม่มีจุดเลย (ซึ่งไม่ควรเกิดหลัง Mac ตรึงทศนิยมไว้ แต่บอร์ดไม่ได้เชื่อ Mac)
     """
     head, dot, tail = price.partition(".")
-    if not dot or len(head.lstrip("-")) > int_digits_max:
+    # นับ *หลัก* ไม่ใช่ตัวอักษร — Mac เติมจุลภาคคั่นหลักพันมาแล้ว ("65,343.56") ถ้านับ
+    # ตัวอักษร ราคาหกหลักจะยาว 7 ตัวและถูกหั่นลงฟอนต์เล็กทั้งก้อนก่อนถึงเพดานจริง
+    if not dot or sum(c.isdigit() for c in head) > int_digits_max:
         return "", price
     return head, dot + tail
 

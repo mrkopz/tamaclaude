@@ -121,10 +121,12 @@ public struct CryptoFrame: PageFrame, Equatable, Codable, Sendable {
     /// `trim` ลดได้เฉพาะราคาที่ **ต่ำกว่า 1** — สองตำแหน่งของราคาที่เหลือเป็นสัญญากับผู้ใช้
     /// ไม่ใช่ที่ว่างให้ตัดตอนบีบเฟรม · ขั้นบีบนี้จึงคมกว่าเดิมมาก และเป็นเหตุผลที่ `encoded`
     /// ต้องมีขั้น "ทิ้ง sparkline" มาคั่นก่อนถึงจะไปถึงขั้นตัดแถวทิ้ง
+    /// ตัวคั่นหลักพันเติมที่นี่ ไม่ใช่บนบอร์ด — บอร์ดได้สตริงที่พร้อมวาดแล้วเสมอ
+    /// ซึ่งเป็นกติกาเดิมของหน้านี้ (ดูหมายเหตุที่ `CryptoQuote.price`)
     public static func priceText(_ price: Double, trim: Int = 0) -> String {
         let full = decimals(for: price)
         let places = abs(price) >= 1 ? full : max(2, full - trim)
-        return String(format: "%.\(places)f", price)
+        return Text.grouped(String(format: "%.\(places)f", price))
     }
 
     private func rows(trim: Int, count: Int, spark: Bool) -> [Row] {

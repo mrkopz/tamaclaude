@@ -421,6 +421,21 @@ func runAllTests() {
         equal(Text.fit("ที่", to: 14), "\u{0E17}\u{0E35}\u{F70D}", "text leaves the daemon shaped")
     }
 
+    // ตัวคั่นหลักพันเป็นข้อตกลงของ *จอ* ไม่ใช่ของเครื่องที่รันเดมอน — เขียนเองแทน
+    // NumberFormatter เพราะเครื่องที่ตั้ง locale เยอรมันจะได้ `65.343,56` ซึ่งบนจอ 320px
+    // ที่ไม่มีบริบทอะไรเลย อ่านเป็นราคาคนละตัว
+    suite("a price groups its thousands the same way on every mac") {
+        equal(Text.grouped("999.99"), "999.99", "three digits need no comma")
+        equal(Text.grouped("1000.00"), "1,000.00", "four do")
+        equal(Text.grouped("65343.56"), "65,343.56", "and five")
+        equal(Text.grouped("1204555.5"), "1,204,555.5", "two commas when the price is that big")
+        equal(Text.grouped("-1234567.89"), "-1,234,567.89", "the minus is not a digit")
+        equal(Text.grouped("0.000008"), "0.000008", "the fraction never gets grouped")
+        equal(Text.grouped("64230"), "64,230", "a price with no cents still groups")
+        equal(CryptoFrame.priceText(64230.12), "64,230.12", "and that is what the wire carries")
+        equal(StocksFrame.priceText(1204.55), "1,204.55", "on both watchlist pages")
+    }
+
     // เลขทั้งชุดวัดด้วย `python3 tools/preview.py --limits` จากฟอนต์ตัวที่แฟลชลงบอร์ดจริง
     // ป้ายบนบอร์ดตัดด้วย LV_LABEL_LONG_DOT อยู่แล้ว เพดานที่สูงเกินจึงไม่ล้นทับอะไร แต่มัน
     // แปลว่า daemon จ่ายไบต์ (ไทยตัวละ 3) ให้ตัวอักษรที่ไม่มีวันขึ้นจอ ทั้งที่ MTU มีจำกัด
@@ -2654,10 +2669,10 @@ func runAllTests() {
         let text = String(decoding: data, as: UTF8.self)
         equal(
             text,
-            #"{"a":42,"c":[{"d":-21,"p":"64230.12","s":"BTC"},{"d":11,"p":"3125.40","s":"ETH"},"#
+            #"{"a":42,"c":[{"d":-21,"p":"64,230.12","s":"BTC"},{"d":11,"p":"3,125.40","s":"ETH"},"#
                 + #"{"d":-5,"p":"0.1423","s":"DOGE"},{"d":30,"p":"172.05","s":"SOL"},"#
                 + #"{"d":140,"p":"0.000008","s":"PEPE"}],"g":2}"#,
-            "keys are sorted, prices from 1 up always carry cents, and coins under 1 keep the truth")
+            "keys are sorted, thousands grouped, and coins under 1 keep the truth")
 
         let back = try JSONDecoder().decode(CryptoFrame.self, from: data)
         equal(back.quotes.map(\.symbol), ["BTC", "ETH", "DOGE", "SOL", "PEPE"], "round trips")
@@ -2671,7 +2686,7 @@ func runAllTests() {
             trimmed.quotes.map(\.symbol), ["BTC", "ETH", "DOGE", "SOL", "PEPE"],
             "a frame three bytes over loses precision, not coins")
         equal(
-            String(decoding: tight, as: UTF8.self).contains(#""p":"64230.12""#), true,
+            String(decoding: tight, as: UTF8.self).contains(#""p":"64,230.12""#), true,
             "and never the cents of a price at or above one")
 
         // บีบจนต้องตัดแถวจริงๆ: แถวที่เหลือยังมีสัญลักษณ์เต็มทุกตัว แถวที่ไปก็ไปทั้งแถว
@@ -2925,7 +2940,7 @@ func runAllTests() {
         equal(
             text,
             #"{"a":42,"c":[{"d":-21,"p":"189.44","s":"AAPL"},{"d":11,"p":"412.90","s":"MSFT"},"#
-                + #"{"d":30,"p":"1204.55","s":"NVDA"},{"d":-152,"p":"177.02","s":"TSLA"},"#
+                + #"{"d":30,"p":"1,204.55","s":"NVDA"},{"d":-152,"p":"177.02","s":"TSLA"},"#
                 + #"{"d":0,"p":"412.10","s":"BRK.B"}],"g":4}"#,
             "keys are sorted, prices carry the cents the market trades in, and 4 names the page")
 

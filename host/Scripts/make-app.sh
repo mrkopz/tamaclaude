@@ -39,6 +39,15 @@ cp "$BIN" "$APP/Contents/MacOS/tamaclaude"
 cp Sources/tamaclaude/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
+# logo เหรียญของหน้าตั้งค่า — ใบ 32px ชุดเดียวกับที่บอร์ดวาด (ใบ 16px เป็นของบอร์ดล้วน)
+# ก๊อปตอนประกอบ .app ไม่ได้ผูกเป็น resource ของ SwiftPM: ไฟล์พวกนี้เกิดจาก
+# tools/export_coins.py ซึ่งอยู่คนละฝั่งของรีโปกับ Package.swift และคนที่แค่ `swift build`
+# ไม่ควรถูกบังคับให้มีตัวแปลง SVG บนเครื่อง (CoinIconImage ยอมไม่มีรูปได้)
+if [ -d "$REPO/tools/coins/png" ]; then
+    mkdir -p "$APP/Contents/Resources/coins"
+    cp "$REPO"/tools/coins/png/*-32.png "$APP/Contents/Resources/coins/" 2>/dev/null || true
+fi
+
 # ลายเซ็น adhoc: พอสำหรับเครื่องที่บิลด์เอง แต่สิทธิ์ TCC ผูกกับ cdhash
 # บิลด์ใหม่ = ตัวตนใหม่ = macOS ถามสิทธิ์ Bluetooth อีกรอบ
 # การแจกให้เครื่องอื่นต้องใช้ Developer ID + notarization ซึ่งต้องมีบัญชีนักพัฒนา
