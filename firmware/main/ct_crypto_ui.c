@@ -20,17 +20,6 @@ static bool s_connected;
 // หน้าต่างเวลาของเปอร์เซ็นต์บนการ์ด — ต้องตรงกับที่ gen/crypto.py วาด · CoinGecko ให้ price_change_percentage_24h มาตรงๆ
 #define CT_CRYPTO_WINDOW_TEXT "24h"
 
-// ตัวเลขราคาแบบตัวหนา — ป้ายสองใบซ้อนกัน เยื้องลงขวา 1px
-//
-// LVGL ที่คอมไพล์มาไม่มี montserrat ตัวหนาสักขนาด และการเพิ่มเข้าไปคือแฟลชอีกก้อนต่อ
-// หนึ่งขนาด เพื่อความหนาที่ป้ายซ้อนให้ได้ฟรี · น้ำหนักคือสิ่งที่ราคาใช้แทนขนาด 48px เดิม
-// หลังมี logo มายืนบนการ์ด (ดู `int_font` ใน layout.toml) · ฝั่ง preview คือ
-// `screen.bold_text` ซึ่งเยื้องทางเดียวกัน ไม่ใช่ stroke ที่หนาออกทุกทิศ
-typedef struct {
-    lv_obj_t *under;  // สร้างก่อน = ถูกวาดก่อน = อยู่ล่าง
-    lv_obj_t *over;
-} ct_bold_t;
-
 typedef struct {
     lv_obj_t *icon;   // logo เหรียญ — บิตแมปเต็มสีจาก ct_logos.c ไม่ใช่ rect list
     lv_obj_t *sym;
@@ -46,8 +35,8 @@ typedef struct {
     lv_obj_t *card;
     lv_obj_t *icon;
     lv_obj_t *sym;
-    ct_bold_t price_int;
-    ct_bold_t price_frac;
+    lv_obj_t *price_int;
+    lv_obj_t *price_frac;
     lv_obj_t *spark;
     lv_obj_t *arrow;
     lv_obj_t *pct;
@@ -150,39 +139,6 @@ static lv_obj_t *baseline_label(lv_obj_t *parent, const lv_font_t *font, uint16_
     return l;
 }
 
-// ตัวเลขราคาแบบตัวหนา — ป้ายสองใบซ้อนกัน เยื้องลงขวา 1px
-//
-// LVGL ที่คอมไพล์มาไม่มี montserrat ตัวหนาสักขนาด และการเพิ่มเข้าไปคือแฟลชอีกก้อนต่อ
-// หนึ่งขนาด เพื่อความหนาที่ป้ายซ้อนให้ได้ฟรี · น้ำหนักคือสิ่งที่ราคาใช้แทนขนาด 48px เดิม
-// หลังมี logo มายืนบนการ์ด (ดู `int_font` ใน layout.toml) · ฝั่ง preview คือ
-// `screen.bold_text` ซึ่งเยื้องทางเดียวกัน ไม่ใช่ stroke ที่หนาออกทุกทิศ
-static ct_bold_t bold_label(lv_obj_t *parent, const lv_font_t *font, uint16_t color, int x,
-                            int baseline)
-{
-    ct_bold_t b;
-    b.under = baseline_label(parent, font, color, x + 1, baseline + 1);
-    b.over = baseline_label(parent, font, color, x, baseline);
-    return b;
-}
-
-static void bold_set_text(ct_bold_t *b, const char *s)
-{
-    lv_label_set_text(b->under, s);
-    lv_label_set_text(b->over, s);
-}
-
-static void bold_set_color(ct_bold_t *b, uint16_t color)
-{
-    lv_obj_set_style_text_color(b->under, ct_color(color), 0);
-    lv_obj_set_style_text_color(b->over, ct_color(color), 0);
-}
-
-static void bold_set_x(ct_bold_t *b, int x)
-{
-    lv_obj_set_x(b->under, x + 1);
-    lv_obj_set_x(b->over, x);
-}
-
 // logo เหรียญ — บิตแมป RGB565A8 ที่อ่านตรงจากแฟลช ไม่มี decoder ไม่กิน RAM
 //
 // ตอนลิงก์หลุด ใช้ recolor ทับเทาตอนวาด ไม่ได้เก็บรูปเทาไว้อีกชุด: เก็บสองชุดแปลว่า
@@ -246,10 +202,13 @@ void ct_crypto_ui_init(lv_obj_t *parent, const ct_crypto_t *frame, const bool *h
     s_hero.sym = baseline_label(parent, &lv_font_montserrat_24, CT_COL_TEXT, CT_CRYPTO_SYM_X,
                                 CT_CRYPTO_SYM_BASE_Y);
 
-    s_hero.price_int = bold_label(parent, &lv_font_montserrat_36, CT_COL_TEXT,
-                                  CT_CRYPTO_PRICE_X, CT_CRYPTO_PRICE_BASE_Y);
-    s_hero.price_frac = bold_label(parent, &lv_font_montserrat_18, CT_COL_TEXT,
-                                   CT_CRYPTO_PRICE_X, CT_CRYPTO_PRICE_BASE_Y);
+    // ป้ายเดียวต่อก้อน ไม่ทำตัวหนาปลอม — เคยซ้อนป้ายเยื้องลงขวา 1px แทน montserrat
+    // ตัวหนาที่ LVGL ไม่มี แต่ที่ 36px ขอบเยื้องอ่านเป็นเงาเหลื่อมมากกว่าน้ำหนัก
+    // สิ่งที่ทำให้ราคาเด่นคือขนาดกับตำแหน่งบนการ์ด (ดู `int_font` ใน layout.toml)
+    s_hero.price_int = baseline_label(parent, &lv_font_montserrat_36, CT_COL_TEXT,
+                                      CT_CRYPTO_PRICE_X, CT_CRYPTO_PRICE_BASE_Y);
+    s_hero.price_frac = baseline_label(parent, &lv_font_montserrat_18, CT_COL_TEXT,
+                                       CT_CRYPTO_PRICE_X, CT_CRYPTO_PRICE_BASE_Y);
     s_hero.pct = baseline_label(parent, &lv_font_montserrat_24, CT_COL_TEXT_DIM, 0,
                                 CT_CRYPTO_PCT_BASE_Y);
     s_hero.arrow =
@@ -328,12 +287,6 @@ static void show(lv_obj_t *obj, bool on)
     else lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
 }
 
-static void bold_show(ct_bold_t *b, bool on)
-{
-    show(b->under, on);
-    show(b->over, on);
-}
-
 // ความกว้างของ *ตัวหนังสือ* ไม่ใช่ของกรอบ — ป้ายชิดขวาที่กรอบกว้างคงที่จะรายงานความกว้าง
 // ของกรอบ ซึ่งวางลูกศรให้เกาะตัวเลขไม่ได้
 static int32_t text_w(lv_obj_t *l, const char *s)
@@ -362,16 +315,15 @@ static void draw_hero(const ct_crypto_row_t *data)
     char head[CT_CRYPTO_PRICE_LEN], tail[CT_CRYPTO_PRICE_LEN];
     ct_trend_split_price(data->price, CT_CRYPTO_INT_DIGITS_MAX, head, sizeof(head), tail,
                          sizeof(tail));
-    bold_set_text(&s_hero.price_int, head);
-    bold_set_text(&s_hero.price_frac, tail);
-    bold_set_color(&s_hero.price_int, text);
-    bold_set_color(&s_hero.price_frac, text);
-    bold_show(&s_hero.price_int, head[0] != '\0');
+    lv_label_set_text(s_hero.price_int, head);
+    lv_label_set_text(s_hero.price_frac, tail);
+    lv_obj_set_style_text_color(s_hero.price_int, ct_color(text), 0);
+    lv_obj_set_style_text_color(s_hero.price_frac, ct_color(text), 0);
+    show(s_hero.price_int, head[0] != '\0');
     // ก้อนเล็กเริ่มตรงที่ก้อนใหญ่จบ ไม่ใช่ที่พิกัดคงที่ — ความกว้างของจำนวนเต็มเปลี่ยนตาม
     // ราคา (`0` กับ `64230` ต่างกันห้าเท่า) จุดทศนิยมที่ตรึงไว้จะลอยห่างจากเลขทันที
-    // วัดจากใบบน ไม่ใช่ใบล่าง — ใบล่างเยื้องไป 1px แล้ว
-    int frac_x = CT_CRYPTO_PRICE_X + (head[0] ? text_w(s_hero.price_int.over, head) : 0);
-    bold_set_x(&s_hero.price_frac, frac_x);
+    int frac_x = CT_CRYPTO_PRICE_X + (head[0] ? text_w(s_hero.price_int, head) : 0);
+    lv_obj_set_x(s_hero.price_frac, frac_x);
 
     char pct[16];
     ct_trend_pct_text(pct, sizeof(pct), data->change);
@@ -427,13 +379,13 @@ void ct_crypto_ui_redraw(void)
     show(s_hero.card, count > 0);
     show(s_hero.icon, count > 0);
     show(s_hero.sym, count > 0);
-    bold_show(&s_hero.price_frac, count > 0);
+    show(s_hero.price_frac, count > 0);
     show(s_hero.pct, count > 0);
     show(s_hero.arrow, count > 0);
     show(s_hero.win, count > 0);
     show(s_hero.spark, count > 0);
     if (count > 0) draw_hero(&s_frame->rows[0]);
-    else bold_show(&s_hero.price_int, false);
+    else show(s_hero.price_int, false);
 
     for (int i = 0; i < CT_CRYPTO_LIST_ROWS; i++) {
         ct_crypto_row_ui_t *row = &s_rows[i];

@@ -194,9 +194,9 @@ def _hero(img: Image.Image, draw: ImageDraw.ImageDraw, row: Stock, rng: DayRange
     x = cfg.price_x
     if head:
         big = screen.font(cfg.int_font_pil)
-        screen.bold_text(draw, (x, cfg.price_base_y), head, big, text)
+        screen.price_text(draw, (x, cfg.price_base_y), head, big, text)
         x += draw.textlength(head, font=big)
-    screen.bold_text(draw, (x, cfg.price_base_y), tail, screen.font(cfg.frac_font_pil), text)
+    screen.price_text(draw, (x, cfg.price_base_y), tail, screen.font(cfg.frac_font_pil), text)
 
     if rng is not None:
         _range(draw, rng, row.change, cfg, connected)

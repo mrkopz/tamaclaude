@@ -36,10 +36,10 @@ typedef struct {
 } card_t;
 
 typedef struct {
-    lv_obj_t *percent;  // ตัวเลขใหญ่ — สิ่งเดียวที่ต้องอ่านออกจากอีกฝั่งห้อง
-    // LVGL ไม่มี montserrat ตัวหนา — ซ้อนป้ายเดิมเยื้อง 1px แทน (เทียบเท่า
-    // stroke_width=1 ของ Pillow ฝั่ง preview) ต้องอัปเดตข้อความ/สีคู่กันเสมอ
-    lv_obj_t *percent_bold;
+    // ตัวเลขใหญ่ — สิ่งเดียวที่ต้องอ่านออกจากอีกฝั่งห้อง ป้ายเดียว ไม่ทำตัวหนาปลอม:
+    // เคยซ้อนป้ายเดิมเยื้อง 1px แทน montserrat ตัวหนาที่ LVGL ไม่มี แต่เส้นที่หนาขึ้น
+    // ทำให้ช่องในเลข 0/8/9 ตันจนอ่านยากที่ 320x240 — ขนาด 24 กับสีของระดับดังพอแล้ว
+    lv_obj_t *percent;
     lv_obj_t *pill;     // ป้ายบอกว่าเป็นหน้าต่างไหน สีคงที่ ไม่ตามระดับ
     lv_obj_t *pill_text;
     lv_obj_t *track;  // รางแถบ
@@ -683,8 +683,6 @@ static void build_usage(lv_obj_t *scr)
         int y = usage_row_y(i);
         usage_row_t *u = &s_usage[i];
 
-        u->percent_bold = plain_label(scr, &lv_font_montserrat_24, CT_COL_GOOD);
-        lv_obj_set_pos(u->percent_bold, USAGE_X0 + 1, y + 1);
         u->percent = plain_label(scr, &lv_font_montserrat_24, CT_COL_GOOD);
         lv_obj_set_pos(u->percent, USAGE_X0, y);
 
@@ -733,7 +731,6 @@ static void build_usage(lv_obj_t *scr)
         u->reset = plain_label(scr, &lv_font_montserrat_12, CT_COL_TEXT_DIM);
 
         lv_obj_add_flag(u->percent, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_add_flag(u->percent_bold, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(u->pill, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(u->track, LV_OBJ_FLAG_HIDDEN);
         lv_obj_add_flag(u->pace, LV_OBJ_FLAG_HIDDEN);
@@ -1061,7 +1058,6 @@ static void layout_usage(void)
         usage_row_t *row = &s_usage[i];
         if (!show) {
             lv_obj_add_flag(row->percent, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(row->percent_bold, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row->pill, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row->track, LV_OBJ_FLAG_HIDDEN);
             lv_obj_add_flag(row->pace, LV_OBJ_FLAG_HIDDEN);
@@ -1072,20 +1068,16 @@ static void layout_usage(void)
         uint16_t col = ct_ui_usage_bar_color(u, USAGE_WINDOWS[i]);
 
         lv_obj_remove_flag(row->percent, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_remove_flag(row->percent_bold, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(row->pill, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(row->track, LV_OBJ_FLAG_HIDDEN);
         lv_obj_remove_flag(row->reset, LV_OBJ_FLAG_HIDDEN);
 
         if (u->percent < 0) {
             lv_label_set_text(row->percent, "--%");
-            lv_label_set_text(row->percent_bold, "--%");
         } else {
             lv_label_set_text_fmt(row->percent, "%d%%", u->percent);
-            lv_label_set_text_fmt(row->percent_bold, "%d%%", u->percent);
         }
         lv_obj_set_style_text_color(row->percent, ct_color(col), 0);
-        lv_obj_set_style_text_color(row->percent_bold, ct_color(col), 0);
 
         // เปอร์เซ็นต์ที่ไม่รู้ = แถบว่าง ไม่ใช่แถบศูนย์ที่ดูเหมือนข้อมูลจริง
         int pct = u->percent;

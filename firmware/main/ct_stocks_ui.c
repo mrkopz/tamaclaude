@@ -25,15 +25,6 @@
 #define CT_STOCKS_RANGE_HIGH_TEXT "HIGH"
 #define CT_STOCKS_RANGE_LOW_TEXT "LOW"
 
-// ตัวเลขราคาแบบตัวหนา — ป้ายสองใบซ้อนกัน เยื้องลงขวา 1px · สำเนาของ ct_crypto_ui.c
-// ด้วยเหตุผลเดียวกับที่ทุกอย่างในไฟล์นี้เป็นสำเนา (ดู [stocks] ใน layout.toml)
-// LVGL ที่คอมไพล์มาไม่มี montserrat ตัวหนาสักขนาด และน้ำหนักคือสิ่งที่ราคาใช้แทนขนาด
-// 48px เดิม หลังหน้าคริปโตมี logo มายืนบนการ์ด
-typedef struct {
-    lv_obj_t *under;  // สร้างก่อน = ถูกวาดก่อน = อยู่ล่าง
-    lv_obj_t *over;
-} ct_bold_t;
-
 static const ct_stocks_t *s_frame;
 static const bool *s_has_frame;
 static bool s_connected;
@@ -60,8 +51,8 @@ typedef struct {
     lv_obj_t *card;
     lv_obj_t *icon;
     lv_obj_t *sym;
-    ct_bold_t price_int;
-    ct_bold_t price_frac;
+    lv_obj_t *price_int;
+    lv_obj_t *price_frac;
     lv_obj_t *arrow;
     lv_obj_t *pct;
     lv_obj_t *win;  // แคปซูลบอกหน้าต่างเวลา เกาะซ้ายลูกศร
@@ -143,33 +134,6 @@ static lv_obj_t *baseline_label(lv_obj_t *parent, const lv_font_t *font, uint16_
     return l;
 }
 
-static ct_bold_t bold_label(lv_obj_t *parent, const lv_font_t *font, uint16_t color, int x,
-                            int baseline)
-{
-    ct_bold_t b;
-    b.under = baseline_label(parent, font, color, x + 1, baseline + 1);
-    b.over = baseline_label(parent, font, color, x, baseline);
-    return b;
-}
-
-static void bold_set_text(ct_bold_t *b, const char *s)
-{
-    lv_label_set_text(b->under, s);
-    lv_label_set_text(b->over, s);
-}
-
-static void bold_set_color(ct_bold_t *b, uint16_t color)
-{
-    lv_obj_set_style_text_color(b->under, ct_color(color), 0);
-    lv_obj_set_style_text_color(b->over, ct_color(color), 0);
-}
-
-static void bold_set_x(ct_bold_t *b, int x)
-{
-    lv_obj_set_x(b->under, x + 1);
-    lv_obj_set_x(b->over, x);
-}
-
 // logo บริษัท — สำเนาของ logo_icon() ในหน้าคริปโตทุกบรรทัด และนั่นคือกติกาของสองหน้านี้
 // (พิกัดคัดลอก โค้ดคัดลอก กติกาที่ใช้ร่วมอยู่ใน ct_trend.c) · ตัวรูปเองไม่ได้ถูกคัดลอก:
 // ตารางมีใบเดียวทั้งโปรเจกต์ หย่อน AAPL.svg ลง tools/logos/ ข้าง BTC.svg แล้วจบ
@@ -238,10 +202,12 @@ void ct_stocks_ui_init(lv_obj_t *parent, const ct_stocks_t *frame, const bool *h
     s_hero.sym = baseline_label(parent, &lv_font_montserrat_24, CT_COL_TEXT, CT_STOCKS_SYM_X,
                                 CT_STOCKS_SYM_BASE_Y);
 
-    s_hero.price_int = bold_label(parent, &lv_font_montserrat_36, CT_COL_TEXT,
-                                  CT_STOCKS_PRICE_X, CT_STOCKS_PRICE_BASE_Y);
-    s_hero.price_frac = bold_label(parent, &lv_font_montserrat_18, CT_COL_TEXT,
-                                   CT_STOCKS_PRICE_X, CT_STOCKS_PRICE_BASE_Y);
+    // ป้ายเดียวต่อก้อน ไม่ทำตัวหนาปลอม — เหตุผลเดียวกับหน้าคริปโต (ดู ct_crypto_ui.c):
+    // ขอบเยื้อง 1px ที่ 36px อ่านเป็นเงาเหลื่อม ไม่ใช่น้ำหนัก
+    s_hero.price_int = baseline_label(parent, &lv_font_montserrat_36, CT_COL_TEXT,
+                                      CT_STOCKS_PRICE_X, CT_STOCKS_PRICE_BASE_Y);
+    s_hero.price_frac = baseline_label(parent, &lv_font_montserrat_18, CT_COL_TEXT,
+                                       CT_STOCKS_PRICE_X, CT_STOCKS_PRICE_BASE_Y);
     s_hero.pct = baseline_label(parent, &lv_font_montserrat_24, CT_COL_TEXT_DIM, 0,
                                 CT_STOCKS_PCT_BASE_Y);
     s_hero.arrow =
@@ -340,12 +306,6 @@ static void show(lv_obj_t *obj, bool on)
     else lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
 }
 
-static void bold_show(ct_bold_t *b, bool on)
-{
-    show(b->under, on);
-    show(b->over, on);
-}
-
 // ความกว้างของ *ตัวหนังสือ* ไม่ใช่ของกรอบ — ป้ายชิดขวาที่กรอบกว้างคงที่จะรายงานความกว้าง
 // ของกรอบ ซึ่งวางลูกศรให้เกาะตัวเลขไม่ได้
 static int32_t text_w(lv_obj_t *l, const char *s)
@@ -419,15 +379,14 @@ static void draw_hero(const ct_stocks_row_t *data, bool live)
     char head[CT_STOCKS_PRICE_LEN], tail[CT_STOCKS_PRICE_LEN];
     ct_trend_split_price(data->price, CT_STOCKS_INT_DIGITS_MAX, head, sizeof(head), tail,
                          sizeof(tail));
-    bold_set_text(&s_hero.price_int, head);
-    bold_set_text(&s_hero.price_frac, tail);
-    bold_set_color(&s_hero.price_int, text);
-    bold_set_color(&s_hero.price_frac, text);
-    bold_show(&s_hero.price_int, head[0] != '\0');
+    lv_label_set_text(s_hero.price_int, head);
+    lv_label_set_text(s_hero.price_frac, tail);
+    lv_obj_set_style_text_color(s_hero.price_int, ct_color(text), 0);
+    lv_obj_set_style_text_color(s_hero.price_frac, ct_color(text), 0);
+    show(s_hero.price_int, head[0] != '\0');
     // ก้อนเล็กเริ่มตรงที่ก้อนใหญ่จบ ไม่ใช่ที่พิกัดคงที่ — ความกว้างของจำนวนเต็มเปลี่ยนตามราคา
-    // วัดจากใบบน ไม่ใช่ใบล่าง — ใบล่างเยื้องไป 1px แล้ว
-    bold_set_x(&s_hero.price_frac,
-               CT_STOCKS_PRICE_X + (head[0] ? text_w(s_hero.price_int.over, head) : 0));
+    lv_obj_set_x(s_hero.price_frac,
+                 CT_STOCKS_PRICE_X + (head[0] ? text_w(s_hero.price_int, head) : 0));
 
     // ช่วงราคาไม่ได้ผูกกับเปอร์เซ็นต์ แม้ตอนบีบเฟรม Mac จะทิ้งช่วงราคาไปก่อนก็ตาม —
     // การผูกสองอย่างนี้ในตัววาดคือการเดาลำดับการบีบของอีกฝั่ง ซึ่งเป็นสิ่งที่เปลี่ยนได้
@@ -493,11 +452,11 @@ void ct_stocks_ui_redraw(void)
     show(s_hero.card, count > 0);
     show(s_hero.icon, count > 0);
     show(s_hero.sym, count > 0);
-    bold_show(&s_hero.price_frac, count > 0);
+    show(s_hero.price_frac, count > 0);
     if (count > 0) {
         draw_hero(&s_frame->rows[0], live);
     } else {
-        bold_show(&s_hero.price_int, false);
+        show(s_hero.price_int, false);
         show(s_hero.pct, false);
         show(s_hero.arrow, false);
         show(s_hero.win, false);

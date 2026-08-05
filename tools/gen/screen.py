@@ -27,21 +27,16 @@ def font(size: int) -> ImageFont.FreeTypeFont:
     return _FONTS[size]
 
 
-def bold_text(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str,
-              fnt: ImageFont.FreeTypeFont, fill: str, anchor: str = "ls") -> None:
-    """ตัวหนาแบบที่บอร์ดทำได้ — วาดซ้ำเยื้อง 1px ลงขวา
+def price_text(draw: ImageDraw.ImageDraw, xy: tuple[float, float], text: str,
+               fnt: ImageFont.FreeTypeFont, fill: str, anchor: str = "ls") -> None:
+    """ตัวเลขราคาบนการ์ดใหญ่ — ป้ายเดียว ไม่ทำตัวหนาปลอม
 
-    LVGL ที่คอมไพล์มาไม่มี montserrat ตัวหนาสักขนาด และการเพิ่มเข้าไปแปลว่าแฟลชอีกก้อน
-    ต่อหนึ่งขนาด · ฝั่งบอร์ดคือป้ายสองใบซ้อนกัน (`bold_pair` ใน ct_crypto_ui.c)
-
-    **ไม่ใช่ `stroke_width=1`** ซึ่งเป็นท่าที่แผงโควตาใช้อยู่ (`_usage_row`) — stroke
-    หนาออกทุกทิศรวมทั้งซ้ายบน ป้ายซ้อนหนาลงขวาอย่างเดียว ที่ 24px ต่างกันจนมองไม่ออก
-    แต่ตัวเลขราคา 36px ต่างกันเป็นน้ำหนักคนละระดับ · ที่นี่เลือกให้ตรงกับบอร์ด
+    เคยวาดซ้ำเยื้อง 1px ลงขวาแทน montserrat ตัวหนาที่ LVGL ที่คอมไพล์มาไม่มี (และการ
+    เพิ่มเข้าไปคือแฟลชอีกก้อนต่อหนึ่งขนาด) แต่ที่ 36px ขอบที่เยื้องอ่านเป็นเงาเหลื่อม
+    มากกว่าน้ำหนัก · สิ่งที่ทำให้ราคาเด่นคือขนาดกับตำแหน่งบนการ์ดอยู่แล้ว
+    ฝั่งบอร์ดคือป้ายใบเดียวเช่นกัน (`price_int`/`price_frac` ใน ct_crypto_ui.c)
     """
-    x, y = xy
-    col = quantize565(fill)
-    draw.text((x, y), text, font=fnt, fill=col, anchor=anchor)
-    draw.text((x + 1, y + 1), text, font=fnt, fill=col, anchor=anchor)
+    draw.text(xy, text, font=fnt, fill=quantize565(fill), anchor=anchor)
 
 
 def _drawable_only(**fields: str) -> None:
@@ -609,18 +604,19 @@ def _usage_row(draw: ImageDraw.ImageDraw, u: Usage, y: int) -> None:
 
     # เปอร์เซ็นต์ตัวใหญ่ — สิ่งเดียวที่ต้องอ่านออกจากอีกฝั่งห้อง
     # 24 ตรงกับ lv_font_montserrat_24 บนบอร์ด — ฟอนต์คนละตัวแต่ขนาดต้องไม่หลุดกัน
-    # stroke_width=1 = ป้ายซ้อนเยื้อง 1px ฝั่ง LVGL ซึ่งไม่มี montserrat ตัวหนา
+    # ไม่ทำตัวหนาปลอม (เคยซ้อนป้ายเยื้อง 1px ฝั่ง LVGL / stroke_width=1 ฝั่งนี้):
+    # ขนาด 24 กับสีของระดับดังพออยู่แล้ว ส่วนเส้นที่หนาขึ้นทำให้ช่องในเลข 0/8/9
+    # ตันจนอ่านยากที่ 320x240 — ความหนาถูกสงวนไว้ให้ขีด pace ที่ใช้มันเป็นสัญญาณ
     big = "--%" if u.pct is None else f"{u.pct}%"
     big_col = quantize565(col if u.pct is not None else PAL.text_dim)
-    draw.text((x0, y + 14), big, font=font(24), fill=big_col, anchor="lm",
-              stroke_width=1, stroke_fill=big_col)
+    draw.text((x0, y + 14), big, font=font(24), fill=big_col, anchor="lm")
 
     # เวลารีเซ็ตอยู่บรรทัดเดียวกับเลข % ไม่ใช่ชั้นใต้แถบ — เกาะขอบขวาของเลขจริง
     # ไม่ใช่พิกัดตายตัวที่กันที่ไว้ให้ "100%" ซึ่งทำให้เลขสองหลักดูห่างจนไม่เป็นก้อนเดียวกัน
     # "resetting" / "no data" ยืนลำพัง — เติม "Resets in" ข้างหน้าแล้วอ่านไม่เป็นภาษา
     left = fmt_remaining(u.remaining)
     txt = f"Resets in {left}" if u.remaining and u.remaining > 0 else left
-    big_w = draw.textlength(big, font=font(24)) + 2  # +2 = stroke_width ทั้งสองข้าง
+    big_w = draw.textlength(big, font=font(24))
     draw.text((x0 + big_w + 12, y + 14), txt, font=font(11),
               fill=quantize565(PAL.text_dim), anchor="lm")
 
