@@ -435,10 +435,10 @@ final class PreferencesWindowController: NSWindowController {
         for (index, coin) in crypto.coins.enumerated() {
             // รูปเดียวกับที่จะขึ้นบนจอ — เหรียญนอกชุดได้จานเปล่าตรงนี้ *และ* ตรงนั้น
             // ผู้ใช้จึงรู้ตั้งแต่ตอนเพิ่มว่าตัวไหนมี logo โดยไม่ต้องมีคำเตือนมาบอกซ้ำ
-            let icon = NSImageView(image: CoinIconImage.image(for: coin) ?? NSImage())
+            let icon = NSImageView(image: LogoIconImage.image(for: coin) ?? NSImage())
             icon.imageScaling = .scaleNone
-            icon.widthAnchor.constraint(equalToConstant: CGFloat(CoinIconImage.px)).isActive = true
-            icon.heightAnchor.constraint(equalToConstant: CGFloat(CoinIconImage.px)).isActive = true
+            icon.widthAnchor.constraint(equalToConstant: CGFloat(LogoIconImage.px)).isActive = true
+            icon.heightAnchor.constraint(equalToConstant: CGFloat(LogoIconImage.px)).isActive = true
             icon.alphaValue = cryptoOn ? 1.0 : 0.4
 
             let label = NSTextField(labelWithString: coin)
@@ -525,6 +525,15 @@ final class PreferencesWindowController: NSWindowController {
     private func rebuildSymbolList() {
         for view in symbolList.arrangedSubviews { view.removeFromSuperview() }
         for (index, symbol) in stocks.symbols.enumerated() {
+            // รูปเดียวกับที่จะขึ้นบนจอ เหมือนรายการเหรียญเป๊ะ — ตารางรูปใบเดียวกันด้วย
+            // (tools/logos) · หน้านี้ตรงกว่าหน้าคริปโตด้วยซ้ำ: Finnhub รับ ticker ตรงๆ
+            // สิ่งที่พิมพ์คือสิ่งที่ค้น ไม่มีขั้นแปลงชื่อมาคั่นให้ผิดได้
+            let icon = NSImageView(image: LogoIconImage.image(for: symbol) ?? NSImage())
+            icon.imageScaling = .scaleNone
+            icon.widthAnchor.constraint(equalToConstant: CGFloat(LogoIconImage.px)).isActive = true
+            icon.heightAnchor.constraint(equalToConstant: CGFloat(LogoIconImage.px)).isActive = true
+            icon.alphaValue = stocksOn ? 1.0 : 0.4
+
             let label = NSTextField(labelWithString: symbol)
             label.widthAnchor.constraint(equalToConstant: 140).isActive = true
 
@@ -541,7 +550,7 @@ final class PreferencesWindowController: NSWindowController {
             remove.isEnabled = stocksOn
             label.textColor = stocksOn ? .labelColor : .disabledControlTextColor
 
-            let row = NSStackView(views: [label, up, down, remove])
+            let row = NSStackView(views: [icon, label, up, down, remove])
             row.orientation = .horizontal
             row.spacing = 4
             symbolList.addArrangedSubview(row)

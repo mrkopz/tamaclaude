@@ -8,7 +8,7 @@
 เรียกของตัวเดียวกัน ไม่ได้ลอกกันมา · ส่วน *วิธีวาง* เป็นสำเนาที่ตั้งใจให้แยกกัน ด้วยเหตุผล
 ที่ [stocks] ใน layout.toml เขียนไว้: หน้านี้ต้องไม่พังเพราะมีคนแก้หน้าคริปโต
 
-ต่างกันสามข้อที่มองเห็น:
+ต่างกันสามข้อที่มองเห็น (logo ไม่ใช่หนึ่งในนั้นอีกแล้ว — สองหน้าอ่านตารางรูปใบเดียวกัน):
 - บรรทัดล่างบอกได้ว่าตัวเลขค้างเพราะตลาดปิด ไม่ใช่เพราะท่อพัง
 - ตลาดปิด = ตัวเลขหยุดเดินโดยชอบธรรม การ์ดจึงกลับไปเป็นพื้นกลาง ทั้งที่ลิงก์ยังอยู่
   (คริปโตไม่มีสภาพนี้ ตลาดมันไม่มีเวลาปิด)
@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw
 
-from . import age, mini, pages, screen, topbar, trend
+from . import age, logos, mini, pages, screen, topbar, trend
 from .config import L, PAL
 from .render import draw_rects, quantize565
 
@@ -86,7 +86,8 @@ def _window(draw: ImageDraw.ImageDraw, text: str, arrow_x: float, cfg, connected
               font=screen.font(cfg.win_font_pil), fill=col, anchor="mm")
 
 
-def _hero(draw: ImageDraw.ImageDraw, row: Stock, connected: bool, live: bool) -> None:
+def _hero(img: Image.Image, draw: ImageDraw.ImageDraw, row: Stock, connected: bool,
+          live: bool) -> None:
     """การ์ดของหุ้นตัวแรกในลิสต์ — คู่ขนานกับ `gen/crypto.py:_hero` ที่เขียนแยกกัน
 
     `live` = ตัวเลขชุดนี้ยังเดินอยู่จริงไหม ซึ่ง **ไม่ใช่** `connected`: ตลาดที่ปิดแล้ว
@@ -102,6 +103,11 @@ def _hero(draw: ImageDraw.ImageDraw, row: Stock, connected: bool, live: bool) ->
         [cfg.card_x, cfg.card_y, cfg.card_x + cfg.card_w - 1, cfg.card_y + cfg.card_h - 1],
         fill=quantize565(trend.card_fill(known, live and row.change is not None)),
         outline=quantize565(trend.card_edge(known, connected)), width=1)
+
+    # logo หลังการ์ด ก่อนตัวหนังสือ — มันนั่งบนพื้นการ์ดที่เพิ่งวาด และอัลฟาของมันต้อง
+    # ผสมกับพื้นสีนั้น ไม่ใช่กับพื้นจอ · ตารางรูปใบเดียวกับหน้าคริปโต ticker ที่ยังไม่มี
+    # SVG ได้ `_default` เหมือนเหรียญนอกชุด
+    logos.paste(img, row.symbol, cfg.icon_x, cfg.icon_y, cfg.icon_px, connected)
 
     # ไม่ผ่าน `screen.line` ด้วยเหตุผลเดียวกับราคาและเปอร์เซ็นต์ข้างล่าง (ฟอนต์ 24 ไม่มี
     # บิตแมปไทย) และเป็นสำเนาของหน้าคริปโตทุกตัวเลข
@@ -134,11 +140,14 @@ def _hero(draw: ImageDraw.ImageDraw, row: Stock, connected: bool, live: bool) ->
 
 
 
-def _row(draw: ImageDraw.ImageDraw, row: Stock, top: int, connected: bool) -> None:
+def _row(img: Image.Image, draw: ImageDraw.ImageDraw, row: Stock, top: int,
+         connected: bool) -> None:
     """หนึ่งแถวเล็กใต้การ์ด — คู่ขนานกับ `gen/crypto.py:_row` ที่เขียนแยกกัน"""
     cfg = L.stocks
     text = PAL.text if connected else PAL.gray
     ty = top + cfg.row_text_dy
+    logos.paste(img, row.symbol, cfg.row_icon_x, top + cfg.row_icon_dy, cfg.row_icon_px,
+                connected)
     screen.line(draw, (cfg.row_sym_x, ty), row.symbol, pil=cfg.row_font_pil,
                 board=cfg.row_font, fill=text, anchor="lt", max_w=cfg.row_sym_w)
     # ราคาชิดขวา หลักหน่วยของทุกแถวจึงเรียงตรงกัน และเทียบข้ามแถวได้ด้วยการกวาดตา
@@ -181,9 +190,9 @@ def render(s: Stocks, phase: float = 0.0, cycle: int = 0) -> Image.Image:
             age.draw_age(draw, s.age, L.stocks.refresh_s, frozen)
         return img
 
-    _hero(draw, rows[0], s.connected, live=s.connected and not s.market_closed)
+    _hero(img, draw, rows[0], s.connected, live=s.connected and not s.market_closed)
     for i, row in enumerate(rows[1:]):
-        _row(draw, row, L.stocks.row_y + i * L.stocks.row_h, s.connected)
+        _row(img, draw, row, L.stocks.row_y + i * L.stocks.row_h, s.connected)
     if len(rows) == 1:
         # ขึ้นเฉพาะตอนไม่มีแถวเล็กเลย ไม่ใช่ทุกครั้งที่เหลือช่องว่าง (ดู `hint_y`)
         screen.line(draw, (L.stocks.hint_x, L.stocks.hint_y), "add more in the mac app",

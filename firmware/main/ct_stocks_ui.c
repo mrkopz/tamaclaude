@@ -3,6 +3,7 @@
 #include "ct_age.h"
 #include "ct_color.h"
 #include "ct_fonts.h"
+#include "ct_logos.h"
 #include "ct_mini.h"
 #include "ct_paint.h"
 #include "ct_rects.h"
@@ -34,6 +35,7 @@ static const bool *s_has_frame;
 static bool s_connected;
 
 typedef struct {
+    lv_obj_t *icon;   // logo บริษัท — ตารางใบเดียวกับหน้าคริปโต (ct_logos.c)
     lv_obj_t *sym;
     lv_obj_t *price;
     lv_obj_t *arrow;  // ผืนวาดลูกศรขึ้น/ลง
@@ -48,6 +50,7 @@ typedef struct {
 // สองหน้าต้องเห็นของอยู่ที่เดิม (ดู [stocks] ใน layout.toml)
 typedef struct {
     lv_obj_t *card;
+    lv_obj_t *icon;
     lv_obj_t *sym;
     ct_bold_t price_int;
     ct_bold_t price_frac;
@@ -153,6 +156,17 @@ static void bold_set_x(ct_bold_t *b, int x)
     lv_obj_set_x(b->over, x);
 }
 
+// logo บริษัท — สำเนาของ logo_icon() ในหน้าคริปโตทุกบรรทัด และนั่นคือกติกาของสองหน้านี้
+// (พิกัดคัดลอก โค้ดคัดลอก กติกาที่ใช้ร่วมอยู่ใน ct_trend.c) · ตัวรูปเองไม่ได้ถูกคัดลอก:
+// ตารางมีใบเดียวทั้งโปรเจกต์ หย่อน AAPL.svg ลง tools/logos/ ข้าง BTC.svg แล้วจบ
+static lv_obj_t *logo_icon(lv_obj_t *parent, int x, int y)
+{
+    lv_obj_t *o = lv_image_create(parent);
+    lv_obj_set_pos(o, x, y);
+    lv_obj_set_style_image_recolor(o, ct_color(CT_COL_GRAY), 0);
+    return o;
+}
+
 static lv_obj_t *canvas(lv_obj_t *parent, int x, int y, int w, int h, lv_event_cb_t cb,
                         int index)
 {
@@ -175,6 +189,10 @@ void ct_stocks_ui_init(lv_obj_t *parent, const ct_stocks_t *frame, const bool *h
     _Static_assert(CT_STOCKS_PCT_FONT == 24, "layout.toml and the font here must agree");
     _Static_assert(CT_STOCKS_SYM_FONT == 24, "layout.toml and the font here must agree");
     _Static_assert(CT_STOCKS_ROW_FONT == 14, "layout.toml and the font here must agree");
+    // ช่องที่ layout.toml เว้นไว้ กับขนาดที่ export_logos.py raster มาจริง มาจากคนละไฟล์
+    // ต้นทาง — ตัวเดียวในโปรเจกต์ที่ยังต้องตรงกันด้วยมือ ให้คอมไพเลอร์เป็นคนจับ
+    _Static_assert(CT_STOCKS_ICON_PX == CT_LOGO_PX_CARD, "layout.toml and tools/logos disagree");
+    _Static_assert(CT_STOCKS_ROW_ICON_PX == CT_LOGO_PX_ROW, "layout.toml and tools/logos disagree");
 
     // การ์ดต้องเกิดก่อนทุกอย่างที่วางทับมัน — LVGL วาดลูกตามลำดับที่ถูกสร้าง
     s_hero.card = lv_obj_create(parent);
@@ -188,6 +206,9 @@ void ct_stocks_ui_init(lv_obj_t *parent, const ct_stocks_t *frame, const bool *h
 
     // ไม่ใช่ `ct_font_text_14()` เหมือนแถวเล็ก — 24px ไม่มีบิตแมปไทย และไม่ต้องมี
     // สัญลักษณ์เป็น ASCII ที่บริการเป็นคนบอก (ดู `sym_base_y` ใน layout.toml)
+    // หลังการ์ด ก่อนตัวหนังสือ — LVGL วาดลูกตามลำดับที่สร้าง และ logo นั่งบนพื้นการ์ด
+    s_hero.icon = logo_icon(parent, CT_STOCKS_ICON_X, CT_STOCKS_ICON_Y);
+
     s_hero.sym = baseline_label(parent, &lv_font_montserrat_24, CT_COL_TEXT, CT_STOCKS_SYM_X,
                                 CT_STOCKS_SYM_BASE_Y);
 
@@ -222,6 +243,7 @@ void ct_stocks_ui_init(lv_obj_t *parent, const ct_stocks_t *frame, const bool *h
         int top = CT_STOCKS_ROW_Y + i * CT_STOCKS_ROW_H;
         int ty = top + CT_STOCKS_ROW_TEXT_DY;
         ct_stocks_row_ui_t *row = &s_rows[i];
+        row->icon = logo_icon(parent, CT_STOCKS_ROW_ICON_X, top + CT_STOCKS_ROW_ICON_DY);
         row->sym = label(parent, ct_font_text_14(), CT_COL_TEXT, CT_STOCKS_ROW_SYM_X, ty);
         lv_obj_set_width(row->sym, CT_STOCKS_ROW_SYM_W);
         lv_label_set_long_mode(row->sym, LV_LABEL_LONG_DOT);
@@ -290,6 +312,11 @@ static void draw_hero(const ct_stocks_row_t *data, bool live)
     lv_obj_set_style_border_color(s_hero.card, ct_color(ct_trend_card_edge(known, s_connected)),
                                   0);
 
+    // หุ้นที่ยังไม่มี SVG ได้จานเปล่า ไม่ใช่ช่องว่าง — `ct_logo_card` ไม่เคยคืน NULL
+    lv_image_set_src(s_hero.icon, ct_logo_card(data->sym));
+    lv_obj_set_style_image_recolor_opa(s_hero.icon, s_connected ? LV_OPA_TRANSP :
+                                                                  CT_LOGO_DIM_OPA, 0);
+
     lv_label_set_text(s_hero.sym, data->sym);
     lv_obj_set_style_text_color(s_hero.sym, ct_color(text), 0);
 
@@ -330,6 +357,9 @@ static void draw_hero(const ct_stocks_row_t *data, bool live)
 static void draw_row(ct_stocks_row_ui_t *row, const ct_stocks_row_t *data)
 {
     uint16_t text = s_connected ? CT_COL_TEXT : CT_COL_GRAY;
+    lv_image_set_src(row->icon, ct_logo_row(data->sym));
+    lv_obj_set_style_image_recolor_opa(row->icon, s_connected ? LV_OPA_TRANSP :
+                                                                CT_LOGO_DIM_OPA, 0);
     lv_label_set_text(row->sym, data->sym);
     lv_label_set_text(row->price, data->price);
     lv_obj_set_style_text_color(row->sym, ct_color(text), 0);
@@ -361,6 +391,7 @@ void ct_stocks_ui_redraw(void)
     bool live = have && s_connected && !s_frame->market_closed;
 
     show(s_hero.card, count > 0);
+    show(s_hero.icon, count > 0);
     show(s_hero.sym, count > 0);
     bold_show(&s_hero.price_frac, count > 0);
     if (count > 0) {
@@ -377,6 +408,7 @@ void ct_stocks_ui_redraw(void)
         // แถวที่ไม่มีหุ้นคือแถวที่ไม่มีอยู่ ไม่ใช่แถวที่มีขีดคั่น — watchlist สามตัวต้องดู
         // เหมือน watchlist สามตัว ไม่ใช่ห้าตัวที่หายไปสอง
         bool on = i + 1 < count;
+        show(row->icon, on);
         show(row->sym, on);
         show(row->price, on);
         if (on) {

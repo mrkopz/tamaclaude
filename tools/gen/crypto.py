@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw
 
-from . import age, coins, mini, pages, screen, topbar, trend
+from . import age, logos, mini, pages, screen, topbar, trend
 from .config import L, PAL
 from .render import draw_rects, quantize565
 
@@ -90,7 +90,7 @@ def _hero(img: Image.Image, draw: ImageDraw.ImageDraw, coin: Coin, connected: bo
 
     # logo หลังการ์ด ก่อนตัวหนังสือ — มันนั่งบนพื้นการ์ดที่เพิ่งวาด และอัลฟาของมันต้อง
     # ผสมกับพื้นสีนั้น ไม่ใช่กับพื้นจอ (พื้นการ์ดเปลี่ยนสีตามทิศทางขึ้น/ลง)
-    coins.paste(img, coin.symbol, cfg.icon_x, cfg.icon_y, cfg.icon_px, connected)
+    logos.paste(img, coin.symbol, cfg.icon_x, cfg.icon_y, cfg.icon_px, connected)
 
     # ไม่ผ่าน `screen.line` ด้วยเหตุผลเดียวกับราคาและเปอร์เซ็นต์ข้างล่าง — ฟอนต์ 24 ไม่มี
     # บิตแมปไทย และสัญลักษณ์เป็น ASCII ที่บริการเป็นคนบอก ไม่ใช่ข้อความที่ผู้ใช้พิมพ์
@@ -137,7 +137,7 @@ def _row(img: Image.Image, draw: ImageDraw.ImageDraw, coin: Coin, top: int,
     cfg = L.crypto
     text = PAL.text if connected else PAL.gray
     ty = top + cfg.row_text_dy
-    coins.paste(img, coin.symbol, cfg.row_icon_x, top + cfg.row_icon_dy, cfg.row_icon_px,
+    logos.paste(img, coin.symbol, cfg.row_icon_x, top + cfg.row_icon_dy, cfg.row_icon_px,
                 connected)
     screen.line(draw, (cfg.row_sym_x, ty), coin.symbol, pil=cfg.row_font_pil,
                 board=cfg.row_font, fill=text, anchor="lt", max_w=cfg.row_sym_w)
@@ -169,7 +169,7 @@ def render(c: Crypto, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     # ว่าหน้านี้มีตัวเลขให้ดูหรือยัง
     mini.draw_mini(draw, c.mascot_state, c.connected, phase, cycle)
 
-    # ไม่ใช่ชื่อ `coins` — ชื่อนั้นเป็นของโมดูล logo เหรียญที่ไฟล์นี้ import มาแล้ว
+    # ไม่ใช่ชื่อ `logos` — ชื่อนั้นเป็นของโมดูล logo ที่ไฟล์นี้ import มาแล้ว
     rows = c.coins[: L.crypto.rows] if c.has_frame else []
     if not rows:
         # ยังไม่เคยได้ข้อมูลของหน้านี้ ต้องมีหน้าตาของตัวเอง ห้ามเป็นจอเปล่า (ADR-0002)

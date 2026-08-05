@@ -1,7 +1,7 @@
 #include "ct_crypto_ui.h"
 
 #include "ct_age.h"
-#include "ct_coins.h"
+#include "ct_logos.h"
 #include "ct_color.h"
 #include "ct_fonts.h"
 #include "ct_mini.h"
@@ -32,7 +32,7 @@ typedef struct {
 } ct_bold_t;
 
 typedef struct {
-    lv_obj_t *icon;   // logo เหรียญ — บิตแมปเต็มสีจาก ct_coins.c ไม่ใช่ rect list
+    lv_obj_t *icon;   // logo เหรียญ — บิตแมปเต็มสีจาก ct_logos.c ไม่ใช่ rect list
     lv_obj_t *sym;
     lv_obj_t *price;
     lv_obj_t *spark;  // ผืนวาดรูป 24 ชั่วโมง
@@ -186,11 +186,9 @@ static void bold_set_x(ct_bold_t *b, int x)
 // logo เหรียญ — บิตแมป RGB565A8 ที่อ่านตรงจากแฟลช ไม่มี decoder ไม่กิน RAM
 //
 // ตอนลิงก์หลุด ใช้ recolor ทับเทาตอนวาด ไม่ได้เก็บรูปเทาไว้อีกชุด: เก็บสองชุดแปลว่า
-// แฟลชคูณสอง เพื่อบอกสิ่งที่ตัวหนังสือทั้งหน้าบอกอยู่แล้ว · ผสมเข้าหาเทา ไม่ยุบเหลือ
-// สีเดียว — จานกับ glyph ที่กลายเป็นสีเดียวกันแปลว่า BTC เหลือวงกลมทึบพอดีตอนที่ภาพ
-// นั้นค้างบนจอนานที่สุด (ค่าเดียวกับ DIM_MIX/DIM_RGB ใน tools/gen/coins.py)
-#define CT_COIN_DIM_OPA 153
-static lv_obj_t *coin_icon(lv_obj_t *parent, int x, int y)
+// แฟลชคูณสอง เพื่อบอกสิ่งที่ตัวหนังสือทั้งหน้าบอกอยู่แล้ว · ระดับความหม่นอยู่ใน
+// ct_logos.h ไม่ใช่ที่นี่ เพราะหน้าหุ้นต้องหม่นเท่ากันเป๊ะ
+static lv_obj_t *logo_icon(lv_obj_t *parent, int x, int y)
 {
     lv_obj_t *o = lv_image_create(parent);
     lv_obj_set_pos(o, x, y);
@@ -220,10 +218,10 @@ void ct_crypto_ui_init(lv_obj_t *parent, const ct_crypto_t *frame, const bool *h
     _Static_assert(CT_CRYPTO_PCT_FONT == 24, "layout.toml and the font here must agree");
     _Static_assert(CT_CRYPTO_SYM_FONT == 24, "layout.toml and the font here must agree");
     _Static_assert(CT_CRYPTO_ROW_FONT == 14, "layout.toml and the font here must agree");
-    // ช่องที่ layout.toml เว้นไว้ กับขนาดที่ export_coins.py raster มาจริง มาจากคนละไฟล์
+    // ช่องที่ layout.toml เว้นไว้ กับขนาดที่ export_logos.py raster มาจริง มาจากคนละไฟล์
     // ต้นทาง — ตัวเดียวในโปรเจกต์ที่ยังต้องตรงกันด้วยมือ ให้คอมไพเลอร์เป็นคนจับ
-    _Static_assert(CT_CRYPTO_ICON_PX == CT_COIN_PX_CARD, "layout.toml and tools/coins disagree");
-    _Static_assert(CT_CRYPTO_ROW_ICON_PX == CT_COIN_PX_ROW, "layout.toml and tools/coins disagree");
+    _Static_assert(CT_CRYPTO_ICON_PX == CT_LOGO_PX_CARD, "layout.toml and tools/logos disagree");
+    _Static_assert(CT_CRYPTO_ROW_ICON_PX == CT_LOGO_PX_ROW, "layout.toml and tools/logos disagree");
     _Static_assert(CT_CRYPTO_SPARK_COLS <= CT_TREND_SPARK_COLS_MAX, "spark too wide");
     _Static_assert(CT_CRYPTO_ROW_SPARK_COLS <= CT_TREND_SPARK_COLS_MAX, "spark too wide");
 
@@ -240,7 +238,7 @@ void ct_crypto_ui_init(lv_obj_t *parent, const ct_crypto_t *frame, const bool *h
     lv_obj_set_style_border_opa(s_hero.card, LV_OPA_COVER, 0);
 
     // หลังการ์ด ก่อนตัวหนังสือ — LVGL วาดลูกตามลำดับที่สร้าง และ logo นั่งบนพื้นการ์ด
-    s_hero.icon = coin_icon(parent, CT_CRYPTO_ICON_X, CT_CRYPTO_ICON_Y);
+    s_hero.icon = logo_icon(parent, CT_CRYPTO_ICON_X, CT_CRYPTO_ICON_Y);
 
     // ไม่ใช่ `ct_font_text_14()` เหมือนแถวเล็ก — 24px ไม่มีบิตแมปไทย และไม่ต้องมี
     // สัญลักษณ์เป็น ASCII ที่บริการเป็นคนบอก ไม่ใช่ข้อความที่ผู้ใช้พิมพ์ (ดู `sym_base_y`
@@ -281,7 +279,7 @@ void ct_crypto_ui_init(lv_obj_t *parent, const ct_crypto_t *frame, const bool *h
         int top = CT_CRYPTO_ROW_Y + i * CT_CRYPTO_ROW_H;
         int ty = top + CT_CRYPTO_ROW_TEXT_DY;
         ct_crypto_row_ui_t *row = &s_rows[i];
-        row->icon = coin_icon(parent, CT_CRYPTO_ROW_ICON_X, top + CT_CRYPTO_ROW_ICON_DY);
+        row->icon = logo_icon(parent, CT_CRYPTO_ROW_ICON_X, top + CT_CRYPTO_ROW_ICON_DY);
         row->sym = label(parent, ct_font_text_14(), CT_COL_TEXT, CT_CRYPTO_ROW_SYM_X, ty);
         lv_obj_set_width(row->sym, CT_CRYPTO_ROW_SYM_W);
         lv_label_set_long_mode(row->sym, LV_LABEL_LONG_DOT);
@@ -353,10 +351,10 @@ static void draw_hero(const ct_crypto_row_t *data)
     lv_obj_set_style_border_color(s_hero.card,
                                   ct_color(ct_trend_card_edge(data->change, s_connected)), 0);
 
-    // สัญลักษณ์ที่ไม่มีในตารางได้จานเปล่า ไม่ใช่ช่องว่าง — `ct_coin_card` ไม่เคยคืน NULL
-    lv_image_set_src(s_hero.icon, ct_coin_card(data->sym));
+    // สัญลักษณ์ที่ไม่มีในตารางได้จานเปล่า ไม่ใช่ช่องว่าง — `ct_logo_card` ไม่เคยคืน NULL
+    lv_image_set_src(s_hero.icon, ct_logo_card(data->sym));
     lv_obj_set_style_image_recolor_opa(s_hero.icon, s_connected ? LV_OPA_TRANSP :
-                                                                  CT_COIN_DIM_OPA, 0);
+                                                                  CT_LOGO_DIM_OPA, 0);
 
     lv_label_set_text(s_hero.sym, data->sym);
     lv_obj_set_style_text_color(s_hero.sym, ct_color(text), 0);
@@ -398,9 +396,9 @@ static void draw_hero(const ct_crypto_row_t *data)
 static void draw_row(ct_crypto_row_ui_t *row, const ct_crypto_row_t *data)
 {
     uint16_t text = s_connected ? CT_COL_TEXT : CT_COL_GRAY;
-    lv_image_set_src(row->icon, ct_coin_row(data->sym));
+    lv_image_set_src(row->icon, ct_logo_row(data->sym));
     lv_obj_set_style_image_recolor_opa(row->icon, s_connected ? LV_OPA_TRANSP :
-                                                                CT_COIN_DIM_OPA, 0);
+                                                                CT_LOGO_DIM_OPA, 0);
     lv_label_set_text(row->sym, data->sym);
     lv_label_set_text(row->price, data->price);
     lv_obj_set_style_text_color(row->sym, ct_color(text), 0);

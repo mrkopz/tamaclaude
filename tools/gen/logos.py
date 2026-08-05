@@ -1,7 +1,7 @@
-"""logo เหรียญฝั่ง preview — พอร์ตคู่กับ firmware/main/ct_coins.c
+"""logo ฝั่ง preview — พอร์ตคู่กับ firmware/main/ct_logos.c
 
 ต่างจากพอร์ตคู่ขนานคู่อื่นของโปรเจกต์ตรงที่ *ไม่ได้เขียนรูปซ้ำ* สองฝั่งอ่านผลลัพธ์ของ
-`export_coins.py` ชุดเดียวกัน (ที่นี่อ่าน PNG ฝั่งโน้นอ่าน C array ที่ raster มาจาก
+`export_logos.py` ชุดเดียวกัน (ที่นี่อ่าน PNG ฝั่งโน้นอ่าน C array ที่ raster มาจาก
 SVG ไฟล์เดียวกัน สีถูกบีบเป็น RGB565 ตั้งแต่ตอนนั้นแล้ว) — สิ่งที่ยังพอร์ตกันจริงๆ คือ
 *กติกาการค้น*: ไม่เจอสัญลักษณ์แล้วต้องได้ `_default` ไม่ใช่ช่องว่าง
 
@@ -19,7 +19,7 @@ from PIL import Image
 
 from .config import TOOLS_DIR
 
-PNG_DIR = TOOLS_DIR / "coins" / "png"
+PNG_DIR = TOOLS_DIR / "logos" / "png"
 DEFAULT_NAME = "_default"
 
 
@@ -38,6 +38,7 @@ def _load(name: str, px: int) -> Image.Image | None:
 # ผสมเข้าหาเทาแทน: คอนทราสต์ในตัว logo อยู่ครบ แค่ไม่ส่งเสียง
 #
 # ฝั่งบอร์ดคือ LV_STYLE_IMAGE_RECOLOR + RECOLOR_OPA ค่าเดียวกัน ไม่ต้องเก็บรูปเทาเพิ่ม
+# (`CT_LOGO_DIM_OPA` ใน ct_logos.h ซึ่ง export_logos.py คายมาจาก DIM_OPA ของมันเอง)
 DIM_MIX = 153  # 60% ของ 255
 DIM_RGB = (0x5C, 0x5C, 0x5C)  # [palette] gray
 
@@ -68,7 +69,7 @@ def paste(img: Image.Image, symbol: str | None, x: int, y: int, px: int,
           connected: bool = True) -> None:
     """แปะ logo ลงภาพหน้าจอ ใช้อัลฟาของตัวมันเองเป็นหน้ากาก
 
-    เงียบไปเฉยๆ ได้กรณีเดียว: ยังไม่เคยรัน `export_coins.py` (โฟลเดอร์ png ว่าง) ซึ่ง
+    เงียบไปเฉยๆ ได้กรณีเดียว: ยังไม่เคยรัน `export_logos.py` (โฟลเดอร์ png ว่าง) ซึ่ง
     เป็นสภาพของ working copy ไม่ใช่ของบอร์ด — ฝั่ง C ไม่มีกรณีนี้ มันคอมไพล์ไม่ผ่าน
     ตั้งแต่แรกถ้าไม่มีตาราง
     """

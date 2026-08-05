@@ -294,6 +294,9 @@ static const int16_t ct_weather_bolt[CT_WEATHER_BOLT_COUNT][4] = {
 #define CT_STOCKS_CARD_Y             26
 #define CT_STOCKS_CARD_W             304
 #define CT_STOCKS_CARD_H             93
+#define CT_STOCKS_ICON_X             18
+#define CT_STOCKS_ICON_Y             30
+#define CT_STOCKS_ICON_PX            32
 #define CT_STOCKS_SYM_X              58
 #define CT_STOCKS_SYM_BASE_Y         54
 #define CT_STOCKS_SYM_W              100
@@ -327,6 +330,9 @@ static const int16_t ct_weather_bolt[CT_WEATHER_BOLT_COUNT][4] = {
 #define CT_STOCKS_ROW_FONT           14
 #define CT_STOCKS_ROW_FONT_PIL       12
 #define CT_STOCKS_ROW_TEXT_DY        4
+#define CT_STOCKS_ROW_ICON_X         18
+#define CT_STOCKS_ROW_ICON_DY        4
+#define CT_STOCKS_ROW_ICON_PX        16
 #define CT_STOCKS_ROW_SYM_X          38
 #define CT_STOCKS_ROW_SYM_W          52
 #define CT_STOCKS_ROW_PRICE_X        176

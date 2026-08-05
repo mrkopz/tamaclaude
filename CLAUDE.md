@@ -114,7 +114,7 @@ python3 tools/preview.py            # render every state + whole screens (weathe
 python3 tools/preview.py --sheet    # contact sheet only
 python3 tools/preview.py --limits   # measure how many cells each label holds (Text.Limit)
 python3 tools/export_layout.py      # tools/layout.toml -> firmware/main/layout.h
-python3 tools/export_coins.py       # tools/coins/*.svg -> ct_coins.c + png (needs resvg)
+python3 tools/export_logos.py       # tools/logos/*.svg -> ct_logos.c + png (needs resvg)
 python3 tools/export_thai.py        # tools/thai.toml -> ThaiTable.swift + gen/thai_table.py
 python3 tools/export_thai_font.py   # tools/thai.toml + Sarabun -> ct_font_thai_*.c + fonts/*.json
 python3 tools/test_thai.py          # thai golden vectors, python side (swift side is in tamatest)
@@ -145,11 +145,13 @@ look at `out/`. It proves the *design*, not the C renderer.
   `mini.py`↔`ct_mini.c`, `topbar.py`↔`ct_topbar.c`, `sky.py` folds into `ct_ui.c`.
   `pages.py` is the odd one out: it feeds `export_layout.py`, which generates `ct_page_kind_t`. A visual change means editing both
   sides; the Python side is where you iterate, the C side is the port.
-- **`tools/coins/*.svg` → `ct_coins.c` + `tools/coins/png/`** — coin logos, the one asset that
-  is **not** a rect list. Full-colour RGB565A8 bitmaps at 32 and 16 px, rasterised once by
-  `export_coins.py`; the board, the preview, and the Mac settings window all read that one
-  raster. **Never edit the generated files.** See ADR-0010, and `gen/coins.py` ↔ `ct_coins.c`
-  for the lookup rule (unknown symbol → `_default`, never a blank).
+- **`tools/logos/*.svg` → `ct_logos.c` + `tools/logos/png/`** — coin *and* ticker logos, the
+  one asset that is **not** a rect list. Full-colour RGB565A8 bitmaps at 32 and 16 px,
+  rasterised once by `export_logos.py`; the board, the preview, and the Mac settings window all
+  read that one raster. One table serves both watchlist pages — drop `AAPL.svg` in beside
+  `BTC.svg` and it shows up everywhere, and the 32-file cap is shared (ADR-0011).
+  **Never edit the generated files.** See ADR-0010, and `gen/logos.py` ↔ `ct_logos.c` for the
+  lookup rule (unknown symbol → `_default`, never a blank).
 - **Every other asset is a rect list**, `{x, y, w, h, color}` in mascot-relative *unit*
   coordinates — no sprite pipeline. The preview and the board both come from `gen/mascot.py`.
   The **app icon is half an exception** — `.icns` carries per-size art, so ≥128 px is a
