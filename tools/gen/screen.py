@@ -10,7 +10,9 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw, ImageFont
 
-from . import age, bitmapfont, mascot, pages, sky, thai, topbar
+# `footer` วนกลับมา import ไฟล์นี้ผ่าน `age` — ใช้ได้เพราะทั้งสองฝั่งแตะกันตอน *เรียก*
+# ไม่ใช่ตอน import (Python ผูกโมดูลที่ยัง init ไม่จบให้ได้) อย่าย้ายไปเรียกที่ระดับโมดูล
+from . import age, bitmapfont, footer, mascot, pages, sky, thai, topbar
 from .config import L, PAL
 from .mascot import BODY
 from .props import BOX_X0, BOX_X1, BOX_Y1
@@ -739,7 +741,8 @@ def _bar(s: Screen) -> topbar.Bar:
                       remaining=usage[0].remaining if usage else None)
 
 
-def render(s: Screen, phase: float = 0.0, cycle: int = 0) -> Image.Image:
+def render(s: Screen, phase: float = 0.0, cycle: int = 0,
+           pos: footer.Pos | None = None) -> Image.Image:
     img = Image.new("RGB", (L.screen.width, L.screen.height), quantize565(PAL.bg))
     draw = ImageDraw.Draw(img)
     # ฉากอยู่หลังทุกอย่าง กินเต็มจอใต้แถบบน — มาสคอตยืนทับ ยอมให้บังดาวและดวงที่เตี้ย
@@ -763,4 +766,11 @@ def render(s: Screen, phase: float = 0.0, cycle: int = 0) -> Image.Image:
         _usage(draw, usage)
     else:
         _idle_clock(draw, s)
+    # **หน้านี้ได้ pip แต่ไม่ได้แถบ** — มาสคอตตัวจริงอยู่กลางจอแล้ว ไม่ต้องมีตัวจิ๋วซ้ำ
+    # ไม่มีข้อมูลที่ดึงมาจึงไม่มีอายุให้บอก และพื้นดินกินถึงขอบล่าง แถบทึบจะตัดฉากทิ้ง
+    #
+    # แต่ pip ต้องมี: หน้านี้คือหน้าที่บอร์ดกระโดดกลับมาบ่อยที่สุด คนที่ยืนอยู่ตรงนี้แล้ว
+    # ไม่เห็นอะไรบอกว่าปัดได้ คือคนที่ไม่รู้ว่าอีกสี่หน้ามีอยู่ · affordance ที่มี 4 ใน 5 หน้า
+    # คือ affordance ที่สอนไม่สำเร็จ
+    footer.pips(draw, pos or footer.Pos(), has_mini=False)
     return img

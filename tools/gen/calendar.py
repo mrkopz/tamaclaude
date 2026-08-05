@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw
 
-from . import age, mini, pages, screen, sky, topbar
+from . import age, footer, pages, screen, sky, topbar
 from .config import L, PAL
 from .render import quantize565
 
@@ -302,21 +302,24 @@ def _spine(draw: ImageDraw.ImageDraw, c: Calendar, rows: int) -> None:
         fill=quantize565(PAL.gray_dark if c.connected else PAL.ink))
 
 
-def render(c: Calendar, phase: float = 0.0, cycle: int = 0) -> Image.Image:
+def _footer(draw: ImageDraw.ImageDraw, c: Calendar, pos: footer.Pos | None,
+            phase: float, cycle: int, *, has_frame: bool = True) -> None:
+    footer.draw(draw, pos or footer.Pos(), secs=c.age, refresh_s=L.calendar.refresh_s,
+                state=c.mascot_state, connected=c.connected, phase=phase, cycle=cycle,
+                has_frame=has_frame)
+
+
+def render(c: Calendar, phase: float = 0.0, cycle: int = 0,
+           pos: footer.Pos | None = None) -> Image.Image:
     img = Image.new("RGB", (L.screen.width, L.screen.height), quantize565(PAL.bg))
     draw = ImageDraw.Draw(img)
     # หน้านี้ไม่เคยแสดงเวลาหรือโควตาเอง แถบจึงพูดครบเสมอ (ดู `topbar.draw`)
     topbar.draw(draw, c.bar, page=pages.LABELS["calendar"], connected=c.connected)
 
-    # มาสคอตอยู่แถบบนของทุกหน้า รวมสภาพที่ไม่มีนัดให้แสดง — สถานะ session ไม่ได้ขึ้นกับ
-    # ว่าหน้านี้อ่านปฏิทินได้หรือไม่
-    mini.draw_mini(draw, c.mascot_state, c.connected, phase, cycle)
-
     events = c.events[: L.calendar.rows] if c.has_frame and c.state == OK else []
     if not events:
         _empty(draw, c)
-        if c.has_frame:
-            age.draw_age(draw, c.age, L.calendar.refresh_s)
+        _footer(draw, c, pos, phase, cycle, has_frame=c.has_frame)
         return img
 
     text = PAL.text if c.connected else PAL.gray
@@ -341,5 +344,5 @@ def render(c: Calendar, phase: float = 0.0, cycle: int = 0) -> Image.Image:
         screen.line(draw, (cal.title_x, top + cal.title_dy), event.title,
                     pil=10, board=cal.title_font, fill=text, anchor="lt", max_w=cal.title_w)
 
-    age.draw_age(draw, c.age, L.calendar.refresh_s)
+    _footer(draw, c, pos, phase, cycle)
     return img

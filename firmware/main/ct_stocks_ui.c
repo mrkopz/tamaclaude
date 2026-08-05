@@ -1,6 +1,7 @@
 #include "ct_stocks_ui.h"
 
 #include "ct_age.h"
+#include "ct_footer.h"
 #include "ct_color.h"
 #include "ct_fonts.h"
 #include "ct_logos.h"
@@ -287,6 +288,9 @@ void ct_stocks_ui_init(lv_obj_t *parent, const ct_stocks_t *frame, const bool *h
                    CT_STOCKS_HINT_Y);
     lv_label_set_text(s_hint, "add more in the mac app");
 
+    // ฐานก่อนมาสคอตเสมอ — LVGL เรียงชั้นตามลำดับสร้าง มาสคอตต้องยืนอยู่ *บน* แท่น
+    // และก่ายข้ามเส้นขอบบนขึ้นไป ไม่ใช่ถูกแถบทาทับ (ตรงกับลำดับใน `footer.draw`)
+    ct_footer_attach(parent, true);
     ct_mini_attach(parent);
 
     s_age = ct_age_label(parent);

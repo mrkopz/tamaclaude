@@ -88,7 +88,8 @@ def build_header() -> str:
         "",
     ]
     for section in ("screen", "topbar", "slots", "card", "usage", "stroll", "sky", "rotation",
-                    "touch", "page", "weather", "crypto", "stocks", "calendar", "mascot"):
+                    "touch", "page", "footer", "weather", "crypto", "stocks", "calendar",
+                    "mascot"):
         out += _emit_section(section, _raw[section])
         out.append("")
         out += _emit_tables(section, _raw[section])

@@ -22,7 +22,7 @@
 #define CT_SLOTS_LABEL_DY            4
 
 #define CT_CARD_TOP                  144
-#define CT_CARD_HEIGHT               96
+#define CT_CARD_HEIGHT               84
 #define CT_CARD_PAD                  6
 #define CT_CARD_MAX                  2
 #define CT_CARD_H_ONE                32
@@ -197,12 +197,22 @@ static const int16_t ct_sky_bolt[CT_SKY_BOLT_COUNT][4] = {
 #define CT_TOUCH_SWIPE_MAX_MS        1500
 #define CT_TOUCH_POLL_MS             50
 
-#define CT_PAGE_AGE_X                12
-#define CT_PAGE_AGE_Y                214
 #define CT_PAGE_STALE_FACTOR         10
-#define CT_PAGE_MINI_UNIT_PX         1.5f
-#define CT_PAGE_MINI_RIGHT           10
-#define CT_PAGE_MINI_BOTTOM_Y        236
+
+#define CT_FOOTER_HEIGHT             22
+#define CT_FOOTER_RULE_H             1
+#define CT_FOOTER_AGE_X              12
+#define CT_FOOTER_AGE_Y              223
+#define CT_FOOTER_PIP_H              4
+#define CT_FOOTER_PIP_DOT_W          4
+#define CT_FOOTER_PIP_CUR_W          14
+#define CT_FOOTER_PIP_GAP            6
+#define CT_FOOTER_PIP_RIGHT_GAP      12
+#define CT_FOOTER_MINI_UNIT_PX       1.5f
+#define CT_FOOTER_MINI_RIGHT         10
+#define CT_FOOTER_MINI_BOTTOM_Y      236
+#define CT_FOOTER_PLINTH_H           2
+#define CT_FOOTER_PLINTH_PAD         2
 
 #define CT_WEATHER_PLACE_X           12
 #define CT_WEATHER_PLACE_Y           28

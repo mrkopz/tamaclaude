@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw
 
-from . import age, mini, pages, screen, sky, topbar
+from . import footer, pages, screen, sky, topbar
 from .config import L, PAL
 from .rects import Rect, RectList
 from .render import draw_rects, quantize565
@@ -288,7 +288,15 @@ def _forecast(draw: ImageDraw.ImageDraw, w: Weather) -> None:
                     pil=12, board=wx.fc_temp_font, fill=text, anchor="mt")
 
 
-def render(w: Weather, phase: float = 0.0, cycle: int = 0) -> Image.Image:
+def _footer(draw: ImageDraw.ImageDraw, w: Weather, pos: footer.Pos | None,
+            phase: float, cycle: int, *, has_frame: bool = True) -> None:
+    footer.draw(draw, pos or footer.Pos(), secs=w.age, refresh_s=L.weather.refresh_s,
+                state=w.mascot_state, connected=w.connected, phase=phase, cycle=cycle,
+                has_frame=has_frame)
+
+
+def render(w: Weather, phase: float = 0.0, cycle: int = 0,
+           pos: footer.Pos | None = None) -> Image.Image:
     img = Image.new("RGB", (L.screen.width, L.screen.height), quantize565(PAL.bg))
     draw = ImageDraw.Draw(img)
 
@@ -306,7 +314,6 @@ def render(w: Weather, phase: float = 0.0, cycle: int = 0) -> Image.Image:
     draw_rects(draw, icon(w.code if w.has_frame else 3, w.has_frame and w.connected,
                           is_night(sky.hours(w.bar.clock))),
                L.weather.icon_px, L.weather.icon_x, L.weather.icon_y)
-    mini.draw_mini(draw, w.mascot_state, w.connected, phase, cycle)
 
     if not w.has_frame:
         # ยังไม่เคยได้ข้อมูลของหน้านี้ ต้องมีหน้าตาของตัวเอง ห้ามเป็นจอเปล่า (ADR-0002)
@@ -315,6 +322,7 @@ def render(w: Weather, phase: float = 0.0, cycle: int = 0) -> Image.Image:
         screen.line(draw, (L.weather.temp_x, L.weather.empty_sub_y),
                     "the mac has not sent this page", pil=10, board=12,
                     fill=PAL.text_dim, anchor="lt")
+        _footer(draw, w, pos, phase, cycle, has_frame=False)
         return img
 
     # ชุดสีของย่านฟ้า — กลับขั้วทั้งชุดเมื่อฟ้าสว่าง ไม่ใช่แค่ตัวหลัก
@@ -337,5 +345,5 @@ def render(w: Weather, phase: float = 0.0, cycle: int = 0) -> Image.Image:
                  f"H {w.high}   L {w.low}", pil=12, board=14, fill=dim, anchor="lt")
 
     _forecast(draw, w)
-    age.draw_age(draw, w.age, L.weather.refresh_s)
+    _footer(draw, w, pos, phase, cycle)
     return img
