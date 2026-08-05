@@ -51,6 +51,13 @@ static int s_offline_s;
 static int s_since_turn;
 // เวลาที่เหลือของการยึดหน้าที่ผู้ใช้เลือกเอง — ระหว่างนี้รอบหมุนหยุดสนิท ไม่ใช่แค่ช้าลง
 static int s_hold_left;
+// หน้าที่ต้องกลับไปหลังการเด้ง ใช้เฉพาะตอนรอบหมุนถูกปิด — `CT_PAGE_KIND_COUNT` คือ
+// "ไม่มี" ไม่ใช่ `CT_PAGE_MASCOT` ซึ่งเป็นหน้าจริงที่ผู้ใช้ปัดมาค้างไว้ได้
+//
+// ตอนรอบหมุนเปิด มาสคอตได้เวลาเต็มหนึ่งรอบแล้วรอบหมุนก็พาไปต่อเอง ปิดรอบหมุนแล้ว
+// "ไปต่อ" ไม่มีความหมาย แต่ "กลับที่เดิม" มี — ไม่งั้นการเตือนวาบเดียวตอนไม่อยู่โต๊ะ
+// จะพรากหน้าที่ผู้ใช้ตั้งใจปัดค้างไว้ไปถาวร
+static ct_page_kind_t s_return_to = CT_PAGE_KIND_COUNT;
 
 // ประกาศล่วงหน้า — การเปลี่ยนหน้าอยู่ใกล้ตรรกะของรอบหมุนท้ายไฟล์ ส่วนคนเรียกมีตั้งแต่ต้น
 static void switch_to(ct_page_kind_t kind);
@@ -71,6 +78,7 @@ static void default_plan(ct_page_plan_t *plan)
 {
     for (int i = 0; i < CT_PAGE_KIND_COUNT; i++) plan->order[i] = (ct_page_kind_t)i;
     plan->count = CT_PAGE_KIND_COUNT;
+    plan->auto_turn = CT_ROTATION_AUTO != 0;
     plan->rotation_ms = CT_ROTATION_SECONDS * 1000;
     plan->hold_ms = CT_ROTATION_HOLD_SECONDS * 1000;
     plan->attention_jump = true;
@@ -186,6 +194,9 @@ void ct_pages_forget(ct_page_kind_t kind)
 {
     if (kind <= CT_PAGE_MASCOT || kind >= CT_PAGE_KIND_COUNT) return;  // มาสคอตปิดไม่ได้
     s_pages[kind].has_frame = false;
+    // ด้วยเหตุผลเดียวกับใน `ct_pages_set_plan` — คำสั่งลืมเฟรมมาเป็นคนละเฟรมกับแผน
+    // และมาถึงก่อนหรือหลังก็ได้ ทั้งสองทางจึงต้องล้างเจตนาเก่าเอง ไม่ใช่พึ่งอีกฝั่ง
+    if (s_return_to == kind) s_return_to = CT_PAGE_KIND_COUNT;
     if (kind == CT_PAGE_WEATHER) {
         ct_weather_t empty = {0};
         empty.unit = 'C';
@@ -332,6 +343,10 @@ void ct_pages_set_plan(const ct_page_plan_t *plan)
 {
     s_plan = *plan;
     s_since_turn = 0;
+    // แผนใหม่คือผู้ใช้เพิ่งเปลี่ยนใจที่ Mac — หน้าที่จำไว้ก่อนการเด้งอาจเป็นหน้าที่เขาเพิ่งปิด
+    // การพากลับไปหามันคือการย้อนคำสั่งที่เขาเพิ่งให้ ทิ้งเจตนาเก่าตรงนี้ ไม่ใช่ปล่อยให้ตัวชี้
+    // ค้างไว้แล้วไปพบว่าใช้ไม่ได้ทีหลัง
+    s_return_to = CT_PAGE_KIND_COUNT;
 
     // หน้าที่แสดงอยู่อาจเพิ่งถูกผู้ใช้ปิด — ผลของสวิตช์ต้องเห็นเดี๋ยวนี้ ไม่ใช่เมื่อครบรอบ
     // (คำสั่งลืมเฟรมมาเป็นอีกเฟรมหนึ่ง ซึ่งอาจมาถึงก่อนหรือหลังก็ได้)
@@ -369,10 +384,14 @@ bool ct_pages_parse_plan(const char *json, int len, ct_page_plan_t *out)
         const cJSON *r = cJSON_GetObjectItem(root, "r");
         const cJSON *h = cJSON_GetObjectItem(root, "h");
         const cJSON *j = cJSON_GetObjectItem(root, "j");
+        const cJSON *t = cJSON_GetObjectItem(root, "t");
         // ค่าที่ผิดรูปคือค่าตั้งต้น ไม่ใช่ 0 — รอบหมุน 0 วินาทีคือจอที่กระพริบทั้งวัน
         if (cJSON_IsNumber(r) && r->valueint > 0) out->rotation_ms = r->valueint * 1000;
         if (cJSON_IsNumber(h) && h->valueint >= 0) out->hold_ms = h->valueint * 1000;
         if (cJSON_IsNumber(j)) out->attention_jump = j->valueint != 0;
+        // การปิดรอบหมุนเป็นคีย์ของตัวเอง ไม่ใช่ `r` ที่เป็นศูนย์ — `r` ยังต้องมีค่าที่ใช้ได้
+        // ขณะปิดอยู่ (ระยะที่มาสคอตอยู่บนจอหลังเด้ง) และค่าที่ผู้ใช้ตั้งไว้ต้องรอดข้ามการปิด
+        if (cJSON_IsNumber(t)) out->auto_turn = t->valueint != 0;
     }
     cJSON_Delete(root);
     return ok;
@@ -383,6 +402,9 @@ void ct_pages_step(bool forward)
     // ปัดแล้วไม่มีหน้าอื่นให้ไป = ไม่มีอะไรเกิดขึ้นเลย ไม่ใช่การยึดหน้าที่อยู่แล้วไว้ห้านาที
     if (!advance(forward)) return;
     s_hold_left = s_plan.hold_ms;
+    // ปัดระหว่างที่มาสคอตขึ้นมาเพราะการเด้ง = ผู้ใช้มาถึงโต๊ะแล้วและเลือกเองว่าจะดูอะไร
+    // การพากลับไปหาหน้าที่เขาทิ้งไว้เมื่อครู่จึงเป็นการแย่งจอคืนจากคนที่กำลังใช้มันอยู่
+    s_return_to = CT_PAGE_KIND_COUNT;
 }
 
 void ct_pages_attention(void)
@@ -390,6 +412,10 @@ void ct_pages_attention(void)
     if (!s_plan.attention_jump) return;
     if (!in_plan(CT_PAGE_MASCOT)) return;  // ปิดหน้ามาสคอตไม่ได้ แต่ไม่เดาแทนแผนที่ได้มา
     bool moved = s_active != CT_PAGE_MASCOT;
+    // จำหน้าที่กำลังถูกพรากไปเฉพาะตอนรอบหมุนปิด — ตอนเปิด รอบหมุนพาจอเดินต่อเองอยู่แล้ว
+    // ตัวชี้ที่ค้างไว้จะกลายเป็นการกระตุกกลับที่ไม่มีใครสั่ง
+    // (ถูกล้างทิ้งเมื่อแผนใหม่มาถึง เมื่อหน้านั้นถูกลืม และเมื่อผู้ใช้ปัดเอง)
+    if (moved && !s_plan.auto_turn) s_return_to = s_active;
     switch_to(CT_PAGE_MASCOT);
     // การยึดที่เดินอยู่เป็นของหน้าที่ผู้ใช้ปัดมา ซึ่งการเด้งเพิ่งพรากไป — ถ้าปล่อยให้นับต่อ
     // จอจะค้างอยู่ที่มาสคอตจนครบระยะยึดของหน้า *อื่น* แทนที่จะกลับเข้ารอบตามปกติ
@@ -465,6 +491,24 @@ void ct_pages_tick(int elapsed_ms)
     }
 
     s_since_turn += elapsed_ms;
+
+    // ผู้ใช้ปิดรอบหมุน — จอค้างที่หน้าที่แสดงอยู่ ยกเว้นตอนที่การเด้งเพิ่งพรากหน้าของเขาไป
+    // ซึ่งใช้เวลารอบเดียวกันนี้เป็นระยะที่มาสคอตได้อยู่บนจอ เท่ากับตอนรอบหมุนเปิด ต่างกัน
+    // แค่ปลายทาง: ที่นี่คือกลับที่เดิม ไม่ใช่หน้าถัดไป
+    if (!s_plan.auto_turn) {
+        if (s_return_to >= CT_PAGE_KIND_COUNT) {
+            s_since_turn = 0;  // ไม่มีอะไรให้นับถึง — ตัวนับที่ปล่อยให้ล้นคือ UB เปล่าๆ
+            return;
+        }
+        if (s_since_turn >= s_plan.rotation_ms) {
+            s_since_turn = 0;
+            ct_page_kind_t back = s_return_to;
+            s_return_to = CT_PAGE_KIND_COUNT;
+            if (in_rotation(back)) switch_to(back);
+        }
+        return;
+    }
+
     if (s_since_turn >= s_plan.rotation_ms) {
         s_since_turn = 0;
         // รอบหมุนกลับเข้าที่ *หน้าถัดจากหน้าที่ผู้ใช้ปัดมา* ไม่ใช่ที่หน้ามาสคอต —

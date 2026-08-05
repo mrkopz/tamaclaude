@@ -340,8 +340,9 @@ static void apply_pending(void)
     if (got_plan) {
         // พูดออกมาแบบเดียวกับ snapshot: ค่าตั้งที่ไม่มีอาการให้เห็นทันที (เช่นรอบหมุน)
         // แยกไม่ออกจากค่าตั้งที่ไม่เคยมาถึง ถ้าไม่มีบรรทัดนี้
-        ESP_LOGI(TAG, "pages: %d in rotation, turn %d ms, hold %d ms, jump %d", plan.count,
-                 plan.rotation_ms, plan.hold_ms, plan.attention_jump);
+        ESP_LOGI(TAG, "pages: %d in rotation, auto %d, turn %d ms, hold %d ms, jump %d",
+                 plan.count, plan.auto_turn, plan.rotation_ms, plan.hold_ms,
+                 plan.attention_jump);
         ct_pages_set_plan(&plan);
     }
     if (got_snapshot) {

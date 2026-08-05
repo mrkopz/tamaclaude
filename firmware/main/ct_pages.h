@@ -35,6 +35,9 @@ void ct_pages_forget(ct_page_kind_t kind);
 typedef struct {
     ct_page_kind_t order[CT_PAGE_KIND_COUNT];
     int count;
+    // รอบหมุนเดินเองไหม — ปิดแล้วจอเปลี่ยนหน้าเฉพาะตอนถูกปัดหรือตอนมีเรื่องด่วน
+    // (`rotation_ms` ยังถูกใช้อยู่ตอนปิด ดูที่ `ct_pages_attention`)
+    bool auto_turn;
     int rotation_ms;
     int hold_ms;
     bool attention_jump;
@@ -59,6 +62,10 @@ void ct_pages_step(bool forward);
 //
 // เป็นคำสั่งจากเหตุการณ์ ไม่ใช่จากผู้ใช้ จึงไม่ยึดหน้าไว้เหมือน `ct_pages_step`:
 // การเตือนที่ผ่านไปแล้วต้องไม่ค้างจอไว้อีกห้านาที
+//
+// ทำงานแม้รอบหมุนถูกปิด — คนที่ปิดรอบหมุนบอกว่า "อย่าเปลี่ยนหน้าเพราะเวลาผ่านไป"
+// ไม่ได้บอกว่า "อย่าบอกฉันว่ามีคนรออยู่" ซึ่งเป็นเหตุผลที่เครื่องนี้มีอยู่ และมีสวิตช์
+// ของตัวเองให้ปิดแยกอยู่แล้ว
 void ct_pages_attention(void);
 
 // รายการ PageKind ที่บอร์ดตัวนี้รู้จัก เป็น JSON พร้อมส่งกลับไปให้ Mac (ADR-0006)

@@ -84,6 +84,10 @@ own every 20 seconds; a swipe holds that page for five minutes before the rotati
 where it left off. The board keeps the clock, so the pages keep turning with the Mac asleep,
 and it jumps back to the mascot on its own when a session needs your answer.
 
+If you would rather it stayed put, turn the round off in **Settings ▸ Screen** and the page
+only ever changes when you swipe it. The board still jumps to the mascot when a session needs
+you — and then goes back to the page you left it on, instead of stranding you there.
+
 Every page says how old its figures are, because a Mac that sleeps freezes every number on
 the screen. The weather page keeps a shrunken mascot in its corner as well, so you can still
 see what your sessions are doing; the crypto, stocks, and calendar pages fill that corner
@@ -94,7 +98,7 @@ with their first row instead:
 | ![weather](docs/images/weather_rain.gif) | ![stale](docs/images/weather_stale.gif) | ![no weather](docs/images/weather_empty.gif) |
 | Now, today's high and low, and how old the figures are. The mascot shrinks into the corner so you can still see what your sessions are doing. | Far past the refresh window, so it says so out loud rather than in small print. | The page says what is missing instead of showing an empty frame. |
 
-Turn pages on, order them, and set the rotation in **Settings ▸ Pages**. Weather needs a city
+Turn pages on, order them, and set the rotation in **Settings ▸ Screen**. Weather needs a city
 name and comes from Open-Meteo, crypto from CoinGecko — neither wants an account. Stocks come
 from Finnhub and need your own free API key; the free plan covers US symbols and the page only
 refreshes while the US market is open. The calendar is read from this Mac through EventKit, so

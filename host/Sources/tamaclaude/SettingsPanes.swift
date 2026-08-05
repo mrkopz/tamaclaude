@@ -128,7 +128,31 @@ struct ScreenPane: View {
 
             VStack(alignment: .leading, spacing: 6) {
                 Card {
-                    LabeledRow(title: "Turn every") {
+                    // "Change" ไม่ใช่ "Turn" ทั้งสองแถว — บนแถวที่มีสวิตช์ "Turn" อ่านได้ว่า
+                    // turn *on* ก่อนจะอ่านว่าพลิกหน้า และแถวล่างก็ใช้คำเดียวกันอยู่ คำที่
+                    // แบกสองความหมายในการ์ดใบเดียวคือคำที่ต้องอ่านสองรอบทุกครั้ง
+                    LabeledRow(
+                        title: "Change pages automatically",
+                        subtitle: "Off, and only a swipe changes the page"
+                    ) {
+                        Toggle(
+                            "",
+                            isOn: Binding(
+                                get: { model.pages.autoTurn },
+                                set: { model.setAutoTurn($0) })
+                        )
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                    }
+                    CardDivider()
+                    // ช่องนี้ *ไม่* ดับตามสวิตช์ข้างบน เพราะมันยังทำงานอยู่ตอนรอบหมุนปิด:
+                    // เป็นระยะที่มาสคอตอยู่บนจอหลังการเด้ง ก่อนจอกลับไปหน้าที่ผู้ใช้ปัดค้างไว้
+                    // แถวที่ดับคือคำสัญญาว่าค่านั้นไม่มีผล — ดับช่องนี้จึงเป็นการโกหก
+                    LabeledRow(
+                        title: "Change every",
+                        subtitle: model.pages.autoTurn
+                            ? nil : "How long the mascot stays after it jumps"
+                    ) {
                         measure(
                             value: Binding(
                                 get: { model.pages.rotation },
@@ -136,6 +160,7 @@ struct ScreenPane: View {
                             range: PageSettings.rotationRange, unit: "seconds")
                     }
                     CardDivider()
+                    // ส่วนแถวนี้ดับจริง — ไม่มีรอบหมุนก็ไม่มีอะไรให้การยึดกันไว้
                     LabeledRow(
                         title: "Hold a swiped page",
                         subtitle: "Before it rejoins the round"
@@ -147,6 +172,7 @@ struct ScreenPane: View {
                             range: 0...(PageSettings.holdRange.upperBound / SettingsModel.holdStep),
                             unit: "minutes")
                     }
+                    .disabled(!model.pages.autoTurn)
                     CardDivider()
                     LabeledRow(
                         title: "Jump to the mascot",
