@@ -94,18 +94,20 @@ public struct StocksFrame: PageFrame, Equatable, Codable, Sendable {
         try Payload(frame: self, trim: 0, percent: true, count: quotes.count).encode(to: encoder)
     }
 
-    /// จำนวนทศนิยมของราคาหุ้น — สองตำแหน่งคือหน่วยที่ตลาดซื้อขายกันจริง
+    /// จำนวนทศนิยมของราคาหุ้น — **สองตำแหน่งเสมอ** ซึ่งคือหน่วยที่ตลาดซื้อขายกันจริง
     ///
     /// ไม่มีขั้นทศนิยมหกตำแหน่งแบบคริปโต: หุ้นสหรัฐที่ราคาต่ำกว่าหนึ่งเซนต์ไม่ได้อยู่ใน
-    /// รายการที่แผนฟรีของ Finnhub ครอบคลุม และหุ้นห้าหลักที่มีทศนิยมสองตำแหน่งคือ
-    /// ตัวเลขที่ยาวเกินคอลัมน์โดยไม่ได้บอกอะไรเพิ่ม
-    public static func decimals(for price: Double) -> Int {
-        abs(price) >= 10000 ? 0 : 2
-    }
+    /// รายการที่แผนฟรีของ Finnhub ครอบคลุม · และไม่มีขั้นศูนย์ตำแหน่งอีกแล้ว — หุ้นห้าหลัก
+    /// ที่ปัดสตางค์ทิ้งอ่านเป็นราคาคนละตัวกับที่ผู้ใช้เห็นในโบรกเกอร์ ส่วนความยาวที่เพิ่มมา
+    /// สามตัวเป็นเรื่องของเลย์เอาต์ ซึ่งการ์ดแก้ด้วยการหั่นฟอนต์สองขนาดไปแล้ว
+    public static func decimals(for price: Double) -> Int { 2 }
 
+    /// `trim` ไม่มีผลกับหุ้น — ทศนิยมถูกตรึงไว้ที่สองตำแหน่ง
+    ///
+    /// พารามิเตอร์ยังอยู่เพราะลำดับการบีบเฟรมเรียกมันเป็นขั้นแรกอยู่ (`encoded`) การลบทิ้ง
+    /// แปลว่าต้องแยกลูปบีบของสองหน้าออกจากกัน ทั้งที่ขั้นที่เหลือยังเหมือนกันทุกขั้น
     public static func priceText(_ price: Double, trim: Int = 0) -> String {
-        let places = max(0, decimals(for: price) - trim)
-        return String(format: "%.\(places)f", price)
+        String(format: "%.\(decimals(for: price))f", price)
     }
 
     private func rows(trim: Int, percent: Bool, count: Int) -> [Row] {

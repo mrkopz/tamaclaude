@@ -233,6 +233,16 @@ look at `out/`. It proves the *design*, not the C renderer.
 - **The weather strip is five columns on all three sides.** `[weather] fc_cols` sizes the C
   arrays and `WeatherFrame.hourLimit` caps what the Mac sends; a sixth hour on the wire is
   bytes the board drops. `tamatest` reads `layout.h` to check, as it does for `PageKind`.
+- **The 24h shape is 16 levels wide on all three sides.** `[crypto] spark_cols` sizes the C
+  array, `CryptoFrame.sparkPoints` caps what the Mac sends, and a 17th point is bytes the board
+  drops — same shape as the weather strip, and `tamatest` reads `layout.h` to check. **The
+  stocks page has no shape at all**: Finnhub's free tier has no history endpoint, and a
+  permanently empty chart box reads as breakage. Everything else on the two pages stays pixel
+  for pixel identical, because the user swipes between them.
+- **A sparkline's baseline is its first point**, which is the 24h open. That is what makes the
+  last bar agree with the printed percentage by construction rather than by luck, and it is why
+  `fold` must keep both ends (`gen/trend.py` ↔ `ct_trend.c` ↔ `CryptoSource.spark`, all three
+  using integer half-up rounding — Python's `round()` goes to even and would drift alone).
 - **One frame per page, and each must fit `Wire.maxPayload` alone** (ADR-0003). A frame is a
   mascot `Snapshot` exactly when it has **no** `g` key; a frame with `pl` is page settings.
   `{"g":N,"x":1}` retires a page the user turned off — not sending it is not enough (ADR-0002).

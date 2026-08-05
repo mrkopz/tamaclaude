@@ -2629,6 +2629,14 @@ func runAllTests() {
         equal(
             macro("CT_WEATHER_FC_COLS"), WeatherFrame.hourLimit,
             "the mac sends exactly as many hours as the strip can draw")
+        // ด้วยเหตุผลเดียวกันเป๊ะ: จุดที่ 17 ของรูป 24 ชม. คือไบต์ที่บอร์ดทิ้ง และ
+        // อาร์เรย์ฝั่ง C มีขนาดคงที่เท่านี้
+        equal(
+            macro("CT_CRYPTO_SPARK_COLS"), CryptoFrame.sparkPoints,
+            "the mac sends exactly as many points as the card can draw")
+        equal(
+            (macro("CT_CRYPTO_ROW_SPARK_COLS") ?? 0) <= CryptoFrame.sparkPoints, true,
+            "and the small rows fold down from that same set, never up")
     }
 
     suite("a crypto frame fits one mtu without ever cutting the symbol off a number") {
@@ -2646,22 +2654,25 @@ func runAllTests() {
         let text = String(decoding: data, as: UTF8.self)
         equal(
             text,
-            #"{"a":42,"c":[{"d":-21,"p":"64230","s":"BTC"},{"d":11,"p":"3125","s":"ETH"},"#
+            #"{"a":42,"c":[{"d":-21,"p":"64230.12","s":"BTC"},{"d":11,"p":"3125.40","s":"ETH"},"#
                 + #"{"d":-5,"p":"0.1423","s":"DOGE"},{"d":30,"p":"172.05","s":"SOL"},"#
                 + #"{"d":140,"p":"0.000008","s":"PEPE"}],"g":2}"#,
-            "keys are sorted, and the decimals follow the size of the price")
+            "keys are sorted, prices from 1 up always carry cents, and coins under 1 keep the truth")
 
         let back = try JSONDecoder().decode(CryptoFrame.self, from: data)
         equal(back.quotes.map(\.symbol), ["BTC", "ETH", "DOGE", "SOL", "PEPE"], "round trips")
         equal(back.quotes[0].change, -2.1, "the percentage travels as tenths, not as a float")
 
-        // ขั้นแรกของการบีบคือทศนิยม ไม่ใช่แถวและไม่ใช่สัญลักษณ์ — ตัวเลขหยาบขึ้นแต่ยัง
-        // เป็นเรื่องจริง ส่วนแถวที่หายไปคือเหรียญที่ผู้ใช้ใส่ไว้แล้วไม่ได้เห็น
+        // ขั้นแรกของการบีบคือทศนิยมของเหรียญที่ *ต่ำกว่า 1* — สองตำแหน่งของที่เหลือเป็น
+        // สัญญากับผู้ใช้ ไม่ใช่ที่ว่างให้ตัด และแถวที่หายไปคือเหรียญที่ผู้ใช้ใส่ไว้แล้วไม่ได้เห็น
         let tight = try frame.encoded(maxBytes: data.count - 3)
         let trimmed = try JSONDecoder().decode(CryptoFrame.self, from: tight)
         equal(
             trimmed.quotes.map(\.symbol), ["BTC", "ETH", "DOGE", "SOL", "PEPE"],
             "a frame three bytes over loses precision, not coins")
+        equal(
+            String(decoding: tight, as: UTF8.self).contains(#""p":"64230.12""#), true,
+            "and never the cents of a price at or above one")
 
         // บีบจนต้องตัดแถวจริงๆ: แถวที่เหลือยังมีสัญลักษณ์เต็มทุกตัว แถวที่ไปก็ไปทั้งแถว
         let hard = try frame.encoded(maxBytes: 110)
@@ -2684,6 +2695,48 @@ func runAllTests() {
         equal(
             (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["g"] as? Int, 2,
             "the crypto page names itself on the wire")
+    }
+
+    suite("the 24h shape rides along, and is the first thing dropped when the frame is tight") {
+        let climb = Array(0..<16).map { $0 }
+        let frame = CryptoFrame(
+            quotes: [
+                CryptoQuote(symbol: "BTC", price: 64230.12, change: -2.13, spark: climb),
+                CryptoQuote(symbol: "ETH", price: 3125.4, change: 1.1, spark: climb),
+            ], age: 42)
+
+        let data = try frame.encoded()
+        let text = String(decoding: data, as: UTF8.self)
+        equal(text.contains(#""k":"0123456789abcdef""#), true, "levels ride as hex nibbles")
+        let back = try JSONDecoder().decode(CryptoFrame.self, from: data)
+        equal(back.quotes[0].spark, climb, "and come back as the same levels")
+
+        // ลำดับการบีบ: รูปไปก่อนแถวเสมอ · เฟรมที่แคบกว่าเฟรมเต็มไม่กี่ไบต์ต้องยังมีสอง
+        // เหรียญครบ ไม่ใช่เหลือเหรียญเดียวที่มีรูปสวย
+        let tight = try frame.encoded(maxBytes: data.count - 10)
+        let squeezed = try JSONDecoder().decode(CryptoFrame.self, from: tight)
+        equal(squeezed.quotes.map(\.symbol), ["BTC", "ETH"], "the coins outlive their shapes")
+        equal(squeezed.quotes.allSatisfy { $0.spark.isEmpty }, true, "which is what went")
+
+        // จุดแรกคือเส้นฐาน จุดสุดท้ายคือราคาปัจจุบัน — ถ้าสองอย่างนี้ไม่จริง แท่งสุดท้าย
+        // จะเถียงกับเปอร์เซ็นต์ที่พิมพ์อยู่ข้างมัน
+        let week: [Any] = (0..<168).map { Double(100 + $0) }  // ไต่ขึ้นตลอด 7 วัน
+        let levels = CryptoSource.spark(from: week, now: 999)
+        equal(levels.count, CryptoFrame.sparkPoints, "a full series folds to the wire width")
+        equal(levels.first, 0, "the oldest point of the day is the floor")
+        equal(levels.last, CryptoSource.sparkMax, "and the live price is the ceiling")
+        equal(
+            CryptoSource.spark(from: week, now: 1).last, 0,
+            "a live price under the day's floor lands at the bottom, not off the box")
+
+        let flat: [Any] = (0..<168).map { _ in 42.0 }
+        equal(
+            CryptoSource.spark(from: flat, now: 42).allSatisfy { $0 == CryptoSource.sparkMax / 2 },
+            true, "a day that never moved sits on the baseline, and draws no bars at all")
+        equal(CryptoSource.spark(from: nil, now: 1), [], "no series is no shape")
+        equal(
+            CryptoSource.spark(from: [1.0, 2.0], now: 1), [],
+            "and a series too short to fold is refused rather than stretched")
     }
 
     suite("the crypto watchlist is capped at five and keeps the order the user gave it") {

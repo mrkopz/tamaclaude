@@ -12,6 +12,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "layout.h"
 
@@ -24,6 +25,11 @@ typedef struct {
     char sym[CT_CRYPTO_SYM_LEN];
     char price[CT_CRYPTO_PRICE_LEN];
     int change;  // เปอร์เซ็นต์คูณสิบ
+    // รูป 24 ชั่วโมงเป็นระดับ 0..15 · `spark_len == 0` = ไม่มีประวัติ ซึ่งเกิดได้สองทาง
+    // (บริการไม่ให้มา หรือ Mac ตัด "k" ทิ้งตอนบีบเฟรม) และหน้าตาบนจอเหมือนกันทั้งคู่:
+    // เส้นฐานเปล่า ไม่ใช่กล่องว่าง — บอร์ดไม่ต้องแยกสองอย่างนี้ ผู้ใช้ก็ทำอะไรต่างกันไม่ได้
+    uint8_t spark[CT_CRYPTO_SPARK_COLS];
+    int spark_len;
 } ct_crypto_row_t;
 
 typedef struct {

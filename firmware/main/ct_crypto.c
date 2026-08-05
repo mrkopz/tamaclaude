@@ -33,6 +33,21 @@ bool ct_crypto_parse(const char *json, int len, ct_crypto_t *out)
         strncpy(row->sym, sym->valuestring, sizeof(row->sym) - 1);
         strncpy(row->price, price->valuestring, sizeof(row->price) - 1);
         row->change = change->valueint;
+
+        // "k" = ระดับ 0..15 เข้ารหัสเป็น hex nibble ตัวละจุด · แถวที่ไม่มีคีย์นี้ยังใช้ได้
+        // เต็มตัว มันแค่ไม่มีรูปให้วาด — ต่างจาก "s"/"p"/"d" ที่ขาดไปแล้วแถวนั้นโกหก
+        const cJSON *spark = cJSON_GetObjectItem(item, "k");
+        if (cJSON_IsString(spark) && spark->valuestring) {
+            for (const char *c = spark->valuestring;
+                 *c && row->spark_len < CT_CRYPTO_SPARK_COLS; c++) {
+                int v;
+                if (*c >= '0' && *c <= '9') v = *c - '0';
+                else if (*c >= 'a' && *c <= 'f') v = *c - 'a' + 10;
+                else if (*c >= 'A' && *c <= 'F') v = *c - 'A' + 10;
+                else { row->spark_len = 0; break; }  // สตริงที่มีตัวแปลกคือรูปที่เชื่อไม่ได้ทั้งเส้น
+                row->spark[row->spark_len++] = (uint8_t)v;
+            }
+        }
     }
     // watchlist ว่างไม่ใช่เฟรม — Mac ไม่ส่งเฟรมที่ไม่มีแถวเลย (มันหยุดตั้งแต่ไม่มีอะไร
     // ให้ถาม) ถ้ามาถึงจริงแปลว่าเฟรมพัง และของเดิมบนจอยังจริงกว่า
