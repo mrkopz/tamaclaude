@@ -452,6 +452,15 @@ void app_main(void)
         since_heap += step_ms;
         if (since_heap >= 60000) {
             since_heap = 0;
+            // pool ของ LVGL เป็นก้อนคงที่ 48KB แยกจาก heap ของ ESP (LV_MEM_SIZE) และมัน
+            // คือก้อนที่ *เต็มก่อน*: init จอกินไปแล้ว ~88% ส่วนที่เหลือคือที่ที่ draw task
+            // กับ layer ถูกจองระหว่างวาด · พอจองไม่ได้ `lv_draw_dispatch` วนรอไม่จบ
+            // main ไม่คืนจาก `lv_timer_handler` และ watchdog ยิงทุก 5 วินาที ซึ่งอ่านจาก
+            // อาการเหมือน "จอค้าง" ล้วนๆ ไม่มีอะไรชี้ไปที่หน่วยความจำเลย จึงพิมพ์คู่กับ heap
+            lv_mem_monitor_t lvm;
+            lv_mem_monitor(&lvm);
+            ESP_LOGI(TAG, "lv_mem free %u used %u%%", (unsigned)lvm.free_size,
+                     (unsigned)lvm.used_pct);
             ESP_LOGI(TAG, "heap %u min %u", (unsigned)esp_get_free_heap_size(),
                      (unsigned)esp_get_minimum_free_heap_size());
         }

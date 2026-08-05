@@ -148,7 +148,8 @@ look at `out/`. It proves the *design*, not the C renderer.
   `screen.py`↔`ct_ui.c`, `weather.py`↔`ct_weather_ui.c`, `crypto.py`↔`ct_crypto_ui.c`,
   `stocks.py`↔`ct_stocks_ui.c`, `calendar.py`↔`ct_calendar_ui.c`,
   `trend.py`↔`ct_trend.c`, `age.py`↔`ct_age.c`,
-  `mini.py`↔`ct_mini.c`, `topbar.py`↔`ct_topbar.c`, `sky.py` folds into `ct_ui.c`.
+  `mini.py`↔`ct_mini.c`, `footer.py`↔`ct_footer.c`, `topbar.py`↔`ct_topbar.c`,
+  `sky.py` folds into `ct_ui.c`.
   `pages.py` is the odd one out: it feeds `export_layout.py`, which generates `ct_page_kind_t`. A visual change means editing both
   sides; the Python side is where you iterate, the C side is the port.
 - **`tools/logos/*.svg` + `tools/logos.toml` → `ct_logos.c` + `tools/logos/png/` +
@@ -279,9 +280,26 @@ look at `out/`. It proves the *design*, not the C renderer.
   it on top. The mascot page answers `ct_ui_shows_clock`/`ct_ui_shows_usage` for itself — the
   rule is in the bar, the fact is in the page. Get that backwards and the idle screen shows the
   same clock twice.
+- **The footer belongs to every page too, but unevenly — and that split is the rule.**
+  Its band, age line, and mini mascot are for the four data pages (`ct_footer.c` ↔
+  `gen/footer.py`, built before the age label and the mini so both sit *on* the band and the
+  mascot straddles its top rule). Its **page pips are for all five**, mascot page included:
+  swiping is the device's only input and an affordance present on four screens out of five
+  teaches nobody. The pips count only pages `in_rotation` — a pip for a page a swipe skips is
+  a promise the board does not keep — and the current pip doubles as the rotation clock, so
+  "which page" and "how long until it moves on its own" are one object, not two rows.
 - **Page frames carry a data *age*, not a timestamp**, and the board counts on from there.
   A re-read with identical figures is still sent (the age is the difference); an age that is
   merely ticking is not a change.
+- **LVGL's 48 KB pool is the budget that runs out first, and it fails as a hang, not an
+  error.** `CONFIG_LV_MEM_SIZE_KILOBYTES` is separate from the ESP heap (which has ~110 KB
+  free); building the five pages already spends ~88% of it, and the remainder is what draw
+  tasks and layers are allocated from *while rendering*. Exhaust it and `lv_draw_dispatch`
+  spins waiting for a unit that never frees: `lv_timer_handler` never returns, the task
+  watchdog fires every 5 s, and the only symptom is a frozen screen — nothing points at
+  memory. So **draw composite graphics in one custom-draw object per page, not one widget per
+  shape** (`ct_mini`, `ct_footer`, and the weather scene all do this); nine widgets per page
+  was enough to wedge the board. `main.c` prints `lv_mem` beside `heap` once a minute.
 - **The `VisualState` enum is a contract with the firmware.** Adding or reordering it means
   changing `ct_model.c`/`ct_mascot.c` too. `tamatest` guards this.
 

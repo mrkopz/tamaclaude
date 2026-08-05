@@ -12,6 +12,7 @@ idf_component_register(
         "ct_ui.c"
         "ct_topbar.c"
         "ct_age.c"
+        "ct_footer.c"
         "ct_mini.c"
         "ct_weather.c"
         "ct_weather_ui.c"

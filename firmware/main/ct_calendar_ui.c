@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "ct_age.h"
+#include "ct_footer.h"
 #include "ct_color.h"
 #include "ct_fonts.h"
 #include "ct_mini.h"
@@ -293,6 +294,9 @@ void ct_calendar_ui_init(lv_obj_t *parent, const ct_calendar_t *frame, const boo
         lv_label_set_long_mode(row->title, LV_LABEL_LONG_DOT);
     }
 
+    // ฐานก่อนมาสคอตเสมอ — LVGL เรียงชั้นตามลำดับสร้าง มาสคอตต้องยืนอยู่ *บน* แท่น
+    // และก่ายข้ามเส้นขอบบนขึ้นไป ไม่ใช่ถูกแถบทาทับ (ตรงกับลำดับใน `footer.draw`)
+    ct_footer_attach(parent, true);
     ct_mini_attach(parent);
 
     s_age = ct_age_label(parent);

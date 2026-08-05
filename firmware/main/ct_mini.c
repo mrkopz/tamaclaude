@@ -43,7 +43,7 @@ static void mini_draw_cb(lv_event_t *e)
 
     ct_rects_t rects;
     ct_mascot_build_centered(&rects, ct_model_lead_state(s_mascot), s_phase, true, s_cycle);
-    const float scale = CT_PAGE_MINI_UNIT_PX / CT_SLOTS_UNIT_PX;
+    const float scale = CT_FOOTER_MINI_UNIT_PX / CT_SLOTS_UNIT_PX;
     ct_rects_scale_from(&rects, 0, scale, scale, 0.0f, 0.0f);
 
     // ฝ่าเท้าเกาะขอบล่างของผืน ไม่ใช่ขอบบน — ตัวที่กระโดดต้องกระโดดขึ้น
@@ -55,15 +55,25 @@ static void mini_draw_cb(lv_event_t *e)
 
 void ct_mini_init(const ct_snapshot_t *mascot) { s_mascot = mascot; }
 
+void ct_mini_box(int *x, int *y, int *w, int *h)
+{
+    int bw = (int)((CT_BOX_X1 - CT_BOX_X0) * CT_FOOTER_MINI_UNIT_PX) + 1;
+    int bh = (int)((CT_BOX_Y1 - CT_BOX_Y0) * CT_FOOTER_MINI_UNIT_PX) + 1;
+    *x = CT_SCREEN_WIDTH - CT_FOOTER_MINI_RIGHT - bw;
+    *y = CT_FOOTER_MINI_BOTTOM_Y - bh;
+    *w = bw;
+    *h = bh;
+}
+
 lv_obj_t *ct_mini_attach(lv_obj_t *parent)
 {
-    int w = (int)((CT_BOX_X1 - CT_BOX_X0) * CT_PAGE_MINI_UNIT_PX) + 1;
-    int h = (int)((CT_BOX_Y1 - CT_BOX_Y0) * CT_PAGE_MINI_UNIT_PX) + 1;
+    int x, y, w, h;
+    ct_mini_box(&x, &y, &w, &h);
 
     lv_obj_t *obj = lv_obj_create(parent);
     lv_obj_remove_style_all(obj);
     lv_obj_set_size(obj, w, h);
-    lv_obj_set_pos(obj, CT_SCREEN_WIDTH - CT_PAGE_MINI_RIGHT - w, CT_PAGE_MINI_BOTTOM_Y - h);
+    lv_obj_set_pos(obj, x, y);
     lv_obj_remove_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_event_cb(obj, mini_draw_cb, LV_EVENT_DRAW_MAIN, NULL);
 

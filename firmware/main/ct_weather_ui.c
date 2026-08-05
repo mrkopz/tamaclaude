@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "ct_age.h"
+#include "ct_footer.h"
 #include "ct_color.h"
 #include "ct_fonts.h"
 #include "ct_mini.h"
@@ -367,6 +368,10 @@ void ct_weather_ui_init(lv_obj_t *parent, const ct_weather_t *frame, const bool 
     _Static_assert(CT_WEATHER_TEMP_FONT == 48, "layout.toml and the font here must agree");
     s_hilo = label(parent, ct_font_text_14(), CT_COL_TEXT_DIM, CT_WEATHER_HILO_X,
                    CT_WEATHER_HILO_Y);
+    // ฐานมาก่อนทุกอย่างที่อยู่ในมัน — LVGL เรียงชั้นตามลำดับสร้าง บรรทัดอายุกับมาสคอต
+    // ต้องอยู่ *บน* แถบ ไม่ใช่ถูกมันทาทับ (ตรงกับลำดับใน `footer.draw`)
+    // บนหน้านี้บรรทัดอายุถูกสร้างก่อนมาสคอต ฐานจึงต้องมาก่อนมันด้วย ไม่ใช่แค่ก่อนมาสคอต
+    ct_footer_attach(parent, true);
     s_age = ct_age_label(parent);
 
     s_empty = label(parent, ct_font_text_14(), CT_COL_TEXT, CT_WEATHER_TEMP_X,

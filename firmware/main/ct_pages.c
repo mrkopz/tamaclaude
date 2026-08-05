@@ -9,6 +9,7 @@
 #include "ct_crypto.h"
 #include "ct_crypto_ui.h"
 #include "ct_fonts.h"
+#include "ct_footer.h"
 #include "ct_mini.h"
 #include "ct_stocks.h"
 #include "ct_stocks_ui.h"
@@ -106,6 +107,11 @@ void ct_pages_init(void)
     // หน้ามาสคอตวาดสภาพนี้เป็นนาฬิกาตั้งโต๊ะอยู่แล้ว ส่วนหน้าอื่นมีหน้าตาของตัวเอง
     ct_model_clear(&s_mascot);
     ct_ui_init(s_pages[CT_PAGE_MASCOT].root, &s_mascot);
+    // หน้ามาสคอตได้ pip แต่ไม่ได้แถบ — ที่นั่นมาสคอตตัวจริงอยู่กลางจอแล้ว ไม่มีข้อมูล
+    // ที่ดึงมาจึงไม่มีอายุให้บอก และพื้นดินกินถึงขอบล่าง แถบทึบจะตัดฉากทิ้ง
+    // แต่ pip ต้องมี: หน้านี้คือหน้าที่บอร์ดกระโดดกลับมาบ่อยที่สุด คนที่ยืนอยู่ตรงนี้แล้ว
+    // ไม่เห็นอะไรบอกว่าปัดได้ คือคนที่ไม่รู้ว่าอีกสี่หน้ามีอยู่
+    ct_footer_attach(s_pages[CT_PAGE_MASCOT].root, false);
 
     // มาสคอตจิ๋วอ่าน pose จาก snapshot ใบเดียวกับหน้ามาสคอต และต้องผูกก่อนหน้าแรกจะ
     // attach ผืนของมัน
@@ -257,6 +263,8 @@ void ct_pages_set_connected(bool connected)
     ct_topbar_set_connected(connected);
     // มาสคอตจิ๋วเป็นของทุกหน้า จึงถูกบอกครั้งเดียว ไม่ใช่หน้าละครั้ง
     ct_mini_set_connected(connected);
+    // แท่นต้องหายไปพร้อมตัวที่ยืนอยู่บนมัน — แท่นเปล่าอ่านว่า "ตัวหายไปไหน"
+    ct_footer_set_connected(connected);
     ct_weather_ui_set_connected(connected);
     ct_crypto_ui_set_connected(connected);
     ct_calendar_ui_set_connected(connected);
@@ -426,7 +434,39 @@ void ct_pages_attention(void)
     s_since_turn = 0;
 }
 
-void ct_pages_tick(int elapsed_ms)
+// บอกฐานว่าอยู่หน้าที่เท่าไรและเหลือเวลาอีกเท่าไร — บอร์ดรู้ทั้งสองอย่างอยู่แล้ว
+// ไม่มีไบต์ไหนถูกจ่ายบนสายให้เรื่องนี้
+//
+// นับเฉพาะหน้าที่ *ปัดถึงได้จริง* (`in_rotation`) ไม่ใช่ทุกหน้าในแผน: หน้าที่ยังไม่เคยได้
+// เฟรมถูกข้ามตอนปัด pip ที่นับมันด้วยคือคำสัญญาว่าปัดสองทีจะถึง ซึ่งไม่จริง
+static void push_position(void)
+{
+    ct_footer_pos_t p = {.index = -1, .count = 0, .left_ms = -1, .total_ms = 0};
+    for (int i = 0; i < s_plan.count; i++) {
+        ct_page_kind_t kind = s_plan.order[i];
+        if (!in_rotation(kind)) continue;
+        if (kind == s_active) p.index = p.count;
+        p.count++;
+    }
+    // การยึดหลังปัดกับรอบหมุนตอบคำถามเดียวกัน ("อีกนานเท่าไรจอจะเปลี่ยนเอง") จึงใช้ราง
+    // เดียวกัน ไม่ใช่สองสัญลักษณ์ที่ผู้ใช้ต้องเรียนรู้ว่าอันไหนกำลังเดินอยู่
+    if (s_hold_left > 0) {
+        p.left_ms = s_hold_left;
+        p.total_ms = s_plan.hold_ms;
+    } else if (s_plan.auto_turn || s_return_to < CT_PAGE_KIND_COUNT) {
+        // ปิดรอบหมุนแล้วยังมีนาฬิกาเดินได้กรณีเดียว: การเด้งเพิ่งพรากหน้าของผู้ใช้ไป
+        // แล้วรอบเดียวกันนี้คือระยะที่มาสคอตได้อยู่บนจอก่อนคืนที่ให้ (ดู `ct_pages_tick`)
+        p.left_ms = s_plan.rotation_ms - s_since_turn;
+        if (p.left_ms < 0) p.left_ms = 0;
+        p.total_ms = s_plan.rotation_ms;
+    }
+    ct_footer_set_pos(&p);
+}
+
+// นาฬิกาทุกเรือนเดินที่นี่ ส่วนฐานถูกบอกทีเดียวหลังจบ — ตัวที่ return กลางทางมีสามที่
+// (ยึดหน้าอยู่ · ปิดรอบหมุนแล้วไม่มีอะไรให้นับ · ปิดรอบหมุนแล้วยังไม่ครบ) ทั้งสามยัง
+// ต้องอัปเดตราง จึงห่อไว้แทนที่จะไล่แปะก่อน return ทีละจุดแล้วลืมจุดที่สี่ในวันหลัง
+static void tick_clocks(int elapsed_ms)
 {
     bool second_passed = false;
     s_since_second += elapsed_ms;
@@ -515,4 +555,10 @@ void ct_pages_tick(int elapsed_ms)
         // การยึดที่ครบระยะคือรอบเดิมที่เดินต่อ ไม่ใช่การเริ่มรอบใหม่
         advance(true);
     }
+}
+
+void ct_pages_tick(int elapsed_ms)
+{
+    tick_clocks(elapsed_ms);
+    push_position();
 }

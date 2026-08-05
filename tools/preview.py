@@ -16,7 +16,7 @@ from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from gen import calendar, crypto, mascot, screen, stocks, topbar, weather  # noqa: E402
+from gen import calendar, crypto, footer, mascot, pages, screen, stocks, topbar, weather  # noqa: E402,E501
 from gen.config import L, PAL, REPO_DIR  # noqa: E402
 from gen.props import BOX_X0, BOX_X1, BOX_Y0, BOX_Y1  # noqa: E402
 from gen.render import quantize565, render_rects  # noqa: E402
@@ -30,6 +30,16 @@ FRAMES = 12  # เฟรมต่อหนึ่งลูป (~1 วินาท
 LOOPS = 4  # GIF ยาวหลายลูป ไม่งั้นจะไม่มีวันเห็นการกะพริบตา
 # ฉากมาสคอตเดินเล่น: หนึ่งเที่ยว = (320 + 2*96) / 34 + 2.5 ~ 17.6 วินาที
 STROLL_LOOPS = 18
+# รอบหมุนสมมติสำหรับ preview — บอร์ดคำนวณของจริงเอง (`ct_pages_position`)
+# ที่นี่ตรึงไว้กลางรอบเพื่อให้เห็นทั้งสองแกนพร้อมกัน: หน้าไหนกำลังแสดง (pip กว้าง
+# ไหลไปตามตำแหน่ง) และเหลือเวลาเท่าไรก่อนหมุน (รางที่พร่องไปแล้ว)
+ROT_MS = 10_000
+
+
+def _pos(page: str, left: float = 0.55) -> footer.Pos:
+    """ทุกหน้าเปิดครบและปัดถึงได้ — ฉากที่หน้าถูกปิดเป็นเรื่องของบอร์ด ไม่ใช่ของ preview"""
+    return footer.Pos(index=pages.PAGES.index(page), count=len(pages.PAGES),
+                      left_ms=int(ROT_MS * left), total_ms=ROT_MS)
 
 
 def _cell(state: str, phase: float, px: int, connected: bool = True,
@@ -590,7 +600,7 @@ def main() -> None:
         # ภาพนิ่งหยุดกลางช่วงทำท่า ส่วน GIF เริ่มตอนตัวแตะขอบจอพอดี
         tier = screen.stroll_tier(sc.shown_usage())
         still = screen.stroll_still_t(tier) if not sc.sessions else 0.25
-        img = screen.render(sc, still % 1, int(still))
+        img = screen.render(sc, still % 1, int(still), _pos("mascot"))
         img.save(OUT / f"screen_{name}.png")
         big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
         big.save(OUT / f"screen_{name}@{args.scale}x.png")
@@ -599,7 +609,7 @@ def main() -> None:
         loops = STROLL_LOOPS if not sc.sessions else LOOPS
         t0 = int(screen.stroll_enter_t(tier)) if not sc.sessions else 0
         frames = [
-            screen.render(sc, (f % FRAMES) / FRAMES, t0 + f // FRAMES)
+            screen.render(sc, (f % FRAMES) / FRAMES, t0 + f // FRAMES, _pos("mascot"))
             for f in range(FRAMES * loops)
         ]
         frames[0].save(OUT / f"screen_{name}.gif", save_all=True,
@@ -607,12 +617,12 @@ def main() -> None:
     print(f"screen_*.png/gif      {len(SCENES)} ฉาก  (320x240)")
 
     for name, w in WEATHER_SCENES.items():
-        img = weather.render(w, 0.25)
+        img = weather.render(w, 0.25, pos=_pos("weather"))
         img.save(OUT / f"weather_{name}.png")
         big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
         big.save(OUT / f"weather_{name}@{args.scale}x.png")
         frames = [
-            weather.render(w, (f % FRAMES) / FRAMES, f // FRAMES)
+            weather.render(w, (f % FRAMES) / FRAMES, f // FRAMES, _pos("weather"))
             for f in range(FRAMES * LOOPS)
         ]
         frames[0].save(OUT / f"weather_{name}.gif", save_all=True,
@@ -622,12 +632,12 @@ def main() -> None:
     # GIF ของหน้าที่เรียงเป็นแถวมีไว้ดูมาสคอตจิ๋วอย่างเดียว — แถวเองไม่ขยับ แต่ท่าที่
     # กระโดดออกนอกกรอบจะไปทับแถวแรก ซึ่งเป็นสิ่งเดียวบนหน้านี้ที่ภาพนิ่งพิสูจน์ไม่ได้
     for name, c in CRYPTO_SCENES.items():
-        img = crypto.render(c, 0.25)
+        img = crypto.render(c, 0.25, pos=_pos("crypto"))
         img.save(OUT / f"crypto_{name}.png")
         big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
         big.save(OUT / f"crypto_{name}@{args.scale}x.png")
         frames = [
-            crypto.render(c, (f % FRAMES) / FRAMES, f // FRAMES)
+            crypto.render(c, (f % FRAMES) / FRAMES, f // FRAMES, _pos("crypto"))
             for f in range(FRAMES * LOOPS)
         ]
         frames[0].save(OUT / f"crypto_{name}.gif", save_all=True,
@@ -635,12 +645,12 @@ def main() -> None:
     print(f"crypto_*.png/gif      {len(CRYPTO_SCENES)} ฉาก  (320x240)")
 
     for name, s_ in STOCK_SCENES.items():
-        img = stocks.render(s_, 0.25)
+        img = stocks.render(s_, 0.25, pos=_pos("stocks"))
         img.save(OUT / f"stocks_{name}.png")
         big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
         big.save(OUT / f"stocks_{name}@{args.scale}x.png")
         frames = [
-            stocks.render(s_, (f % FRAMES) / FRAMES, f // FRAMES)
+            stocks.render(s_, (f % FRAMES) / FRAMES, f // FRAMES, _pos("stocks"))
             for f in range(FRAMES * LOOPS)
         ]
         frames[0].save(OUT / f"stocks_{name}.gif", save_all=True,
@@ -648,12 +658,12 @@ def main() -> None:
     print(f"stocks_*.png/gif      {len(STOCK_SCENES)} ฉาก  (320x240)")
 
     for name, c in CALENDAR_SCENES.items():
-        img = calendar.render(c, 0.25)
+        img = calendar.render(c, 0.25, pos=_pos("calendar"))
         img.save(OUT / f"calendar_{name}.png")
         big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
         big.save(OUT / f"calendar_{name}@{args.scale}x.png")
         frames = [
-            calendar.render(c, (f % FRAMES) / FRAMES, f // FRAMES)
+            calendar.render(c, (f % FRAMES) / FRAMES, f // FRAMES, _pos("calendar"))
             for f in range(FRAMES * LOOPS)
         ]
         frames[0].save(OUT / f"calendar_{name}.gif", save_all=True,
@@ -666,12 +676,12 @@ def main() -> None:
         # เวลาเดียวกับภาพนิ่งของฉากที่ไม่มี session — ที่ cycle 0 มาสคอตยังอยู่นอกจอ
         # แล้วภาพตรวจจะไม่มีสิ่งที่ต้องตรวจ (มาสคอตยืนบนพื้น + contrast กับฟ้า)
         still = screen.stroll_still_t()
-        img = screen.render(sc, still % 1, int(still))
+        img = screen.render(sc, still % 1, int(still), _pos("mascot"))
         img.save(OUT / f"sky_{name}.png")
         big = img.resize((img.width * args.scale, img.height * args.scale), Image.NEAREST)
         big.save(OUT / f"sky_{name}@{args.scale}x.png")
         frames = [
-            screen.render(sc, (f % FRAMES) / FRAMES, f // FRAMES)
+            screen.render(sc, (f % FRAMES) / FRAMES, f // FRAMES, _pos("mascot"))
             for f in range(FRAMES * STROLL_LOOPS)
         ]
         frames[0].save(OUT / f"sky_{name}.gif", save_all=True,

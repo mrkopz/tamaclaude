@@ -47,9 +47,13 @@ def is_stale(secs: int, refresh_s: int) -> bool:
     return secs > refresh_s * L.page.stale_factor
 
 
-def draw_age(draw: ImageDraw.ImageDraw, secs: int, refresh_s: int,
+def draw_age(draw: ImageDraw.ImageDraw, at: tuple[int, int], secs: int, refresh_s: int,
              frozen: str | None = None) -> None:
     """`frozen` = เหตุผลที่ตัวเลขชุดนี้ *ควร* ค้าง เช่น "market closed"
+
+    ตำแหน่งมาจากผู้เรียก (`footer.py`) ไม่ได้อยู่ที่นี่: ตั้งแต่ฐานมีแถบเป็นของตัวเอง
+    บรรทัดนี้ต้องอยู่แนวเดียวกับ pip ซึ่งเป็นเรื่องของการจัดวางฐาน ไม่ใช่เรื่องของอายุข้อมูล
+    ที่นี่จึงเหลือแค่สองอย่างที่เป็นของมันจริงๆ คือ *ถ้อยคำ* กับ *เกณฑ์ว่าเก่าเกินไปหรือยัง*
 
     หน้าที่รู้ว่าข้อมูลของมันหยุดโดยชอบธรรมต้องไม่ตะโกนว่า stale: ราคาหุ้นตอนตีสองเก่า
     สิบชั่วโมงเป็นเรื่องปกติ ส่วนราคาคริปโตที่เก่าสิบชั่วโมงคือท่อพัง คำว่า stale จึงต้อง
@@ -59,6 +63,5 @@ def draw_age(draw: ImageDraw.ImageDraw, secs: int, refresh_s: int,
     text = age_text(secs)
     if frozen is not None:
         text = f"{text}  -  {frozen}"
-    screen.line(draw, (L.page.age_x, L.page.age_y),
-                f"STALE - {text}" if stale else text, pil=10, board=12,
+    screen.line(draw, at, f"STALE - {text}" if stale else text, pil=10, board=12,
                 fill=PAL.alert if stale else PAL.text_dim, anchor="lt")

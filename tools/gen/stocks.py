@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 
 from PIL import Image, ImageDraw
 
-from . import age, logos, mini, pages, screen, topbar, trend
+from . import footer, logos, pages, screen, topbar, trend
 from .config import L, PAL
 from .render import draw_arrow, draw_rects, quantize565
 
@@ -239,16 +239,21 @@ def _row(img: Image.Image, draw: ImageDraw.ImageDraw, row: Stock, top: int,
                top + cfg.row_arrow_dy)
 
 
-def render(s: Stocks, phase: float = 0.0, cycle: int = 0) -> Image.Image:
+def _footer(draw: ImageDraw.ImageDraw, s: Stocks, pos: footer.Pos | None,
+            phase: float, cycle: int, frozen: str | None,
+            *, has_frame: bool = True) -> None:
+    footer.draw(draw, pos or footer.Pos(), secs=s.age, refresh_s=L.stocks.refresh_s,
+                state=s.mascot_state, connected=s.connected, phase=phase, cycle=cycle,
+                frozen=frozen, has_frame=has_frame)
+
+
+def render(s: Stocks, phase: float = 0.0, cycle: int = 0,
+           pos: footer.Pos | None = None) -> Image.Image:
     img = Image.new("RGB", (L.screen.width, L.screen.height), quantize565(PAL.bg))
     draw = ImageDraw.Draw(img)
     # หน้านี้ไม่เคยแสดงเวลาหรือโควตาเอง แถบจึงพูดครบเสมอ (ดู `topbar.draw`)
     topbar.draw(draw, s.bar, page=pages.LABELS["stocks"], connected=s.connected)
     frozen = CLOSED if s.market_closed else None
-
-    # มาสคอตอยู่แถบบนของทุกหน้า รวมหน้าที่ยังไม่เคยได้ข้อมูล — สถานะ session ไม่ได้ขึ้นกับ
-    # ว่าหน้านี้มีตัวเลขให้ดูหรือยัง
-    mini.draw_mini(draw, s.mascot_state, s.connected, phase, cycle)
 
     rows = s.rows[: L.stocks.rows] if s.has_frame else []
     if not rows:
@@ -258,8 +263,7 @@ def render(s: Stocks, phase: float = 0.0, cycle: int = 0) -> Image.Image:
         screen.line(draw, (L.stocks.empty_x, L.stocks.empty_sub_y),
                     "add symbols in the mac app", pil=10, board=12,
                     fill=PAL.text_dim, anchor="lt")
-        if s.has_frame:
-            age.draw_age(draw, s.age, L.stocks.refresh_s, frozen)
+        _footer(draw, s, pos, phase, cycle, frozen, has_frame=s.has_frame)
         return img
 
     _hero(img, draw, rows[0], s.day_range, s.connected,
@@ -272,5 +276,5 @@ def render(s: Stocks, phase: float = 0.0, cycle: int = 0) -> Image.Image:
         screen.line(draw, (L.stocks.hint_x, L.stocks.hint_y), "add more in the mac app",
                     pil=10, board=12, fill=PAL.text_dim, anchor="lt")
 
-    age.draw_age(draw, s.age, L.stocks.refresh_s, frozen)
+    _footer(draw, s, pos, phase, cycle, frozen)
     return img
