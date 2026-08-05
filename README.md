@@ -187,7 +187,7 @@ about 1 MB, containing the bootloader, the partition table and the app.
 ```bash
 python3 -m pip install esptool
 python3 -m esptool --chip esp32 --port "$PORT" \
-    write_flash 0x0 ~/Downloads/tamaclaude-esp32-1.0.4.bin
+    write_flash 0x0 ~/Downloads/tamaclaude-esp32-1.2.0.bin
 ```
 
 That is the whole toolchain: about 10 MB of Python, no compiler. Skip to step 3.
