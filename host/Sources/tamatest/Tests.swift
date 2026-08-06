@@ -1992,6 +1992,11 @@ func runAllTests() {
                    as: UTF8.self),
             #"{"c":"join","psk":"","ssid":"he said \"hi\""}"#,
             "a quote in the ssid is escaped, not passed through")
+        // ไม่มีคีย์ `psk` เลย ≠ `psk` ว่าง — ฝั่ง firmware อ่านสองอย่างนี้ต่างกัน
+        equal(
+            String(decoding: WiFiCommand.join(ssid: "cafe", psk: nil).payload, as: UTF8.self),
+            #"{"c":"join","ssid":"cafe"}"#,
+            "no password field means the board keeps the one it remembers")
         equal(
             String(decoding: WiFiCommand.forget(ssid: "cafe").payload, as: UTF8.self),
             #"{"c":"forget","ssid":"cafe"}"#, "forget names the network")
@@ -2056,6 +2061,38 @@ func runAllTests() {
         list.beginScan()
         list.linkLost()
         expect(!list.scanning, "a spinner that outlives the link is a lie")
+
+        // รหัสผิดทำให้บอร์ดวนต่อเองจนรอบสแกนของผู้ใช้ไม่มีผลกลับมา — ลิสต์ที่มีแต่ผล
+        // สแกนจะว่างเปล่า และวงที่ต้องแก้รหัสกลายเป็นวงที่เลือกไม่ได้
+        var stuck = NetworkList()
+        stuck.apply(
+            .wifi(WiFiStatus(state: .failed, ssid: "home", ip: "", error: "wrong password",
+                             saved: ["home"])))
+        equal(stuck.rows.map(\.ssid), ["home"],
+              "a saved network has a row even when the scan found nothing")
+        expect(!stuck.rows[0].inRange, "and it says so rather than claiming a signal")
+
+        stuck.apply(.accessPoint(AccessPoint(ssid: "home", rssi: -44, secured: true)))
+        stuck.apply(.accessPoint(AccessPoint(ssid: "guest", rssi: -70, secured: false)))
+        equal(stuck.rows.map(\.ssid), ["home", "guest"], "seeing it again is still one row")
+        equal(stuck.rows.map(\.saved), [true, false], "and the saved mark rides along")
+        equal(stuck.rows[0].rssi, -44, "the reading replaces the placeholder")
+    }
+
+    suite("wifi failure needs a hand") {
+        // สตริงนี้มาจาก `wifi_event` ใน firmware/main/ct_wifi.c ที่เดียว
+        expect(
+            WiFiStatus(state: .failed, ssid: "home", ip: "", error: "wrong password", saved: [])
+                .needsPassword,
+            "a wrong password is not something the board can retry its way out of")
+        expect(
+            !WiFiStatus(state: .failed, ssid: "home", ip: "", error: "not in range", saved: [])
+                .needsPassword,
+            "but a network out of range comes back on its own")
+        expect(
+            !WiFiStatus(state: .connecting, ssid: "home", ip: "", error: nil, saved: [])
+                .needsPassword,
+            "and a round still running has failed at nothing yet")
     }
 
     suite("lan key") {

@@ -765,26 +765,29 @@ struct WiFiPane: View {
                 HeadingRow(title: "Networks in range", help: Self.help)
                 Card {
                     List(selection: $model.selectedSSID) {
-                        ForEach(model.networks.found, id: \.ssid) { ap in
+                        ForEach(model.networks.rows, id: \.ssid) { row in
                             HStack(spacing: 8) {
-                                Image(systemName: ap.secured ? "lock.fill" : "lock.open")
+                                Image(systemName: row.secured ? "lock.fill" : "lock.open")
                                     .font(.system(size: 10))
                                     .foregroundStyle(.secondary)
-                                Text(ap.ssid)
+                                Text(row.ssid)
+                                    .foregroundStyle(row.inRange ? .primary : .secondary)
                                 // เครือข่ายที่บอร์ดจำไว้ต้องแยกออกจากที่เพิ่งเห็น ไม่งั้น
                                 // ผู้ใช้ไม่รู้ว่าต้องพิมพ์รหัสซ้ำไหม และปุ่ม Forget จะดู
                                 // เหมือนใช้ได้กับทุกแถว
-                                if model.networks.saved.contains(ap.ssid) {
+                                if row.saved {
                                     Text("saved")
                                         .font(.system(size: 10))
                                         .foregroundStyle(Color.tama)
                                 }
                                 Spacer(minLength: 8)
-                                Text("\(ap.rssi) dBm")
+                                // แถวที่จำไว้แต่รอบนี้ไม่เห็นยังต้องเลือกได้ — ช่องความแรง
+                                // จึงบอกว่าทำไมมันอยู่ตรงนี้ แทนที่จะแสร้งเป็น 0 dBm
+                                Text(row.rssi.map { "\($0) dBm" } ?? "not in range")
                                     .font(.system(size: 10).monospacedDigit())
                                     .foregroundStyle(.secondary)
                             }
-                            .tag(ap.ssid)
+                            .tag(row.ssid)
                         }
                     }
                     .listStyle(.plain)

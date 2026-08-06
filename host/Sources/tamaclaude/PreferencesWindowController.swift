@@ -53,7 +53,7 @@ final class PreferencesWindowController: NSWindowController {
     var onScan: (() -> Void)? {
         get { model.onScan } set { model.onScan = newValue }
     }
-    var onJoin: ((String, String) -> Void)? {
+    var onJoin: ((String, String?) -> Void)? {
         get { model.onJoin } set { model.onJoin = newValue }
     }
     var onForget: ((String) -> Void)? {
