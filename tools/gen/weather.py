@@ -176,7 +176,7 @@ def sky_is_light(phase: str | None, kind: str) -> bool:
 
 def _deck(draw: ImageDraw.ImageDraw, kind: str, phase: str, top: int) -> None:
     """แนวเมฆที่ปิดฟ้าลงมาถึง `DECK_BOTTOM[kind]` พร้อมก้อนที่ห้อยลงจากก้นแนว"""
-    color = quantize565(PAL.wx_storm_deck if kind == "storm" else DECK_COLOR[phase])
+    color = quantize565(_deck_color(kind, phase))
     bottom = DECK_BOTTOM[kind]
     draw.rectangle([0, top, L.screen.width - 1, bottom - 1], fill=color)
     for x, w, h in L.weather.deck_lumps:
@@ -185,20 +185,72 @@ def _deck(draw: ImageDraw.ImageDraw, kind: str, phase: str, top: int) -> None:
                                radius=h, fill=color)
 
 
-def _fall(draw: ImageDraw.ImageDraw, kind: str, light: bool) -> None:
-    """สิ่งที่กำลังตกลงมาจากแนวเมฆ — ฝนเป็นแท่งตั้ง หิมะเป็นสี่เหลี่ยมจัตุรัส"""
+def _deck_color(kind: str, phase: str) -> str:
+    """สีของแนวเมฆบนหน้านี้ — ต้องตรงกับ deck_color() ใน ct_weather_ui.c
+
+    สองทาง ไม่ใช่สามทางแบบหน้ามาสคอต: หน้านี้ไม่มีชุดฟ้าครึ้ม (`wx_dull_*`) เลย
+    ฟ้าของมันเป็นสีของช่วงเวลาล้วนหรือฟ้าพายุ ไม่มีอะไรอยู่ระหว่างกลาง
+    """
+    return PAL.wx_storm_deck if kind == "storm" else DECK_COLOR[phase]
+
+
+def _cloud_color(kind: str, phase: str) -> str | None:
+    """สีของก้อนลอยบนหน้านี้ — None คือช่วงที่ไม่มีก้อนลอยเลย (กลางคืน)
+
+    ต้องตรงกับ cloud_color() ใน ct_weather_ui.c
+
+    **ก้อนลอยสว่างกว่าฟ้าได้เฉพาะตอนที่หมึกเป็นชุดเข้ม** — เงื่อนไขเดียวกับ `sky_is_light`
+    ไม่ใช่เงื่อนไขใหม่ และนี่คือที่ที่หน้านี้ต่างจากหน้ามาสคอตจริงๆ: ที่นั่นไม่มีตัวอักษร
+    อยู่ในย่านฟ้าเลย ก้อนขาวจะลอยผ่านอะไรก็ได้ ส่วนที่นี่เลข 48px ยืนอยู่กลางย่านนั้น
+    และก้อนลอยเป็นสิ่งเดียวบนจอที่ *เดินผ่านใต้ตัวหนังสือได้*
+    วัดแล้ว: ขาวบน `cloud_dusk` เหลือ 2.78:1 (บนฟ้าเปล่าได้ 7.10) และบน `cloud_dawn`
+    เหลือ 3.83:1 — เลขที่จางลงทุกครั้งที่เมฆลอยผ่านคือบั๊กที่โผล่วันละสองครั้ง
+    สีแนวเมฆของช่วงเดียวกันได้ 4.50/4.24 ซึ่งเท่ากับก้อนที่ห้อยจากแนวเมฆ (`deck_lumps`)
+    ที่หน้านี้ทาบเลขอยู่แล้ว จึงเป็นเพดานที่หน้านี้ยอมรับไปแล้ว ไม่ใช่เกณฑ์ใหม่
+    """
+    if phase == "night":
+        return None
+    light = kind == "clear" and sky_is_light(phase, kind)
+    return sky.CLOUD_COLOR[phase] if light else _deck_color(kind, phase)
+
+
+def _fall(draw: ImageDraw.ImageDraw, kind: str, light: bool, t: float) -> None:
+    """สิ่งที่กำลังตกลงมาจากแนวเมฆ — ฝนเป็นแท่งตั้ง หิมะเป็นสี่เหลี่ยมจัตุรัส
+
+    เม็ดวนรอบระหว่างก้นแนวเมฆกับเส้นขอบฟ้า *ของหน้านี้* ไม่ใช่ของหน้ามาสคอต — ทั้งสอง
+    ค่าต่างกันทั้งคู่ (แนวลึกกว่า ขอบฟ้าต่ำกว่า) สิ่งเดียวที่ใช้ร่วมคือความเร็วกับตัวคิด
+    ระยะเลื่อน · เม็ดที่เลยเส้นขอบฟ้าถูกพื้นดินตัดเองตอนวาด ไม่ต้องตัดตรงนี้
+    """
+    top = DECK_BOTTOM[kind]
+    span = L.weather.horizon - top
     if kind == "rain":
         color = quantize565(PAL.steel)
         w = L.weather.rain_w
-        for x, y, length in L.weather.rain:
+        shift = sky.fall_shift(t, L.sky.rain_speed_px_s)
+        for x, base_y, length in L.weather.rain:
+            y = top + (base_y - top + shift) % span
             draw.rectangle([x, y, x + w - 1, y + length - 1], fill=color)
         return
     color = quantize565(PAL.wx_flake_ink if light else PAL.wx_flake)
-    for x, y, s in L.weather.snow:
+    shift = sky.fall_shift(t, L.sky.snow_speed_px_s)
+    for x, base_y, s in L.weather.snow:
+        y = top + (base_y - top + shift) % span
         draw.rectangle([x, y, x + s - 1, y + s - 1], fill=color)
 
 
-def _scene(draw: ImageDraw.ImageDraw, w: Weather, phase: str, kind: str) -> None:
+def bolt_on(t: float) -> bool:
+    """สายฟ้าติดอยู่ไหม ณ วินาทีที่ `t` — ต้องตรงกับ bolt_on() ใน ct_weather_ui.c
+
+    แลบสองแฉกในวินาทีเดียวแล้วมืดจนครบรอบ ไม่ใช่ติด-ดับสลับเท่าๆ กัน: อย่างหลังอ่าน
+    เป็นไฟกะพริบ ไม่ใช่ฟ้าแลบ · แบ่งวินาทีเป็นสี่เสี้ยวแล้วติดที่เสี้ยวคู่ ทำให้แฉกละ 250ms
+    ซึ่งเป็นหน่วยที่หยาบพอให้รอบวาด ~4 ครั้ง/วิ จับได้ทุกขอบ ไม่ต้องดันเป็นทุกเฟรม
+    """
+    if int(t) % L.weather.bolt_period_s:
+        return False
+    return int(t % 1.0 * 4) in (0, 2)
+
+
+def _scene(draw: ImageDraw.ImageDraw, w: Weather, phase: str, kind: str, t: float) -> None:
     """ฟ้าของชั่วโมงนี้ + สภาพอากาศที่กำลังเกิดบนมัน + พื้นดินใต้เส้นขอบฟ้า
 
     ต้องตรงกับ draw_scene() ใน ct_weather_ui.c
@@ -207,9 +259,14 @@ def _scene(draw: ImageDraw.ImageDraw, w: Weather, phase: str, kind: str) -> None
     ค่าความต่าง (แนวเมฆ ~1.8:1 กับฟ้า · ตัวหนังสือ 7:1 ขึ้นไป) หลักเดียวกับการ์ดปฏิทิน
     ฉากที่หลบตัวหนังสือจะเหลือแค่มุมจอ แล้วมันก็ไม่ใช่ฟ้าอีกต่อไป
 
-    ฉากไม่ขยับ ต่างจากฟ้าหน้ามาสคอตที่เมฆลอยและดาวกะพริบ — หน้านั้นคือหน้า idle ที่การ
-    เคลื่อนไหวเป็นสิ่งเดียวที่บอกว่าเครื่องยังมีชีวิต ส่วนหน้านี้อยู่บนจอรอบละ 20 วินาที
-    และมีตัวเลขที่ต้องอ่านอยู่แล้ว · ฝนอ่านเป็นฝนจากทิศทางกับการซ้ำ ไม่ใช่จากการเคลื่อนที่
+    ฉากขยับด้วยจังหวะและความเร็วชุดเดียวกับฟ้าหน้ามาสคอต (`[sky]` ทั้งชุด) — เคยนิ่ง
+    โดยตั้งใจ ด้วยเหตุผลว่าหน้านี้อยู่บนจอรอบละ 20 วินาทีและมีตัวเลขให้อ่านอยู่แล้ว
+    **กลับคำนั้นเพราะสองหน้านี้อยู่ในรอบปัดเดียวกัน**: ฟ้าที่ไหลอยู่หน้าหนึ่งแล้วแข็งค้าง
+    ในอีกหน้าอ่านเป็นจอที่ค้าง ไม่ใช่สองมุมมองของอากาศเดียวกัน และเป็นข้อสังเกตที่คน
+    ปัดสลับสองหน้าเจอทันที ส่วนตัวเลขที่ต้องอ่านนั้นลอยอยู่คนละชั้นกับฉากอยู่แล้ว
+    (คอนทราสต์ 7:1 ขึ้นไป ไม่ได้พึ่งความนิ่งของพื้นหลัง)
+
+    `t` = เวลาสัมบูรณ์เป็นวินาที ชุดเดียวกับที่ `sky.draw` รับ
     """
     top, horizon = L.topbar.height, L.weather.horizon
     W = L.screen.width
@@ -217,24 +274,22 @@ def _scene(draw: ImageDraw.ImageDraw, w: Weather, phase: str, kind: str) -> None
     draw.rectangle([0, top, W - 1, horizon - 1], fill=quantize565(base))
 
     # ดาวก่อนแนวเมฆ — เมฆที่ปิดฟ้าต้องบังดาวได้ ไม่ใช่ลอยอยู่ใต้มัน
-    # พายุไม่มีดาวไม่ว่ากี่โมง และกลางวันก็ไม่มีอยู่แล้ว
-    if kind != "storm" and phase != "day":
-        n = len(L.sky.stars) if phase == "night" else L.sky.low_star_n
-        color = quantize565(PAL.star if phase == "night" else PAL.star_dim)
-        s = L.sky.star_px
-        for x, y in L.sky.stars[:n]:
-            draw.rectangle([x, y, x + s - 1, y + s - 1], fill=color)
+    # พายุไม่มีดาวไม่ว่ากี่โมง และกลางวันก็ไม่มีอยู่แล้ว (ทั้งสองข้ออยู่ใน `sky.draw_stars`)
+    sky.draw_stars(draw, phase, int(t), kind)
+    # ก้อนลอยหลังดาว ก่อนแนวเมฆ — ลำดับเดียวกับหน้ามาสคอต ต่างแค่ที่นี่ไม่มีดวงคั่นกลาง
+    # (หน้านี้บอกสภาพด้วยไอคอน ส่วนเวลาอยู่บนแถบบน ดวงอาทิตย์จึงไม่มีงานให้ทำ)
+    sky.draw_clouds(draw, t, _cloud_color(kind, phase))
 
     if kind in DECK_BOTTOM:
         _deck(draw, kind, phase, top)
     if kind in ("rain", "snow"):
-        _fall(draw, kind, sky_is_light(phase, kind))
+        _fall(draw, kind, sky_is_light(phase, kind), t)
     if kind == "fog":
         # หมอกไม่มีแนวเมฆ — แถบนอนที่หนาขึ้นเมื่อเข้าใกล้ขอบฟ้า
         color = quantize565(DECK_COLOR[phase])
         for y, h in L.weather.fog_bands:
             draw.rectangle([0, y, W - 1, y + h - 1], fill=color)
-    if kind == "storm":
+    if kind == "storm" and bolt_on(t):
         color = quantize565(PAL.accent)
         for x, y, bw, bh in L.weather.bolt:
             draw.rectangle([x, y, x + bw - 1, y + bh - 1], fill=color)
@@ -303,7 +358,9 @@ def render(w: Weather, phase: float = 0.0, cycle: int = 0,
     kind = bucket(w.code) if w.has_frame else "cloud"
     scene = scene_phase(w)
     if scene is not None:
-        _scene(draw, w, scene, kind)
+        # เวลาของฉากคือเรือนเดียวกับที่มาสคอตจิ๋วใน footer ใช้ ไม่ใช่เรือนที่สอง — ฝั่งบอร์ด
+        # หน้านี้ถูก tick ด้วยก้อนเวลาก้อนเดียวกับที่ `ct_mini` ได้ (ดู `ct_pages.c`)
+        _scene(draw, w, scene, kind, cycle + phase)
     light = sky_is_light(scene, kind)
 
     # หน้านี้ไม่เคยแสดงเวลาหรือโควตาเอง แถบจึงพูดครบเสมอ (ดู `topbar.draw`)

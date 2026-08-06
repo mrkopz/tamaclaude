@@ -233,6 +233,7 @@ static const int16_t ct_sky_bolt[CT_SKY_BOLT_COUNT][4] = {
 #define CT_WEATHER_DECK_WET_Y        62
 #define CT_WEATHER_DECK_STORM_Y      108
 #define CT_WEATHER_RAIN_W            2
+#define CT_WEATHER_BOLT_PERIOD_S     4
 #define CT_WEATHER_FC_COLS           5
 #define CT_WEATHER_FC_COL_W          64
 #define CT_WEATHER_FC_HOUR_Y         150
