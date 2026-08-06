@@ -292,32 +292,30 @@ public enum SessionProcess {
                 return {}
             }
 
-            let process = Process()
-            process.executableURL = executable
-            process.arguments = [
-                "-p", prompt, "--model", "haiku", "--strict-mcp-config",
-                "--mcp-config", #"{"mcpServers":{}}"#,
-            ]
-            process.currentDirectoryURL = workDir()
-
             // สองสายรวมเป็น pipe เดียว: อ่านเพื่อรู้ว่าตายเพราะอะไร และ `claude` ไม่ได้สัญญา
             // ว่าจะบ่นลงสายไหน · ต้องอ่านจริงด้วย — pipe ที่ไม่มีคนอ่านจะบล็อกลูกจนโดนฆ่า
             let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-
             let output = ChildOutput.draining(pipe)
-            process.terminationHandler = { finished in
-                output.drain(pipe)
-                let code = finished.terminationStatus
-                let outcome = classify(code: code, output: output.text)
-                Log.info("auto-start: the session ended with code \(code) (\(outcome))")
-                DispatchQueue.main.async { done(outcome) }
-            }
 
+            let child: Spawn.Child
             do {
                 Log.info("auto-start: starting a session with \(executable.path)")
-                try process.run()
+                // `Spawn.disclaimed` ไม่ใช่ `Process` เพราะลูกต้องรับผิดชอบสิทธิ์ของตัวเอง —
+                // ลูกที่ยืมตัวตนเราไปขอทำให้กล่องสิทธิ์เด้งในชื่อ TamaClaude ทุกรอบที่ยิง
+                child = try Spawn.disclaimed(
+                    executable: executable,
+                    arguments: [
+                        "-p", prompt, "--model", "haiku", "--strict-mcp-config",
+                        "--mcp-config", #"{"mcpServers":{}}"#,
+                    ],
+                    currentDirectory: workDir(),
+                    output: pipe
+                ) { code in
+                    output.drain(pipe)
+                    let outcome = classify(code: code, output: output.text)
+                    Log.info("auto-start: the session ended with code \(code) (\(outcome))")
+                    DispatchQueue.main.async { done(outcome) }
+                }
             } catch {
                 // ไฟล์มีอยู่และ execute ได้เมื่อครู่ แต่รันไม่ขึ้น — แยกไม่ออกว่าถาวรหรือชั่วคราว
                 Log.info("auto-start: could not run \(executable.path): \(error)")
@@ -327,12 +325,10 @@ public enum SessionProcess {
             }
 
             return {
-                guard process.isRunning else { return }
-                process.terminate()
+                guard child.isRunning else { return }
+                child.terminate()
                 // TERM แล้วยังไม่ตายใน 2 วินาที = ค้างจริง ไม่ใช่กำลังเก็บกวาด
-                DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
-                    if process.isRunning { Foundation.kill(process.processIdentifier, SIGKILL) }
-                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + 2) { child.forceKill() }
             }
         }
     }

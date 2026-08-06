@@ -1683,6 +1683,55 @@ func runAllTests() {
                "while the places we looked are a hover away")
     }
 
+    // ลูกที่ยืมตัวตนแอปไปขอสิทธิ์ TCC คือเหตุที่กล่องสิทธิ์เด้งทุกรอบที่ auto-start ยิง
+    // ทางเดินทั้งเส้นจึงต้องมีเทสต์ ไม่ใช่แค่ธงที่ตั้งไว้แล้วไม่มีใครรู้ว่าถึงลูกจริงไหม
+    suite("a spawned child speaks, exits, and answers for itself") {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("spawn-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let pipe = Pipe()
+        let output = ChildOutput.draining(pipe)
+        let done = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var code: Int32 = -1
+
+        let child = try Spawn.disclaimed(
+            executable: URL(fileURLWithPath: "/bin/sh"),
+            arguments: ["-c", "pwd; echo trouble >&2; exit 7"],
+            currentDirectory: dir,
+            output: pipe
+        ) { status in
+            output.drain(pipe)
+            code = status
+            done.signal()
+        }
+        expect(child.pid > 0, "the child has a pid of its own")
+        equal(done.wait(timeout: .now() + 10), .success, "and it is reaped, not left a zombie")
+        equal(code, 7, "its exit code arrives unchanged")
+        expect(!child.isRunning, "a buried child is not running")
+
+        let said = output.text
+        expect(said.contains("trouble"), "stderr lands in the same pipe as stdout")
+        expect(said.contains(dir.lastPathComponent), "and it started where we told it to")
+
+        // 143 ไม่ใช่เลขสวยงาม — `SessionProcess.classify` ถูกเขียนกับรูปของ `Process`
+        // ตอนที่ยังใช้ `Process` อยู่ ที่นี่จึงต้องพูดเลขชุดเดียวกัน
+        equal(Spawn.exitCode(SIGTERM), 128 + SIGTERM, "killed by a signal reads as 128 + it")
+        equal(Spawn.exitCode(7 << 8), 7, "and one that exited reads as its own code")
+
+        // ข้อเดียวที่ฟีเจอร์นี้มีอยู่เพื่อมัน — และข้อเดียวที่ดูจากผลลัพธ์ของลูกไม่ออก
+        // ธง disclaim ที่ส่งผิดชั้นคืน EINVAL เงียบๆ แล้วทุกเช็คข้างบนก็ยังผ่านหมด
+        let sleeper = Pipe()
+        let idle = try Spawn.disclaimed(
+            executable: URL(fileURLWithPath: "/bin/sleep"),
+            arguments: ["30"], output: sleeper, onExit: { _ in })
+        defer { idle.forceKill() }
+        equal(Spawn.responsible(of: idle.pid), idle.pid,
+              "a spawned child answers to TCC for itself, never in our name")
+        expect(Spawn.responsible(of: getpid()) != idle.pid, "and we are not it")
+    }
+
     suite("a broken pipe and a stale figure are two different sentences") {
         expect(PanelText.keyProblem(nil) == nil, "nothing to say when the pipe is fine")
         expect(PanelText.keyProblem(.expiredKey)?.contains("expired") == true,

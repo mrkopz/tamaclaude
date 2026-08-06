@@ -203,6 +203,7 @@ look at `out/`. It proves the *design*, not the C renderer.
 | `TamaCore/UsagePoll.swift` | `--usage-poll`: one claude.ai quota fetch, then exit |
 | `TamaCore/UsagePoller.swift` | when to poll and what the last poll said — fed `tick(now:)`, owns no timer |
 | `TamaCore/SessionStarter.swift` | when the app may open a session of its own — same shape, plus the guards and what locks it |
+| `TamaCore/Spawn.swift` | spawning a child that answers to TCC for itself, not in the app's name (ADR-0013) |
 | `TamaCore/ChildOutput.swift` | what a child process said, drained off its pipe without blocking it |
 | `TamaCore/SecretFile.swift` | the one rule for a secret on disk: mode 600 from birth, refused if anyone else can read it |
 | `TamaCore/SessionKeyFile.swift` | writes `~/.tamaclaude/session-key` through that rule |
