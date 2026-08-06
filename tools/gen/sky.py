@@ -183,7 +183,13 @@ def _draw_disc(draw: ImageDraw.ImageDraw, x: float, y: float, color: str) -> Non
     draw.ellipse([x0, y0, x0 + 2 * r, y0 + 2 * r], fill=quantize565(color))
 
 
-def _draw_stars(draw: ImageDraw.ImageDraw, phase: str, cycle: int, kind: str) -> None:
+def draw_stars(draw: ImageDraw.ImageDraw, phase: str, cycle: int, kind: str) -> None:
+    """ดาวของย่านฟ้า — หน้าอากาศเรียกตัวเดียวกันนี้ ไม่ได้มีสำเนาของตัวเอง
+
+    ใช้ร่วมได้ทั้งดวงเพราะทุกอย่างที่มันตัดสินใจอยู่ใน `[sky]` ล้วน: ตารางดาว จำนวนที่
+    กะพริบ และขั้นของ ramp · เส้นขอบฟ้าที่ต่างกันสองหน้าไม่เกี่ยว ดาวทุกดวงอยู่เหนือ
+    เส้นที่สูงกว่าอยู่แล้ว
+    """
     # พายุไม่มีดาวไม่ว่ากี่โมง — กติกาเดียวกับหน้าอากาศ
     if phase == "day" or kind == "storm":
         return
@@ -221,14 +227,32 @@ def _draw_stars(draw: ImageDraw.ImageDraw, phase: str, cycle: int, kind: str) ->
             dot(x, y, PAL.star)
 
 
-def _draw_clouds(draw: ImageDraw.ImageDraw, phase: str, t: float, kind: str) -> None:
+def cloud_color(phase: str, kind: str) -> str | None:
+    """สีของก้อนลอยบนหน้ามาสคอต — None คือช่วงที่ไม่มีก้อนลอยเลย
+
+    ก้อนลอยยืมสีของแนวเมฆทุกครั้งที่ฟ้าถูกปิด ไม่ใช่สีเมฆของช่วงเวลา — `cloud_day`
+    เกือบขาวสนิท บนฟ้าครึ้มหรือฟ้าพายุมันอ่านเป็นรูรั่วบนเพดาน ไม่ใช่เมฆ
+
+    กลางคืนไม่มีเมฆ และมันเป็นข้อเท็จจริงของ *สี* ไม่ใช่ของตัววาด: `CLOUD_COLOR` ไม่มี
+    ช่อง night ตั้งแต่ต้น การถามหาสีเมฆกลางคืนจึงไม่มีคำตอบที่ถูก
+    """
     if phase == "night":
+        return None
+    return _deck_color(phase, kind) if kind != "clear" else CLOUD_COLOR[phase]
+
+
+def draw_clouds(draw: ImageDraw.ImageDraw, t: float, color: str | None) -> None:
+    """ก้อนเมฆลอยผ่านย่านฟ้า — หน้าอากาศเรียกตัวเดียวกันนี้
+
+    รับ *สี* มา ไม่ใช่ `kind` ทั้งที่ทุกตัวเรียกก็หาสีจาก kind อยู่ดี — เพราะสองหน้าหา
+    คนละแบบ: หน้ามาสคอตมีชุดฟ้าครึ้ม (`_dull`) หน้าอากาศไม่มี รับ kind มาแล้วหาสีเองที่นี่
+    แปลว่าต้องรู้ว่าใครเรียก ซึ่งเป็นวิธีที่สำเนาสองใบเริ่มเลื่อนจากกัน · `None` = ไม่มีเมฆ
+    """
+    if color is None:
         return
-    # ก้อนลอยยืมสีของแนวเมฆทุกครั้งที่ฟ้าถูกปิด ไม่ใช่สีเมฆของช่วงเวลา — `cloud_day`
-    # เกือบขาวสนิท บนฟ้าครึ้มหรือฟ้าพายุมันอ่านเป็นรูรั่วบนเพดาน ไม่ใช่เมฆ
     # ที่ยังต้องมีก้อนลอยอยู่เพราะวันที่ปิดสนิทไม่มีทั้งดาวและของที่ตกลงมา (สายฟ้าไม่กะพริบ)
     # มันจึงเป็นสิ่งเดียวที่ขยับ
-    color = quantize565(_deck_color(phase, kind) if kind != "clear" else CLOUD_COLOR[phase])
+    color = quantize565(color)
     pad, span = L.sky.cloud_pad, L.screen.width + 2 * L.sky.cloud_pad
     for base_x, y, w in L.sky.clouds:
         x = (base_x + t * L.sky.cloud_speed_px_s) % span - pad
@@ -263,8 +287,8 @@ def _draw_deck(draw: ImageDraw.ImageDraw, phase: str, kind: str) -> None:
         draw.rounded_rectangle([x, bottom - h, x + w - 1, bottom + h - 1], radius=h, fill=color)
 
 
-def _fall_shift(t: float, speed: int) -> int:
-    """ของที่ตกเลื่อนลงมากี่พิกเซลแล้ว ณ วินาทีที่ `t`
+def fall_shift(t: float, speed: int) -> int:
+    """ของที่ตกเลื่อนลงมากี่พิกเซลแล้ว ณ วินาทีที่ `t` — หน้าอากาศเรียกตัวเดียวกันนี้
 
     ตัดเป็นจำนวนเต็มตรงนี้แล้วบวกด้วยเลขจำนวนเต็ม ไม่ใช่บวกทศนิยมแล้วค่อยปัด —
     ความเร็วเป็นจำนวนเต็มพิกเซลต่อเฟรมอยู่แล้ว การปัดสองฝั่งจึงไม่มีอะไรให้เถียงกัน
@@ -283,7 +307,7 @@ def _draw_fall(draw: ImageDraw.ImageDraw, phase: str, kind: str, t: float) -> No
     if kind == "rain":
         color = quantize565(PAL.steel)
         w = L.sky.rain_w
-        shift = _fall_shift(t, L.sky.rain_speed_px_s)
+        shift = fall_shift(t, L.sky.rain_speed_px_s)
         for x, base_y, length in L.sky.rain:
             y = top + (base_y - top + shift) % span
             draw.rectangle([x, y, x + w - 1, y + length - 1], fill=color)
@@ -292,7 +316,7 @@ def _draw_fall(draw: ImageDraw.ImageDraw, phase: str, kind: str, t: float) -> No
     # แต่ที่นี่เงื่อนไขสั้นกว่า: `sky_is_light` ที่นั่นต้องกันฟ้าพายุออกด้วย ส่วนที่นี่
     # พายุกับหิมะเป็นคนละ bucket อยู่แล้ว เหลือแค่ "ช่วง day ไหม"
     color = quantize565(PAL.wx_flake_ink if phase == "day" else PAL.wx_flake)
-    shift = _fall_shift(t, L.sky.snow_speed_px_s)
+    shift = fall_shift(t, L.sky.snow_speed_px_s)
     for x, base_y, s in L.sky.snow:
         y = top + (base_y - top + shift) % span
         draw.rectangle([x, y, x + s - 1, y + s - 1], fill=color)
@@ -362,11 +386,11 @@ def draw(draw_ctx: ImageDraw.ImageDraw, clock: str, connected: bool, t: float,
         PAL.wx_dull_sky if _dull(phase, kind) else SKY_COLOR[phase])
     draw_ctx.rectangle([0, SKY_TOP, W - 1, HORIZON - 1], fill=quantize565(base))
 
-    _draw_stars(draw_ctx, phase, int(t), kind)
+    draw_stars(draw_ctx, phase, int(t), kind)
     # เมฆก่อนดวง ไม่ใช่ดวงก่อนเมฆ — ตำแหน่งดวงคือเวลา ส่วนเมฆเป็นของประดับที่ลอยผ่าน
     # เมื่อส่วนโค้งถูกดันขึ้น ดวงกับเมฆก้อนสูงมาอยู่ย่านเดียวกัน แล้วเมฆขาวก็กินดวงไป
     # ทั้งดวงนานหลายสิบวินาทีต่อรอบ · ของที่บังนาฬิกาได้มีได้อย่างเดียวคือตัวละคร
-    _draw_clouds(draw_ctx, phase, t, kind)
+    draw_clouds(draw_ctx, t, cloud_color(phase, kind))
     x, y, color = disc(h)
     # ตอนพายุดวงอาทิตย์ใช้สีของดวงที่เตี้ย ไม่ใช่สีเที่ยงวัน — ดวงยังต้องอยู่เพราะมันคือ
     # นาฬิกา แต่ดวงสีเต็มบนฟ้าพายุอ่านเป็นข้อผิดพลาด ไม่ใช่แดดที่ส่องผ่านเมฆหนา
