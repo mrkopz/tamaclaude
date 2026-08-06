@@ -3269,6 +3269,17 @@ func runAllTests() {
         expect(
             service.status?.contains("closed") == true,
             "the settings window can say why the page is not moving")
+
+        // แก้ลิสต์ตอนตลาดปิด: ราคาชุดเก่าเป็นของลิสต์ที่ไม่มีแล้ว รอระฆังเปิดคือจอที่โชว์
+        // หุ้นที่ผู้ใช้เพิ่งลบไปทั้งคืน
+        service.update(StockSettings(symbols: ["MSFT"]))
+        service.tick(now: closing + 3601)
+        equal(asked, 4, "a watchlist edited while the market is shut is asked about at once")
+        equal(frames.count, 5, "and the board is given the new list, not the old one")
+        equal(frames.last?.quotes.map(\.symbol), ["MSFT"], "which is what the user just typed")
+        equal(frames.last?.marketClosed, true, "still the last close, and still says so")
+        service.tick(now: closing + 3700)
+        equal(asked, 4, "after that the shut market costs no quota again")
     }
 
     suite("the stock page needs a key of the user's own, and says so when it is refused") {
