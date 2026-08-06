@@ -11,8 +11,12 @@ import Foundation
 public enum WiFiCommand: Equatable, Sendable {
     /// สแกนแล้วรายงานผลกลับมาทีละตัว
     case scan
-    /// จำเครือข่ายแล้วต่อทันที — `psk` ว่างคือเครือข่ายเปิด
-    case join(ssid: String, psk: String)
+    /// จำเครือข่ายแล้วต่อทันที
+    ///
+    /// `psk` ว่างคือเครือข่ายเปิด · `nil` คือ **ไม่แตะรหัสที่บอร์ดจำไว้** — สองอย่างนี้
+    /// ต่างกันบนสาย (ไม่มีคีย์ `psk` เลย) เพราะผู้ใช้ที่กลับไปต่อวงเดิมไม่ควรต้องพิมพ์
+    /// รหัสใหม่ และ `""` ที่ส่งไปแทนจะลบรหัสที่ใช้ได้อยู่ทิ้ง แล้วล้มด้วย auth fail
+    case join(ssid: String, psk: String?)
     case forget(ssid: String)
     /// ขอสถานะปัจจุบันซ้ำ — ใช้ตอนเพิ่งเปิดหน้าตั้งค่า
     case status
@@ -25,7 +29,9 @@ public enum WiFiCommand: Equatable, Sendable {
         switch self {
         case .scan: object = ["c": "scan"]
         case .status: object = ["c": "status"]
-        case .join(let ssid, let psk): object = ["c": "join", "ssid": ssid, "psk": psk]
+        case .join(let ssid, let psk):
+            object = ["c": "join", "ssid": ssid]
+            if let psk { object["psk"] = psk }
         case .forget(let ssid): object = ["c": "forget", "ssid": ssid]
         case .key(let hex): object = ["c": "key", "k": hex]
         }
@@ -66,6 +72,13 @@ public struct WiFiStatus: Equatable, Sendable {
     public let ip: String
     /// เหตุผลที่รอบล่าสุดล้ม — แยก "รหัสผิด" (ผู้ใช้ต้องพิมพ์ใหม่) ออกจาก "ไม่เจอ" (รอ)
     public let error: String?
+
+    /// รอบนี้ล้มเพราะสิ่งที่บอร์ดลองเองอีกกี่ครั้งก็ไม่ดีขึ้นไหม
+    ///
+    /// สตริง `"wrong password"` ผูกกับ `wifi_event` ใน `firmware/main/ct_wifi.c` ซึ่ง
+    /// เป็นที่เดียวที่แปลง `WIFI_REASON_*` เป็นคำ — สองไฟล์นี้อ้างถึงกันตอนรันไม่ได้
+    /// จึงต้องมีคอมเมนต์ชี้กลับทั้งสองฝั่ง แก้ข้างหนึ่งแล้วอีกข้างจะเงียบ ไม่ใช่พัง
+    public var needsPassword: Bool { state == .failed && error == "wrong password" }
     public let saved: [String]
     /// ลายนิ้วมือกุญแจ LAN ที่บอร์ดถืออยู่ (8 hex) — ว่างคือยังไม่เคยตั้ง
     ///
@@ -138,6 +151,28 @@ public enum BoardEvent: Equatable, Sendable {
     }
 }
 
+/// หนึ่งแถวในลิสต์เครือข่าย — ที่เห็นตอนนี้ กับที่บอร์ดจำไว้ อยู่ลิสต์เดียวกัน
+///
+/// เครือข่ายที่จำไว้ต้องมีแถวของตัวเองแม้รอบสแกนล่าสุดจะไม่เห็นมัน ไม่งั้นผู้ใช้ที่พิมพ์รหัส
+/// ผิดไปแล้วจะเลือกมันไม่ได้ และปุ่ม Connect/Forget จะค้างเป็นสีเทาตลอด — ทางเดียวที่เหลือ
+/// คือรอให้สแกนเจอ ซึ่งเป็นสิ่งที่ล้มอยู่พอดีตอนบอร์ดกำลังวนต่อด้วยรหัสเดิม
+public struct NetworkRow: Equatable, Sendable {
+    public let ssid: String
+    /// nil คือ "จำไว้แต่รอบนี้ไม่เห็น" ไม่ใช่ "สัญญาณศูนย์"
+    public let rssi: Int?
+    public let secured: Bool
+    public let saved: Bool
+
+    public var inRange: Bool { rssi != nil }
+
+    public init(ssid: String, rssi: Int?, secured: Bool, saved: Bool) {
+        self.ssid = ssid
+        self.rssi = rssi
+        self.secured = secured
+        self.saved = saved
+    }
+}
+
 /// รายการที่หน้าตั้งค่าเอาไปวาด — ผลสแกนผสมกับสิ่งที่บอร์ดจำไว้
 ///
 /// เก็บสถานะการสแกนไว้ที่เดียว ไม่ใช่กระจายอยู่ในตัว view: บอร์ดส่งผลมาทีละใบและ
@@ -148,6 +183,20 @@ public struct NetworkList: Equatable, Sendable {
     public private(set) var saved: [String] = []
 
     public init() {}
+
+    /// สิ่งที่ลิสต์วาดจริง: ที่เห็นเรียงตามความแรง แล้วต่อท้ายด้วยที่จำไว้แต่ยังไม่เห็นรอบนี้
+    public var rows: [NetworkRow] {
+        var out = found.map {
+            NetworkRow(ssid: $0.ssid, rssi: $0.rssi, secured: $0.secured,
+                       saved: saved.contains($0.ssid))
+        }
+        for ssid in saved where !found.contains(where: { $0.ssid == ssid }) {
+            // ที่จำไว้ย่อมมีรหัส เว้นแต่ตอนบันทึกมันเป็นวงเปิด — เดาว่ามีรหัสไว้ก่อนดีกว่า
+            // เพราะช่องรหัสที่โผล่มาเกินไม่ทำให้ใครต่อไม่ได้ ส่วนช่องที่หายไปทำ
+            out.append(NetworkRow(ssid: ssid, rssi: nil, secured: true, saved: true))
+        }
+        return out
+    }
 
     public mutating func beginScan() {
         scanning = true

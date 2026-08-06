@@ -26,7 +26,7 @@ final class SettingsModel: ObservableObject {
     var onOpenLog: (() -> Void)?
     var onOpenProject: (() -> Void)?
     var onScan: (() -> Void)?
-    var onJoin: ((String, String) -> Void)?
+    var onJoin: ((String, String?) -> Void)?
     var onForget: ((String) -> Void)?
     var onBoardHost: ((String) -> Void)?
     var onWeather: ((WeatherSettings) -> Void)?
@@ -78,7 +78,15 @@ final class SettingsModel: ObservableObject {
 
     // --- Wi-Fi ---------------------------------------------------------------
     @Published var networks = NetworkList()
-    @Published var wifi: WiFiStatus?
+    /// เลือกวงที่บอร์ดกำลังพูดถึงให้เอง *ครั้งเดียว* — ผู้ใช้ที่พิมพ์รหัสผิดเปิดหน้านี้มาเจอ
+    /// ชื่อวงอยู่บนหัวข้ออยู่แล้ว แต่ปุ่ม Connect ยังเทาเพราะไม่มีแถวไหนถูกเลือก · เขียนทับ
+    /// เฉพาะตอนยังไม่มีใครเลือก ไม่งั้นสถานะที่ไหลเข้ามาทุกครั้งจะกระชากแถวที่ผู้ใช้เพิ่งกด
+    @Published var wifi: WiFiStatus? {
+        didSet {
+            guard selectedSSID == nil, let ssid = wifi?.ssid, !ssid.isEmpty else { return }
+            selectedSSID = ssid
+        }
+    }
     @Published var selectedSSID: String?
     @Published var password = ""
 
@@ -309,9 +317,12 @@ final class SettingsModel: ObservableObject {
         onScan?()
     }
 
+    /// ช่องรหัสที่ว่างไม่ใช่ "รหัสคือค่าว่าง" เมื่อวงนั้นบอร์ดจำไว้อยู่แล้ว — มันคือ "ใช้ของ
+    /// เดิม" ซึ่งเป็นสิ่งที่ผู้ใช้ตั้งใจทุกครั้งที่กลับไปต่อวงที่เคยต่อได้
     func join() {
         guard let ssid = selectedSSID else { return }
-        onJoin?(ssid, password)
+        let saved = networks.saved.contains(ssid)
+        onJoin?(ssid, password.isEmpty && saved ? nil : password)
         password = ""
     }
 
@@ -340,8 +351,12 @@ final class SettingsModel: ObservableObject {
         guard let wifi else { return "" }
         switch wifi.state {
         case .connected: return "Board address \(wifi.ip)"
-        // ไม่ต้องบอกให้กดลองใหม่ — firmware ลองเองเรื่อยๆ อยู่แล้ว
-        case .failed: return "The board keeps retrying on its own."
+        // "ไม่เจอ" บอร์ดรอเองได้ ส่วน "รหัสผิด" ลองอีกกี่รอบก็รหัสเดิม — ประโยคเดียวกัน
+        // สองกรณีเคยทำให้ผู้ใช้ที่พิมพ์ผิดนั่งรอการลองใหม่ที่ไม่มีวันสำเร็จ
+        case .failed:
+            return wifi.needsPassword
+                ? "Type the password again below, then press Connect."
+                : "The board keeps retrying on its own."
         case .connecting, .off: return ""
         }
     }

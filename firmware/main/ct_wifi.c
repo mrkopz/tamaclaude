@@ -57,6 +57,38 @@ typedef enum { SCAN_NONE, SCAN_REPORT, SCAN_PICK } scan_mode_t;
 static scan_mode_t s_scan = SCAN_NONE;
 static bool s_started;
 
+// ผู้ใช้ขอรายชื่อไว้แล้วแต่วิทยุยังไม่ว่าง — จำไว้เพื่อสแกนต่อทันทีที่ว่าง
+//
+// ไม่มีตัวนี้แล้วคำขอจะหล่นหายเงียบๆ ตอนที่บอร์ดกำลังจับมือกับ AP อยู่ ซึ่งเป็นเวลาส่วน
+// ใหญ่พอดีเมื่อรหัสผิด: ฝั่ง Mac ค้างที่สปินเนอร์กับลิสต์เปล่า และปุ่ม Rescan ดูเหมือนตาย
+static bool s_want_report;
+
+// วงที่ผู้ใช้เพิ่งสั่งต่อ ซึ่ง *ยังไม่พิสูจน์ว่ารหัสถูก* จึงยังไม่อยู่ใน s_nets และยังไม่ลง NVS
+//
+// รหัสที่ยังไม่เคยต่อติดไม่ใช่ของที่ควรจำ: พิมพ์ผิดครั้งเดียวแล้วเหลือวงที่ต่อไม่ได้ค้างใน
+// ลิสต์ตลอดไปคือสิ่งที่ผู้ใช้ต้องมาไล่ลบเอง · และเมื่อวงเดียวกันเคยมีรหัสที่ใช้ได้อยู่แล้ว
+// การพิมพ์ผิดจะไม่ทำลายของเดิม — พอรอบนี้ล้ม บอร์ดกลับไปใช้รหัสที่จำไว้ได้ทันที
+// เขียนลง NVS ที่เดียวเท่านั้น: ตอนได้ IP
+static net_t s_try;
+static bool s_have_try;
+
+// รหัสในรอบนี้ผู้ใช้เพิ่งพิมพ์มา และยังไม่เคยต่อติดด้วยรหัสนี้เลย
+//
+// มีไว้กันการกล่าวหาผิดตัว: รหัสที่ *เคยต่อติดแล้ว* ไม่มีวันกลายเป็นรหัสผิด การล้ม
+// ระหว่างจับมือของมันคือเรื่องของวิทยุ (สลับ AP, ช่องสัญญาณชนกัน, AP ตอบช้า) ซึ่ง
+// เกิดประจำตอนย้ายจากวงหนึ่งไปอีกวง · ไม่มีตัวนี้แล้วการกลับไปหาวงเดิมจะขึ้นว่า
+// "wrong password" ทั้งที่รหัสที่จำไว้ถูกต้อง แล้วบอร์ดก็หยุดลองไปอีกหนึ่งนาที
+static bool s_try_unproven;
+
+// เราสั่งตัดสายเองแล้วรอใบแจ้ง — ใบที่ตามมาเป็นของสายเก่า ไม่ใช่ความล้มเหลวที่ต้องรายงาน
+//
+// `esp_wifi_connect` ตัวที่สองคืน ESP_ERR_WIFI_CONN เงียบๆ ถ้าสายเก่ายังไม่ขาด และการ
+// สั่งตัดแล้วต่อทันทีในบรรทัดถัดไปก็ไม่ช่วย: ใบแจ้ง STA_DISCONNECTED มาถึง *หลัง* เรา
+// ตั้งสถานะเป็น CONNECTING แล้ว ผลคือหน้าตั้งค่าค้างที่ "disconnected" ทั้งที่การต่อ
+// รอบใหม่กำลังไปได้ดี · งานที่ต้องทำต่อจึงอยู่ในตัวจัดการใบแจ้ง ไม่ใช่บรรทัดถัดไป
+static bool s_join_after_drop;
+static bool s_drop_for_scan;
+
 static esp_timer_handle_t s_retry;
 static int s_backoff_ms = 1000;
 
@@ -116,11 +148,15 @@ static net_t *net_find(const char *ssid)
     return NULL;
 }
 
+// `psk == NULL` คือ "ไม่แตะรหัสที่จำไว้" ไม่ใช่ "รหัสคือค่าว่าง" — ฝั่ง Mac ส่งแบบนี้
+// (ไม่มีคีย์ `psk` ในคำสั่ง join) ตอนผู้ใช้กลับไปต่อวงเดิมโดยไม่พิมพ์อะไร ดู
+// `WiFiCommand.join` ใน host/Sources/TamaCore/WiFiProvisioning.swift · เขียนทับด้วย ""
+// ตรงนี้เท่ากับลบรหัสที่ใช้ได้อยู่ทิ้ง แล้วรอบต่อไปล้มด้วย auth fail
 static void net_remember(const char *ssid, const char *psk)
 {
     net_t *existing = net_find(ssid);
     if (existing) {
-        copy_str(existing->psk, sizeof(existing->psk), psk);
+        if (psk) copy_str(existing->psk, sizeof(existing->psk), psk);
     } else {
         // เต็มแล้วให้ตัวเก่าสุดหลุดออก ไม่ใช่ปฏิเสธตัวใหม่ — ผู้ใช้ที่กำลังยืนอยู่หน้า
         // เครือข่ายใหม่ต้องการตัวนี้ ส่วนตัวที่จำไว้ตั้งแต่ปีที่แล้วไม่มีใครคิดถึง
@@ -150,6 +186,16 @@ static void connect_to(const net_t *n)
 
 static void search(void)
 {
+    // รอบสแกนที่ค้างอยู่เป็นของใครก็ได้ — ทับโหมดมันคือทำให้ผลไปผิดที่
+    if (s_scan != SCAN_NONE) return;
+    // การต่อที่กำลังเดินอยู่ต้องได้จบเรื่องของมันเอง: สแกนระหว่างจับมือทำให้ทั้งสองอย่างล้ม
+    // และรอบนี้มาจากนาฬิกาที่ตั้งไว้เป็นตาข่ายรับ ไม่ใช่จากใครที่กำลังรอคำตอบ
+    if (s_state == CT_WIFI_CONNECTING || s_state == CT_WIFI_CONNECTED) return;
+    // วงที่ผู้ใช้เพิ่งสั่งยังไม่อยู่ในลิสต์ที่จำไว้ การเลือกจากผลสแกนจึงมองไม่เห็นมัน
+    if (s_have_try) {
+        connect_to(&s_try);
+        return;
+    }
     if (s_net_count == 0) {
         set_state(CT_WIFI_OFF, NULL);
         return;
@@ -165,16 +211,64 @@ static void search(void)
 
 static void retry_cb(void *arg) { search(); }
 
+// ตั้งนาฬิกาลองใหม่ที่ระยะปัจจุบัน โดยไม่ถ่างระยะ — ใช้ตอนกลับมาจากงานที่ผู้ใช้แทรก
+static void resume_search(void)
+{
+    esp_timer_stop(s_retry);
+    esp_timer_start_once(s_retry, (uint64_t)s_backoff_ms * 1000);
+}
+
 static void schedule_retry(void)
 {
     // เพดาน 60 วิ ไม่ใช่การเลิกล้ม: บอร์ดอยู่บนโต๊ะทั้งวัน เครือข่ายที่หายไปตอนเช้า
     // กลับมาตอนบ่ายได้ และไม่มีใครมากดปุ่มให้ลองใหม่
     if (s_backoff_ms < 60000) s_backoff_ms *= 2;
-    esp_timer_stop(s_retry);
-    esp_timer_start_once(s_retry, (uint64_t)s_backoff_ms * 1000);
+    resume_search();
+}
+
+// เริ่มรอบสแกนที่ผลจะถูกส่งกลับไปให้ Mac — เรียกได้เฉพาะตอนวิทยุว่างแล้ว
+//
+// ทุกทางออกของฟังก์ชันนี้ต้องจบด้วย `on_ap_end` เสมอเมื่อสแกนไม่ได้เกิดขึ้นจริง:
+// ฝั่ง Mac ถือ "กำลังสแกน" ไว้จนกว่าจะเห็นเครื่องหมายจบ ไม่มีตัวจับเวลาของตัวเอง
+static void start_report_scan(void)
+{
+    if (!s_want_report) return;
+    s_scan = SCAN_REPORT;
+    if (esp_wifi_scan_start(NULL, false) == ESP_OK) return;
+    s_scan = SCAN_NONE;
+    s_want_report = false;
+    if (s_cbs.on_ap_end) s_cbs.on_ap_end();
+    if (s_state != CT_WIFI_CONNECTED) resume_search();
 }
 
 // --- เหตุการณ์จาก esp_wifi -----------------------------------------------------
+
+// แปลเหตุผลของการหลุดเป็นคำที่หน้าตั้งค่าเอาไปตัดสินใจต่อได้
+//
+// `esp_wifi` ไม่มีค่าเดียวที่แปลว่า "รหัสผิด": AP คนละยี่ห้อคืน 15 (4WAY_HANDSHAKE_TIMEOUT),
+// 202 (AUTH_FAIL), 205 (CONNECTION_FAIL) หรือแม้แต่ 1 (UNSPECIFIED) ให้กับรหัสผิดตัว
+// เดียวกัน · การไล่แจกแจงเลขจึงพลาดเสมอ สิ่งที่แยกได้แน่คือ **จังหวะ**: ล้มทั้งที่ยังไม่เคย
+// ต่อติดในรอบนี้ = เรื่องของตัวตน (ผู้ใช้ต้องพิมพ์ใหม่) · หลุดหลังจากต่อติดแล้ว = เรื่องของ
+// วิทยุ (รอเดี๋ยวก็กลับ) · เหลือแค่กลุ่ม "ไม่เจอ AP" ที่ต้องดักด้วยเลขจริงๆ
+//
+// สตริงที่คืนออกไปเป็นสัญญากับ `WiFiStatus.needsPassword` ใน
+// host/Sources/TamaCore/WiFiProvisioning.swift — สองไฟล์นี้อ้างถึงกันตอนรันไม่ได้
+static const char *why(uint8_t reason, bool was_connected, bool unproven)
+{
+    switch (reason) {
+    case WIFI_REASON_NO_AP_FOUND:
+    case WIFI_REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD:
+    case WIFI_REASON_NO_AP_FOUND_IN_RSSI_THRESHOLD:
+        return "not in range";
+    case WIFI_REASON_BEACON_TIMEOUT:
+        return was_connected ? "signal lost" : "not in range";
+    default:
+        // 210 (ไม่เจอ AP ที่ security ตรงกัน) ตกมาที่นี่โดยตั้งใจ: มันคือความไม่ตรงกัน
+        // ของรหัส/โหมดเข้ารหัส ซึ่งผู้ใช้แก้ที่ช่องรหัสผ่านช่องเดียวกัน
+        if (was_connected) return "disconnected";
+        return unproven ? "wrong password" : "could not connect";
+    }
+}
 static void emit_scan_results(void)
 {
     uint16_t num = 0;
@@ -251,7 +345,11 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
         scan_mode_t mode = s_scan;
         s_scan = SCAN_NONE;
         if (mode == SCAN_REPORT) {
+            s_want_report = false;
             emit_scan_results();
+            // รอบนี้เป็นของผู้ใช้ ลูปต่อเองจึงไม่ได้เดินระหว่างนั้น — ปลุกมันกลับมาเอง
+            // ไม่งั้นบอร์ดที่ยังไม่ได้ต่อจะนิ่งไปตลอดจนกว่าจะมีคนกด Rescan อีกครั้ง
+            if (s_state != CT_WIFI_CONNECTED) resume_search();
         } else if (mode == SCAN_PICK) {
             pick_from_scan();
         } else {
@@ -261,21 +359,54 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     }
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         const wifi_event_sta_disconnected_t *d = data;
-        // เหตุผลของการหลุดคือสิ่งเดียวที่แยก "รหัสผิด" (ผู้ใช้ต้องพิมพ์ใหม่) ออกจาก
-        // "สัญญาณหลุด" (รอเดี๋ยวก็กลับ) ได้ ข้อความบนหน้าตั้งค่าจึงต้องมาจากตรงนี้
-        const char *err = "disconnected";
-        if (d->reason == WIFI_REASON_NO_AP_FOUND) err = "not in range";
-        if (d->reason == WIFI_REASON_AUTH_FAIL || d->reason == WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT
-            || d->reason == WIFI_REASON_HANDSHAKE_TIMEOUT) {
-            err = "wrong password";
+        // เลข reason ไม่โผล่ที่อื่นเลย และมันคือสิ่งเดียวที่บอกได้ว่ารอบนี้ล้มเพราะอะไร —
+        // การรายงานบั๊กเรื่อง WiFi ที่ไม่มีเลขนี้แนบมาคือการเดา
+        ESP_LOGW(TAG, "disconnected from %s reason=%d", s_ssid, (int)d->reason);
+
+        // ใบของสายเก่าที่เราสั่งตัดเอง: งานที่ค้างอยู่มาก่อน และ `d->reason` เป็นเรื่อง
+        // ของการต่อครั้งก่อน ไม่ใช่ครั้งนี้ จึงต้องไม่ถูกแปลเป็นข้อความให้ผู้ใช้อ่าน
+        if (s_join_after_drop) {
+            s_join_after_drop = false;
+            connect_to(&s_try);
+            return;
         }
+        if (s_drop_for_scan) {
+            s_drop_for_scan = false;
+            set_state(CT_WIFI_FAILED, "stopped to scan");
+            start_report_scan();
+            return;
+        }
+
+        const char *err = why(d->reason, s_state == CT_WIFI_CONNECTED,
+                              s_have_try && s_try_unproven);
         set_state(CT_WIFI_FAILED, err);
-        schedule_retry();
+
+        // รหัสที่ผิดลองอีกกี่รอบก็ผิดเท่าเดิม — ทิ้งตัวที่ผู้ใช้เพิ่งพิมพ์ทันที ไม่เขียนลง
+        // NVS และไม่วนต่อ · เวลาหนึ่งนาทีก่อนกลับไปหาวงที่จำไว้คือเวลาที่ผู้ใช้ได้อ่าน
+        // ข้อความและพิมพ์ใหม่ ก่อนที่การต่อรอบถัดไปจะทับมันทิ้ง
+        if (s_have_try && strcmp(err, "wrong password") == 0) {
+            s_have_try = false;
+            s_backoff_ms = 60000;
+            resume_search();
+            return;
+        }
+
+        // การตัดสายอาจมาจาก `ct_wifi_scan` เองที่ต้องการวิทยุคืน — คำขอของผู้ใช้มาก่อน
+        if (s_want_report) {
+            start_report_scan();
+        } else {
+            schedule_retry();
+        }
         return;
     }
     if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
         const ip_event_got_ip_t *e = data;
         snprintf(s_ip, sizeof(s_ip), IPSTR, IP2STR(&e->ip_info.ip));
+        // ที่เดียวที่รหัสผ่านลง NVS: ตอนนี้เท่านั้นที่รู้ว่ามันใช้ได้จริง
+        if (s_have_try) {
+            net_remember(s_try.ssid, s_try.psk);
+            s_have_try = false;
+        }
         s_backoff_ms = 1000;
         set_state(CT_WIFI_CONNECTED, NULL);
         ESP_LOGI(TAG, "connected to %s as %s", s_ssid, s_ip);
@@ -315,30 +446,73 @@ void ct_wifi_init(const ct_wifi_cbs_t *cbs)
 
 void ct_wifi_scan(void)
 {
-    if (!s_started || s_scan != SCAN_NONE) return;
-    s_scan = SCAN_REPORT;
-    if (esp_wifi_scan_start(NULL, false) != ESP_OK) {
-        s_scan = SCAN_NONE;
+    if (!s_started) {
         if (s_cbs.on_ap_end) s_cbs.on_ap_end();
+        return;
     }
+    s_want_report = true;
+
+    // ลูปต่อเองต้องหลบให้คนที่ยืนอยู่หน้าเครื่อง: รหัสผิดทำให้บอร์ดวนจับมือกับ AP เดิม
+    // ไม่รู้จบ และ `esp_wifi_scan_start` คืน ESP_ERR_WIFI_STATE ตลอดช่วงนั้น ผลคือปุ่ม
+    // Rescan ที่กดแล้วไม่เกิดอะไรเลย ซึ่งเป็นทางเดียวที่ผู้ใช้จะแก้รหัสได้
+    esp_timer_stop(s_retry);
+
+    // รอบที่ลูปต่อเองสั่งไว้เป็นการกวาดคลื่นชุดเดียวกัน — ยึดผลของมันมาส่งต่อ ดีกว่า
+    // ทิ้งคำขอของผู้ใช้แล้วให้ Mac ค้างที่สปินเนอร์
+    if (s_scan == SCAN_PICK) {
+        s_scan = SCAN_REPORT;
+        return;
+    }
+    if (s_scan == SCAN_REPORT) return;  // ของผู้ใช้เองที่ยังวิ่งอยู่
+
+    // ตัดการจับมือที่ค้างอยู่แล้วสแกนต่อใน STA_DISCONNECTED — `esp_wifi_disconnect`
+    // ไม่ได้คืนวิทยุทันทีที่มันคืนค่า
+    // เฉพาะเมื่อคำสั่งตัดสายรับไปจริง ไม่งั้นจะไม่มี STA_DISCONNECTED มาปลุกใคร แล้วทั้ง
+    // ลูปต่อเองกับรายชื่อของผู้ใช้จะค้างด้วยกันทั้งคู่ (นาฬิกาลองใหม่ก็ถูกหยุดไปแล้ว)
+    if (s_state == CT_WIFI_CONNECTING) {
+        s_drop_for_scan = true;
+        if (esp_wifi_disconnect() == ESP_OK) return;
+        s_drop_for_scan = false;
+    }
+    start_report_scan();
 }
 
 void ct_wifi_join(const char *ssid, const char *psk)
 {
     if (!ssid || ssid[0] == '\0') return;
-    net_remember(ssid, psk);
+
+    const net_t *known = net_find(ssid);
+    copy_str(s_try.ssid, sizeof(s_try.ssid), ssid);
+    // ไม่ส่งรหัสมา = ใช้ของที่จำไว้ · ไม่เคยจำก็คือวงเปิด
+    copy_str(s_try.psk, sizeof(s_try.psk), psk ? psk : (known ? known->psk : ""));
+    // รหัสที่ตรงกับของที่จำไว้คือรหัสที่เคยต่อติดแล้ว ไม่ว่ามันจะมาทางไหน
+    s_try_unproven = !known || strcmp(known->psk, s_try.psk) != 0;
+    s_have_try = true;
     s_backoff_ms = 1000;
     esp_timer_stop(s_retry);
-    net_t *n = net_find(ssid);
-    if (!n) return;
-    // ตัดของเดิมก่อน ไม่งั้น esp_wifi_connect ตัวที่สองคืน ESP_ERR_WIFI_CONN เงียบๆ
-    // แล้วผู้ใช้เห็นหน้าจอค้างที่ชื่อเครือข่ายเก่า
-    esp_wifi_disconnect();
-    connect_to(n);
+    // ผู้ใช้เลือกวงแล้ว รายชื่อจึงหมดหน้าที่ — ปิดสปินเนอร์ฝั่ง Mac ด้วยตัวเอง เพราะ
+    // การต่อจะกินวิทยุจนรอบสแกนที่ค้างอยู่ไม่มีวันรายงานผล
+    if (s_want_report) {
+        s_want_report = false;
+        s_scan = SCAN_NONE;
+        if (s_cbs.on_ap_end) s_cbs.on_ap_end();
+    }
+    // ตัดของเดิมก่อน แล้วต่อใน STA_DISCONNECTED — วิทยุยังไม่คืนตอน `esp_wifi_disconnect`
+    // คืนค่า · นาฬิกาลองใหม่เดินต่อเป็นตาข่ายรับ เผื่อใบแจ้งไม่มาเลย ไม่งั้นบอร์ดจะนิ่ง
+    // ค้างที่ CONNECTING โดยไม่มีอะไรมาปลุก
+    if (s_state == CT_WIFI_CONNECTED || s_state == CT_WIFI_CONNECTING) {
+        s_join_after_drop = true;
+        resume_search();
+        if (esp_wifi_disconnect() == ESP_OK) return;
+        s_join_after_drop = false;
+    }
+    connect_to(&s_try);
 }
 
 void ct_wifi_forget(const char *ssid)
 {
+    // ตัวที่กำลังลองอยู่ก็ต้องหลุดไปด้วย ไม่งั้นลูปต่อเองจะพากลับไปหาวงที่เพิ่งถูกลืม
+    if (s_have_try && strcmp(s_try.ssid, ssid) == 0) s_have_try = false;
     net_t *n = net_find(ssid);
     if (!n) return;
     int idx = (int)(n - s_nets);
