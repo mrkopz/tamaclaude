@@ -33,6 +33,12 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private static let autoStartKey = "autoStartSession"
     /// ที่อยู่บอร์ดที่ผู้ใช้กรอกเอง — ทางออกเมื่อเราเตอร์ไม่ส่ง mDNS ข้าม subnet/VLAN
     private static let boardHostKey = "boardHost"
+    /// ความสว่างจอที่ผู้ใช้ตั้งไว้
+    ///
+    /// บอร์ดจำค่านี้ลง NVS เองอยู่แล้ว (`ct_lcd.c`) การจำซ้ำที่นี่จึงไม่ใช่ของสำรอง แต่เป็น
+    /// คำตอบให้สองสภาพที่บอร์ดตอบเองไม่ได้: บอร์ดที่ถูกแฟลชใหม่ (NVS หายไปทั้งก้อน) และ
+    /// หน้าตั้งค่าที่ต้องแสดงตัวเลขตอนยังไม่มีบอร์ดอยู่ในระยะ
+    private static let brightnessKey = "brightness"
     /// หน้าที่บอร์ดตัวล่าสุดบอกว่ารู้จัก (ADR-0006)
     ///
     /// จำข้ามการเปิดปิดแอปเพราะการประกาศเกิดบน BLE เท่านั้น — Mac ที่เปิดขึ้นมาไกลจาก
@@ -49,6 +55,10 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var boardPages: [PageKind] = []
     /// พฤติกรรมของจอที่ผู้ใช้ตั้งไว้ — อ่านจาก `UserDefaults` ครั้งเดียวตอนเปิดแอป
     private var pages = PageSettings()
+    /// ความสว่างล่าสุดที่ผู้ใช้เลือก · ไม่มีค่าที่เคยตั้งคือ 100 ไม่ใช่ 0 — `integer(forKey:)`
+    /// คืน 0 ให้คีย์ที่ไม่มี ซึ่งแปลว่าจอดับสนิทตั้งแต่ครั้งแรกที่ต่อบอร์ด
+    private var brightness =
+        UserDefaults.standard.object(forKey: MenuBarApp.brightnessKey) as? Int ?? 100
     /// แถวโควตาชุดล่าสุดที่ daemon ประกาศออกมา — ตัวเดียวกับที่แบดจ์กิน
     private var usage: [UsageSnap]?
 
@@ -121,7 +131,10 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             DispatchQueue.main.async {
                 // สายใหม่ = โอกาสใหม่ที่จะผลักกุญแจ · บอร์ดที่ถูกแฟลชใหม่ระหว่างนั้นลืม
                 // กุญแจไปแล้ว และการต่อกลับคือสัญญาณเดียวที่บอกว่าควรถามใหม่
-                if connected { self?.keyPushed = false }
+                if connected {
+                    self?.keyPushed = false
+                    self?.pushBrightness()
+                }
                 self?.prefs.showLink(connected)
             }
         }
@@ -448,6 +461,7 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             autoStart: starter.enabled,
             login: SMAppService.mainApp.status == .enabled)
         prefs.showLink(ble.isConnected)
+        prefs.showBrightness(brightness)
         prefs.showBoardHost(UserDefaults.standard.string(forKey: Self.boardHostKey) ?? "")
         prefs.showRoute(route, detail: lanStatus)
         prefs.showKey(keyState)
@@ -771,7 +785,17 @@ final class MenuBarApp: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func setBrightness(_ value: Int) {
-        ble.sendConfig(Data("{\"b\":\(value)}".utf8))
+        brightness = value
+        UserDefaults.standard.set(value, forKey: Self.brightnessKey)
+        pushBrightness()
+    }
+
+    /// ย้ำความสว่างให้บอร์ดที่เพิ่งต่อเข้ามา
+    ///
+    /// บอร์ดที่จำค่าเองได้จะได้ค่าเดิมและไม่เขียน flash ซ้ำ (`backlight_save`) ส่วนบอร์ดที่
+    /// เพิ่งถูกแฟลชจะกลับมาสว่างเท่าที่ผู้ใช้เคยตั้ง โดยไม่ต้องเปิดหน้าตั้งค่าไปลากสไลเดอร์อีกรอบ
+    private func pushBrightness() {
+        ble.sendConfig(Data("{\"b\":\(brightness)}".utf8))
     }
 
     private func installHooks() {
