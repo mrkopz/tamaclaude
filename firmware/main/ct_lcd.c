@@ -9,6 +9,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "layout.h"
+#include "nvs.h"
 
 static const char *TAG = "lcd";
 
@@ -28,8 +29,16 @@ static const char *TAG = "lcd";
 #define BL_CHANNEL LEDC_CHANNEL_0
 #define BL_DUTY_BITS LEDC_TIMER_10_BIT
 
+// ความสว่างต้องอยู่รอดการถอดปลั๊ก เพราะบอร์ดตื่นก่อน Mac เสมอ และตื่นได้โดยไม่มี Mac เลย
+// (ไม่มีสาย, Mac ปิดอยู่) — จอที่สว่างเต็มทุกครั้งที่มีไฟเข้าคือค่าที่ผู้ใช้ตั้งไว้แล้วไม่มีผล
+#define BL_NVS_NS "tamalcd"
+#define BL_NVS_KEY "bl"
+
 static spi_device_handle_t s_spi;
+// 100 คือค่าตอน NVS ยังว่าง ไม่ใช่ค่าตั้งต้นของทุกครั้งที่บูต — `backlight_init` โหลดทับ
 static int s_backlight = 100;
+// ค่าที่อยู่ใน NVS จริง ๆ · -1 คือยังไม่เคยเขียน — กันเขียน flash ซ้ำด้วยค่าเดิม
+static int s_stored = -1;
 
 static void cs(int level) { gpio_set_level(PIN_CS, level); }
 static void dc(int level) { gpio_set_level(PIN_DC, level); }
@@ -95,6 +104,46 @@ static void panel_init(void)
     vTaskDelay(pdMS_TO_TICKS(20));
 }
 
+// --- ความสว่างที่จำได้ข้ามการปิดเครื่อง ------------------------------------------
+//
+// เรียกได้หลัง `nvs_flash_init()` เท่านั้น ซึ่ง `app_main` ทำเป็นอย่างแรกก่อน `ct_lcd_init`
+static void backlight_load(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(BL_NVS_NS, NVS_READONLY, &h) != ESP_OK) return;  // ยังไม่เคยเขียน
+    uint8_t saved = 0;
+    if (nvs_get_u8(h, BL_NVS_KEY, &saved) == ESP_OK && saved <= 100) {
+        s_backlight = saved;
+        s_stored = saved;
+    }
+    nvs_close(h);
+}
+
+// เขียนเมื่อค่าเปลี่ยนจริงเท่านั้น · Mac ส่งค่าตอนผู้ใช้ปล่อยสไลเดอร์ ไม่ใช่ทุกเฟรมของการลาก
+// แต่ทาง LAN กับ BLE ส่งค่าเดิมซ้ำได้ตอนต่อใหม่ และ flash มีจำนวนรอบลบจำกัด
+static void backlight_save(int percent)
+{
+    if (percent == s_stored) return;
+    nvs_handle_t h;
+    if (nvs_open(BL_NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
+    if (nvs_set_u8(h, BL_NVS_KEY, (uint8_t)percent) == ESP_OK && nvs_commit(h) == ESP_OK) {
+        s_stored = percent;
+    }
+    nvs_close(h);
+}
+
+// ทาไฟตามค่าที่ได้มา โดยไม่แตะ flash — ทางที่ตอนบูตใช้ เพราะค่านั้นมาจาก flash อยู่แล้ว
+static void backlight_apply(int percent)
+{
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    s_backlight = percent;
+    uint32_t max_duty = (1u << BL_DUTY_BITS) - 1;
+    uint32_t duty = (uint32_t)((max_duty * (uint32_t)percent) / 100u);
+    ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, BL_CHANNEL, duty));
+    ESP_ERROR_CHECK(ledc_update_duty(LEDC_LOW_SPEED_MODE, BL_CHANNEL));
+}
+
 static void backlight_init(void)
 {
     ledc_timer_config_t timer = {
@@ -114,18 +163,15 @@ static void backlight_init(void)
         .hpoint = 0,
     };
     ESP_ERROR_CHECK(ledc_channel_config(&ch));
-    ct_lcd_set_backlight(100);
+    // โหลดก่อนทา: จอสว่างเท่าที่ผู้ใช้ตั้งไว้ตั้งแต่เฟรมแรก ไม่ใช่วูบเต็มแล้วค่อยหรี่ตอน Mac ต่อ
+    backlight_load();
+    backlight_apply(s_backlight);
 }
 
 void ct_lcd_set_backlight(int percent)
 {
-    if (percent < 0) percent = 0;
-    if (percent > 100) percent = 100;
-    s_backlight = percent;
-    uint32_t max_duty = (1u << BL_DUTY_BITS) - 1;
-    uint32_t duty = (uint32_t)((max_duty * (uint32_t)percent) / 100u);
-    ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, BL_CHANNEL, duty));
-    ESP_ERROR_CHECK(ledc_update_duty(LEDC_LOW_SPEED_MODE, BL_CHANNEL));
+    backlight_apply(percent);
+    backlight_save(s_backlight);  // ค่าที่บีบเข้าช่วงแล้ว ไม่ใช่ค่าดิบที่รับมา
 }
 
 int ct_lcd_backlight(void) { return s_backlight; }
