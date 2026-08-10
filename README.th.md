@@ -174,7 +174,7 @@ echo "$PORT"
 ```bash
 python3 -m pip install esptool
 python3 -m esptool --chip esp32 --port "$PORT" \
-    write_flash 0x0 ~/Downloads/tamaclaude-esp32-1.2.2.bin
+    write_flash 0x0 ~/Downloads/tamaclaude-esp32-1.2.3.bin
 ```
 
 เท่านี้จบ — Python ราว 10 MB ไม่ต้องมีคอมไพเลอร์ ข้ามไปขั้นที่ 3 ได้เลย
