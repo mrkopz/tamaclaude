@@ -311,6 +311,20 @@ the app accumulates that across sessions and divides it by a budget you set:
 echo 3000 > ~/.tamaclaude/budget   # dollars per month
 ```
 
+If you keep a work account in a separate config directory — the usual shape is a
+shell function like `claude-work() { CLAUDE_CONFIG_DIR="$HOME/.claude-work" claude "$@"; }`
+— the buttons in Settings only ever write to `~/.claude`, so that account reaches
+neither the mascot nor the bars. Install into it explicitly:
+
+```bash
+export CLAUDE_CONFIG_DIR="$HOME/.claude-work"
+/Applications/TamaClaude.app/Contents/MacOS/tamaclaude --install-hooks
+/Applications/TamaClaude.app/Contents/MacOS/tamaclaude --install-statusline
+```
+
+Each config directory gets its own wrapper script, so whatever statusline that
+account already had keeps rendering.
+
 Both bars then fill with that month's budget cut to their own window — the 7-day row gets
 the monthly figure divided by the days in the month times seven, and the 5-hour row gets
 the same figure cut to five hours. The pace marker means what it always meant: are you

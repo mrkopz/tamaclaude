@@ -784,6 +784,31 @@ func runAllTests() {
         expect(!mixed.contains("58%"), "and the 5h budget steps aside rather than doubling up")
     }
 
+    suite("installers can target a second Claude Code account") {
+        let work = URL(fileURLWithPath: "/Users/x/.claude-work", isDirectory: true)
+
+        equal(HookInstaller.settingsPath(configDir: work).path,
+              "/Users/x/.claude-work/settings.json",
+              "hooks go into the config dir they were asked for")
+        equal(HookInstaller.settingsPath(configDir: nil).path,
+              HookInstaller.settingsPath.path,
+              "and nil still means ~/.claude, so the existing buttons do not move")
+
+        // สคริปต์ต้องเป็นคนละไฟล์ต่อ config dir — มันเก็บ statusline เดิมของ config
+        // นั้นไว้ข้างใน ใช้ไฟล์ร่วมกันแปลว่าติดตั้งบัญชีที่สองแล้วบัญชีแรกเสีย
+        let workScript = StatuslineInstaller.scriptPath(configDir: work)
+        expect(workScript != StatuslineInstaller.scriptPath(configDir: nil),
+               "a second account never shares the first account's wrapper script")
+        equal(workScript.lastPathComponent, "statusline-claude-work.sh",
+              "and the leading dot of the config dir does not survive into the filename")
+
+        // config dir ที่ชื่อเหลือว่างหลังตัดจุด ยังต้องไม่ชนกับของดีฟอลต์
+        let odd = StatuslineInstaller.scriptPath(
+            configDir: URL(fileURLWithPath: "/Users/x/.", isDirectory: true))
+        expect(odd != StatuslineInstaller.scriptPath(configDir: nil),
+               "even a config dir with no usable name gets its own file")
+    }
+
     suite("the budget file forgives the way people actually write money") {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("budget-\(UUID().uuidString)")

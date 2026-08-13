@@ -5,10 +5,29 @@ import Foundation
 /// ใช้ JSONSerialization ไม่ใช่ Codable เพราะไฟล์นี้เป็นของผู้ใช้:
 /// คีย์ที่เราไม่รู้จักต้องรอดกลับออกไปครบ
 public enum HookInstaller {
-    public static var settingsPath: URL {
-        Paths.home
-            .appendingPathComponent(".claude", isDirectory: true)
+    public static var settingsPath: URL { settingsPath(configDir: nil) }
+
+    /// `settings.json` ของ config dir หนึ่งอัน — ค่าเริ่มต้นคือ `~/.claude`
+    ///
+    /// Claude Code แยกบัญชีด้วย `CLAUDE_CONFIG_DIR` และคนที่มีบัญชีงานกับบัญชี
+    /// ส่วนตัวมักตั้ง shell function ครอบไว้ เช่น
+    /// `claude-work() { CLAUDE_CONFIG_DIR="$HOME/.claude-work" claude "$@"; }`
+    ///
+    /// การผูกกับ `~/.claude` ตายตัวแปลว่าปุ่มติดตั้งในแอปไปไม่ถึง config dir
+    /// เหล่านั้นเลย ต่อให้กดกี่ครั้ง แล้ว session จากบัญชีนั้นจะไม่ส่งอะไรมาให้
+    /// daemon เลยสักอย่าง — ไม่มีมาสคอต ไม่มีโควตา และไม่มีอะไรบอกว่าทำไม
+    public static func settingsPath(configDir: URL?) -> URL {
+        (configDir ?? Paths.home.appendingPathComponent(".claude", isDirectory: true))
             .appendingPathComponent("settings.json")
+    }
+
+    /// config dir ที่ env ชี้อยู่ตอนนี้ ถ้ามี — ให้ CLI ที่ถูกเรียกจากใต้
+    /// `CLAUDE_CONFIG_DIR=... tamaclaude --install-hooks` ทำสิ่งที่ผู้เรียกคาดหวัง
+    public static var configDirFromEnvironment: URL? {
+        guard let raw = ProcessInfo.processInfo.environment["CLAUDE_CONFIG_DIR"],
+            !raw.isEmpty
+        else { return nil }
+        return URL(fileURLWithPath: (raw as NSString).expandingTildeInPath, isDirectory: true)
     }
 
     /// hook ที่ daemon ใช้จริง — ตรงกับ `switch` ใน SessionStore.apply
@@ -39,7 +58,10 @@ public enum HookInstaller {
         }
     }
 
-    public static func install(binary: String = CommandLine.arguments[0]) throws {
+    public static func install(
+        binary: String = CommandLine.arguments[0], configDir: URL? = nil
+    ) throws {
+        let settingsPath = settingsPath(configDir: configDir)
         let command = "\(URL(fileURLWithPath: binary).standardizedFileURL.path) --hook"
         var root: [String: Any] = [:]
 

@@ -15,6 +15,23 @@ import Foundation
 public enum StatuslineInstaller {
     public static var settingsPath: URL { HookInstaller.settingsPath }
 
+    /// สคริปต์ของ config dir หนึ่งอัน — `~/.claude` ใช้ `Paths.statusline` ตามเดิม
+    ///
+    /// config dir อื่นได้ไฟล์ของตัวเอง เพราะสคริปต์เก็บคำสั่ง statusline เดิมของ
+    /// config นั้นไว้ข้างใน (`PREV=`) ถ้าใช้ไฟล์เดียวร่วมกัน การติดตั้งครั้งที่สอง
+    /// จะทับ `PREV` ของครั้งแรก แล้ว statusline เดิมของอีกบัญชีหายไปเงียบๆ
+    public static func scriptPath(configDir: URL?) -> URL {
+        guard let configDir else { return Paths.statusline }
+        // ตัดจุดนำหน้าออก: config dir ชื่อ `.claude-work` จะได้ไม่กลายเป็น
+        // `statusline-.claude-work.sh` ซึ่งอ่านเหมือนพิมพ์ผิด
+        var name = configDir.standardizedFileURL.lastPathComponent
+        while name.hasPrefix(".") { name.removeFirst() }
+        // ชื่อที่เหลือว่าง (config dir เป็น `/` หรือ `.`) ยังต้องได้ไฟล์ที่ต่างจากของ
+        // ดีฟอลต์ ไม่งั้นสองบัญชีจะใช้สคริปต์เดียวกันแล้วทับ PREV ของกันและกัน
+        return Paths.stateDir.appendingPathComponent(
+            name.isEmpty ? "statusline-alt.sh" : "statusline-\(name).sh")
+    }
+
     public enum InstallError: Error, CustomStringConvertible {
         case unreadableSettings
         case notJSONObject
@@ -28,12 +45,14 @@ public enum StatuslineInstaller {
     }
 
     /// คำสั่ง statusline เดิมของผู้ใช้ที่เราจะส่งงานวาดต่อให้ — `nil` ถ้าไม่เคยมี
-    public static func previousCommand() -> String? {
+    public static func previousCommand(configDir: URL? = nil) -> String? {
+        let settingsPath = HookInstaller.settingsPath(configDir: configDir)
+        let script = scriptPath(configDir: configDir)
         guard let data = try? Data(contentsOf: settingsPath),
             let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let line = root["statusLine"] as? [String: Any],
             let command = line["command"] as? String,
-            !command.contains(Paths.statusline.path)  // ของเราเอง อย่าเรียกวน
+            !command.contains(script.path)  // ของเราเอง อย่าเรียกวน
         else { return nil }
         return command
     }
@@ -47,20 +66,25 @@ public enum StatuslineInstaller {
         return command.contains(Paths.statusline.path)
     }
 
-    public static func install(binary: String = CommandLine.arguments[0]) throws {
+    public static func install(
+        binary: String = CommandLine.arguments[0], configDir: URL? = nil
+    ) throws {
+        let settingsPath = HookInstaller.settingsPath(configDir: configDir)
+        let script = scriptPath(configDir: configDir)
         let binaryPath = URL(fileURLWithPath: binary).standardizedFileURL.path
         // อ่านคำสั่งเดิม *ก่อน* เขียนทับ ไม่งั้นจะได้สคริปต์ที่เรียกตัวเองไม่รู้จบ
         //
         // ติดตั้งซ้ำ (อัปเกรด/ย้ายพาธ binary) จะเจอ statusLine ที่ชี้มาที่เราเองอยู่แล้ว
         // ซึ่ง previousCommand() คืน nil อย่างถูกต้อง — คำสั่งเดิมของผู้ใช้ตอนนั้น
         // เก็บอยู่ในสคริปต์เก่า ต้องกู้จากตรงนั้น ไม่งั้นการติดตั้งซ้ำ = ลบ statusline ของเขาทิ้ง
-        let previous = previousCommand() ?? delegatedCommandInScript()
+        let previous = previousCommand(configDir: configDir)
+            ?? delegatedCommandInScript(configDir: configDir)
 
         Paths.ensureStateDir()
-        try script(binary: binaryPath, delegateTo: previous)
-            .write(to: Paths.statusline, atomically: true, encoding: .utf8)
+        try Self.script(binary: binaryPath, delegateTo: previous)
+            .write(to: script, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes(
-            [.posixPermissions: 0o755], ofItemAtPath: Paths.statusline.path)
+            [.posixPermissions: 0o755], ofItemAtPath: script.path)
 
         var root: [String: Any] = [:]
         if FileManager.default.fileExists(atPath: settingsPath.path) {
@@ -80,7 +104,7 @@ public enum StatuslineInstaller {
         // 10 วินาทีเร็วพอให้ตัวเลขตามทัน และช้าพอไม่ให้สคริปต์ 27KB กินซีพียู
         root["statusLine"] = [
             "type": "command",
-            "command": "sh \(Paths.statusline.path)",
+            "command": "sh \(script.path)",
             "refreshInterval": 10,
         ]
         try FileManager.default.createDirectory(
@@ -91,12 +115,13 @@ public enum StatuslineInstaller {
     }
 
     /// คืนช่องให้คำสั่งเดิมที่สคริปต์ของเราเก็บไว้ — ถอนการติดตั้งโดยไม่ต้องจำอะไรเอง
-    public static func uninstall() throws {
+    public static func uninstall(configDir: URL? = nil) throws {
+        let settingsPath = HookInstaller.settingsPath(configDir: configDir)
         guard let data = try? Data(contentsOf: settingsPath),
             var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { throw InstallError.unreadableSettings }
 
-        if let restored = delegatedCommandInScript() {
+        if let restored = delegatedCommandInScript(configDir: configDir) {
             root["statusLine"] = ["type": "command", "command": restored]
         } else {
             root.removeValue(forKey: "statusLine")
@@ -104,12 +129,13 @@ public enum StatuslineInstaller {
         let out = try JSONSerialization.data(
             withJSONObject: root, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
         try out.write(to: settingsPath)
-        try? FileManager.default.removeItem(at: Paths.statusline)
+        try? FileManager.default.removeItem(at: scriptPath(configDir: configDir))
     }
 
     /// ดึงคำสั่งเดิมกลับจากสคริปต์ที่ติดตั้งไว้ — สคริปต์เป็นที่เก็บ ไม่ต้องมีไฟล์สำรองแยก
-    public static func delegatedCommandInScript() -> String? {
-        guard let text = try? String(contentsOf: Paths.statusline, encoding: .utf8) else {
+    public static func delegatedCommandInScript(configDir: URL? = nil) -> String? {
+        guard let text = try? String(contentsOf: scriptPath(configDir: configDir), encoding: .utf8)
+        else {
             return nil
         }
         for line in text.split(whereSeparator: \.isNewline) where line.hasPrefix("PREV=") {
