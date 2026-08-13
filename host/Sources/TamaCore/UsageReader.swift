@@ -25,8 +25,8 @@ public enum UsageReader {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
         let fields = parse(text)
 
-        let session = snap(
-            percent: fields["UTILIZATION"], resets: fields["RESETS_AT"], now: now)
+        let sKeys = sessionKeys(fields, now: now)
+        let session = snap(percent: fields[sKeys.percent], resets: fields[sKeys.resets], now: now)
         // ช่องรายสัปดาห์มีผู้สมัครสองราย และ **ของจริงชนะเสมอ**
         //
         // `WEEKLY_*` คือโควตาที่ Anthropic รายงานมา ส่วน `BUDGET_*` คือยอดเงินที่
@@ -59,12 +59,35 @@ public enum UsageReader {
     public static func weeklyKeys(
         _ fields: [String: String], now: Date
     ) -> (percent: String, resets: String) {
-        let reported = ("WEEKLY_UTILIZATION", "WEEKLY_RESETS_AT")
-        let derived = ("BUDGET_UTILIZATION", "BUDGET_RESETS_AT")
-        let usable = snap(
-            percent: fields[reported.0], resets: fields[reported.1], now: now
-        ).percent != UsageSnap.unknown
-        return usable ? reported : derived
+        keys(
+            fields, now: now,
+            reported: ("WEEKLY_UTILIZATION", "WEEKLY_RESETS_AT"),
+            derived: ("BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT"))
+    }
+
+    /// ช่อง 5 ชั่วโมง (แถว "Current" บนจอ) — กฎเดียวกับ `weeklyKeys` ทุกประการ
+    public static func sessionKeys(
+        _ fields: [String: String], now: Date
+    ) -> (percent: String, resets: String) {
+        keys(
+            fields, now: now,
+            reported: ("UTILIZATION", "RESETS_AT"),
+            derived: ("BUDGET_UTILIZATION", "BUDGET_RESETS_AT"))
+    }
+
+    static func keys(
+        _ fields: [String: String], now: Date,
+        reported: (String, String), derived: (String, String)
+    ) -> (percent: String, resets: String) {
+        func usable(_ pair: (String, String)) -> Bool {
+            snap(percent: fields[pair.0], resets: fields[pair.1], now: now)
+                .percent != UsageSnap.unknown
+        }
+        if usable(reported) { return reported }
+        // ยอมสลับก็ต่อเมื่อฝั่งงบมีอะไรให้จริงๆ — ไม่งั้นหน้าต่างที่เพิ่งหมุนจะเสีย
+        // สถานะ "resetting" (เปอร์เซ็นต์ไม่รู้ แต่ `remaining == 0` ยังบอกอะไรได้)
+        // แล้วทั้งแถวหายไปจากจอ กลายเป็นนาฬิกาแทน ซึ่งดูเหมือนอุปกรณ์พัง
+        return usable(derived) ? derived : reported
     }
 
     /// เวลาในหน้าต่างเดินไปกี่เปอร์เซ็นต์แล้ว — ตำแหน่งของขีด pace

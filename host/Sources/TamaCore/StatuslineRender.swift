@@ -136,10 +136,12 @@ public enum StatuslineRender {
     ) -> String? {
         // ช่องรายสัปดาห์อาจมาจากงบเงินแทนโควตา — กฎการเลือกเป็นของ `UsageReader`
         // ที่เดียว บรรทัดนี้กับจอต้องตอบตรงกันเสมอ ไม่งั้นผู้ใช้เห็นสองตัวเลข
-        let weeklyKeys = UsageReader.weeklyKeys(cache, now: now)
-        let onBudget = weekly && weeklyKeys.percent == "BUDGET_UTILIZATION"
-        let pctKey = weekly ? weeklyKeys.percent : "UTILIZATION"
-        let resetKey = weekly ? weeklyKeys.resets : "RESETS_AT"
+        let keys = weekly
+            ? UsageReader.weeklyKeys(cache, now: now)
+            : UsageReader.sessionKeys(cache, now: now)
+        let onBudget = keys.percent.hasPrefix("BUDGET_")
+        let pctKey = keys.percent
+        let resetKey = keys.resets
         let window = weekly ? UsageReader.weeklyWindow : UsageReader.sessionWindow
         // สคริปต์ต้นทางถือว่าตัวเลขที่เก่ากว่า 5 นาทีคือ "ยังไม่รู้" แล้วไปยิงเน็ตเอง
         // เราไม่มีทางยิงเน็ตตรงนี้ (ไม่ถือ credential) แต่ยังใช้เกณฑ์เดียวกันเพื่อไม่ให้
@@ -179,7 +181,7 @@ public enum StatuslineRender {
         // สองอย่างนี้ตอบคนละคำถาม ผู้ใช้ที่อ่านผิดจะวางแผนงานผิดตาม
         let label = weekly
             ? (config.showWeeklyLabel ? (onBudget ? "Budget: " : "Weekly: ") : "")
-            : (config.showUsageLabel ? "Usage: " : "")
+            : (config.showUsageLabel ? (onBudget ? "Budget: " : "Usage: ") : "")
         return p.wrap(color, "\(icon) \(label)\(percent)%\(bar)\(resetText)")
     }
 

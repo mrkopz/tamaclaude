@@ -626,9 +626,15 @@ func runAllTests() {
                 ledger: ledger, calendar: cal)
             let text = try String(contentsOf: cache, encoding: .utf8)
 
-            expect(text.contains("BUDGET_UTILIZATION="), "cost alone is enough to write a bar")
-            expect(!text.contains("WEEKLY_UTILIZATION="),
-                   "the budget never squats in the slot Anthropic's own quota uses")
+            // เทียบที่ระดับคีย์ ไม่ใช่ substring: "BUDGET_WEEKLY_UTILIZATION=" มีคำว่า
+            // "WEEKLY_UTILIZATION=" อยู่ข้างใน การ contains จึงตอบว่าเจอทั้งที่ไม่มี
+            let keys = Set(
+                text.split(whereSeparator: \.isNewline)
+                    .compactMap { $0.split(separator: "=").first.map(String.init) })
+            expect(keys.contains("BUDGET_UTILIZATION"), "cost alone is enough to write a bar")
+            expect(keys.contains("BUDGET_WEEKLY_UTILIZATION"), "both windows, not just one")
+            expect(!keys.contains("UTILIZATION") && !keys.contains("WEEKLY_UTILIZATION"),
+                   "the budget never squats in the slots Anthropic's own quota uses")
             expect(line?.contains("budget") == true,
                    "the fallback line says budget, not quota — they are different claims")
         }
@@ -641,28 +647,28 @@ func runAllTests() {
             let a = SpendLedger.record(
                 sessionID: "a", costUSD: 100, now: t0, monthlyUSD: month,
                 at: ledger, calendar: cal)
-            equal(a?.spentUSD, 0, "the first sighting of a session is its baseline, not spend")
+            equal(a?.weekly.spentUSD, 0, "the first sighting of a session is its baseline, not spend")
 
             let a2 = SpendLedger.record(
                 sessionID: "a", costUSD: 160, now: t0, monthlyUSD: month,
                 at: ledger, calendar: cal)
-            equal(a2?.spentUSD, 60, "only the growth since the baseline counts")
+            equal(a2?.weekly.spentUSD, 60, "only the growth since the baseline counts")
 
             let b = SpendLedger.record(
                 sessionID: "b", costUSD: 40, now: t0, monthlyUSD: month,
                 at: ledger, calendar: cal)
-            equal(b?.spentUSD, 60, "a second session starts at its own baseline too")
+            equal(b?.weekly.spentUSD, 60, "a second session starts at its own baseline too")
 
             let b2 = SpendLedger.record(
                 sessionID: "b", costUSD: 90, now: t0, monthlyUSD: month,
                 at: ledger, calendar: cal)
-            equal(b2?.spentUSD, 110, "two sessions add up")
+            equal(b2?.weekly.spentUSD, 110, "two sessions add up")
 
             // `/clear` ทำให้ total_cost_usd ตกกลับ — ห้ามให้ยอดสะสมถอยหลังตาม
             let b3 = SpendLedger.record(
                 sessionID: "b", costUSD: 0, now: t0, monthlyUSD: month,
                 at: ledger, calendar: cal)
-            equal(b3?.spentUSD, 110, "a session whose cost resets does not erase what it spent")
+            equal(b3?.weekly.spentUSD, 110, "a session whose cost resets does not erase what it spent")
         }
 
         do {
@@ -676,14 +682,14 @@ func runAllTests() {
             let before = SpendLedger.record(
                 sessionID: "long", costUSD: 500, now: t0, monthlyUSD: month,
                 at: ledger, calendar: cal)
-            equal(before?.spentUSD, 300, "spent this week")
+            equal(before?.weekly.spentUSD, 300, "spent this week")
 
             let nextWeek = t0.addingTimeInterval(TimeInterval(UsageReader.weeklyWindow))
             let after = SpendLedger.record(
                 sessionID: "long", costUSD: 500, now: nextWeek, monthlyUSD: month,
                 at: ledger, calendar: cal)
-            equal(after?.spentUSD, 0, "last week's spend does not follow the session into this one")
-            expect(after?.resetsAt != before?.resetsAt, "and the window moved")
+            equal(after?.weekly.spentUSD, 0, "last week's spend does not follow the session into this one")
+            expect(after?.weekly.resetsAt != before?.weekly.resetsAt, "and the window moved")
         }
 
         do {
@@ -697,7 +703,7 @@ func runAllTests() {
             let over = SpendLedger.record(
                 sessionID: "big", costUSD: 99_999, now: t0, monthlyUSD: month,
                 at: ledger, calendar: cal)
-            equal(over?.percent, 100, "blowing the budget pins the bar at full")
+            equal(over?.weekly.percent, 100, "blowing the budget pins the bar at full")
 
             expect(
                 SpendLedger.record(
@@ -715,8 +721,8 @@ func runAllTests() {
         let both = """
             WEEKLY_UTILIZATION=20
             WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
-            BUDGET_UTILIZATION=90
-            BUDGET_RESETS_AT=2023-11-16T00:00:00Z
+            BUDGET_WEEKLY_UTILIZATION=90
+            BUDGET_WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """
         try both.write(to: url, atomically: true, encoding: .utf8)
         equal(UsageReader.read(now: t0, from: url)?[1].percent, 20,
@@ -726,8 +732,8 @@ func runAllTests() {
         let stale = """
             WEEKLY_UTILIZATION=20
             WEEKLY_RESETS_AT=2023-11-14T00:00:00Z
-            BUDGET_UTILIZATION=90
-            BUDGET_RESETS_AT=2023-11-16T00:00:00Z
+            BUDGET_WEEKLY_UTILIZATION=90
+            BUDGET_WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """
         try stale.write(to: url, atomically: true, encoding: .utf8)
         equal(UsageReader.read(now: t0, from: url)?[1].percent, 90,
@@ -744,29 +750,38 @@ func runAllTests() {
         let stamp = String(Int(t0.timeIntervalSince1970))
         let payload = Data(#"{"model":{"display_name":"Opus"}}"#.utf8)
 
+        // งบล้วน: ทั้งสองช่องมาจากงบ จึงต้องชื่อ Budget ทั้งคู่ ไม่มีคำว่า Usage
+        // หรือ Weekly หลงเหลือ — สองคำนั้นเป็นของค่าที่ Anthropic รายงานมาเท่านั้น
         try """
             BUDGET_UTILIZATION=58
             BUDGET_RESETS_AT=2023-11-16T00:00:00Z
+            BUDGET_WEEKLY_UTILIZATION=31
+            BUDGET_WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             TIMESTAMP=\(stamp)
             """.write(to: url, atomically: true, encoding: .utf8)
         let onBudget = StatuslineRender.line(
             json: payload, now: t0, config: config, cacheURL: url) ?? ""
-        expect(onBudget.contains("58%"), "a budget-only cache still draws the weekly slot")
-        expect(onBudget.contains("Budget:"),
-               "and names it Budget — calling derived spend Weekly would be a lie")
+        expect(onBudget.contains("58%") && onBudget.contains("31%"),
+               "a budget-only cache fills both windows, not just the weekly one")
+        expect(!onBudget.contains("Usage:") && !onBudget.contains("Weekly:"),
+               "neither window borrows a label that belongs to reported quota")
 
+        // ปนกัน: โควตาจริงมาเฉพาะบาน 5 ชั่วโมง ส่วนรายสัปดาห์ยังเป็นงบ
+        // แต่ละช่องต้องตัดสินใจของตัวเอง ไม่ใช่ตัดสินพร้อมกันทั้งแผง
         try """
-            WEEKLY_UTILIZATION=12
-            WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
+            UTILIZATION=12
+            RESETS_AT=2023-11-15T00:00:00Z
             BUDGET_UTILIZATION=58
             BUDGET_RESETS_AT=2023-11-16T00:00:00Z
+            BUDGET_WEEKLY_UTILIZATION=31
+            BUDGET_WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             TIMESTAMP=\(stamp)
             """.write(to: url, atomically: true, encoding: .utf8)
-        let onQuota = StatuslineRender.line(
+        let mixed = StatuslineRender.line(
             json: payload, now: t0, config: config, cacheURL: url) ?? ""
-        expect(onQuota.contains("12%"), "reported quota still wins here too")
-        expect(onQuota.contains("Weekly:") && !onQuota.contains("Budget:"),
-               "the label follows the source, so the bar and the board never disagree")
+        expect(mixed.contains("Usage: 12%"), "a reported 5h window wins its own slot")
+        expect(mixed.contains("Budget: 31%"), "while the weekly slot stays on the budget")
+        expect(!mixed.contains("58%"), "and the 5h budget steps aside rather than doubling up")
     }
 
     suite("the budget file forgives the way people actually write money") {

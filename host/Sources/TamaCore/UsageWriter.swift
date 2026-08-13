@@ -55,15 +55,21 @@ public enum UsageWriter {
         if let id = root["session_id"] as? String,
             let cost = ((root["cost"] as? [String: Any])?["total_cost_usd"] as? NSNumber)?
                 .doubleValue,
-            let reading = SpendLedger.record(
+            let budget = SpendLedger.record(
                 sessionID: id, costUSD: cost, now: now, at: ledger, calendar: calendar)
         {
-            fields.append(("BUDGET_UTILIZATION", String(reading.percent)))
-            fields.append(("BUDGET_RESETS_AT", iso(reading.resetsAt)))
+            // ชื่อคีย์ล้อของเดิม: ไม่มีคำนำหน้า = บาน 5 ชั่วโมง, `WEEKLY_` = เจ็ดวัน
+            for (reading, pctKey, resetKey) in [
+                (budget.session, "BUDGET_UTILIZATION", "BUDGET_RESETS_AT"),
+                (budget.weekly, "BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT"),
+            ] {
+                fields.append((pctKey, String(reading.percent)))
+                fields.append((resetKey, iso(reading.resetsAt)))
+            }
             // บรรทัด fallback บอกว่าเป็นงบ ไม่ใช่โควตา — ผู้ใช้ที่ไม่มี statusline
             // เดิมจะได้ไม่เข้าใจว่า Anthropic เริ่มรายงานโควตาให้ API key แล้ว
-            if !fields.contains(where: { $0.0 == "WEEKLY_UTILIZATION" }) {
-                parts.append("budget \(reading.percent)%")
+            if !fields.contains(where: { $0.0 == "UTILIZATION" }) {
+                parts.append("budget \(budget.session.percent)%")
             }
         }
 
@@ -177,7 +183,8 @@ public enum UsageWriter {
 
         for (pctKey, resetKey) in [("UTILIZATION", "RESETS_AT"),
                                    ("WEEKLY_UTILIZATION", "WEEKLY_RESETS_AT"),
-                                   ("BUDGET_UTILIZATION", "BUDGET_RESETS_AT")] {
+                                   ("BUDGET_UTILIZATION", "BUDGET_RESETS_AT"),
+                                   ("BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT")] {
             guard let oldPct = existing[pctKey].flatMap(Int.init),
                 let newPct = fresh[pctKey].flatMap(Int.init),
                 existing[resetKey] == fresh[resetKey],  // หน้าต่างเดียวกันเท่านั้นที่เทียบได้
@@ -190,7 +197,9 @@ public enum UsageWriter {
         // คีย์ของงบต้องข้ามรอบที่ไม่มี `cost` มาให้ — `ingestAPI` ไม่เคยมี และ
         // payload ของ Claude Code รุ่นเก่าก็ไม่มี ถ้าปล่อยให้หายไปตามกฎ `known`
         // ข้างล่าง แถบงบจะกระพริบตามว่ารอบล่าสุดมาจากทางเข้าไหน
-        for key in ["BUDGET_UTILIZATION", "BUDGET_RESETS_AT"] where fresh[key] == nil {
+        for key in ["BUDGET_UTILIZATION", "BUDGET_RESETS_AT",
+                    "BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT"]
+        where fresh[key] == nil {
             guard let value = existing[key] else { continue }
             out.append((key, value))
         }
@@ -198,7 +207,8 @@ public enum UsageWriter {
         // คีย์ที่แหล่งอื่นเขียนไว้แต่เราไม่รู้จัก (เช่น PROFILE_NAME, COST_*) ต้องรอดไป
         // ไม่งั้นเราทำลายข้อมูลของเจ้าของร่วมที่เขียนไฟล์เดียวกันนี้
         let known = Set(["UTILIZATION", "RESETS_AT", "WEEKLY_UTILIZATION", "WEEKLY_RESETS_AT",
-                         "BUDGET_UTILIZATION", "BUDGET_RESETS_AT", "TIMESTAMP"])
+                         "BUDGET_UTILIZATION", "BUDGET_RESETS_AT",
+                         "BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT", "TIMESTAMP"])
         for (k, v) in existing.sorted(by: { $0.key < $1.key }) where !known.contains(k) {
             out.append((k, v))
         }

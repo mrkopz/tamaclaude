@@ -38,7 +38,11 @@ public enum SpendLedger {
     /// `base` ของมันไว้ ไม่งั้นพอกลับมาใช้อีกครั้ง ยอดสะสมทั้งก้อนจะถูกนับใหม่
     static let staleAfter = window * 2
 
-    /// ผลของการบันทึกหนึ่งครั้ง — พร้อมส่งเข้าช่อง weekly ของ cache
+    /// หน้าต่างสั้น — ต้องตรงกับ `UsageReader.sessionWindow` และ `session_window`
+    /// ใน `tools/layout.toml` ด้วยเหตุผลเดียวกับ `window`
+    static let sessionWindow = TimeInterval(UsageReader.sessionWindow)
+
+    /// สถานะของหน้าต่างหนึ่งบาน — พร้อมส่งเข้าช่องหนึ่งช่องของ cache
     public struct Reading: Equatable {
         public var percent: Int
         public var resetsAt: Date
@@ -46,7 +50,13 @@ public enum SpendLedger {
         public var allowanceUSD: Double
     }
 
-    /// บันทึกยอดของ session หนึ่ง แล้วคืนสถานะของหน้าต่างปัจจุบัน
+    /// ทั้งสองบานที่จอวาด — แถว "Current" กับแถว "Weekly"
+    public struct Readings: Equatable {
+        public var session: Reading
+        public var weekly: Reading
+    }
+
+    /// บันทึกยอดของ session หนึ่ง แล้วคืนสถานะของทั้งสองหน้าต่าง
     ///
     /// คืน `nil` เมื่อยังบอกอะไรไม่ได้ — งบเป็นศูนย์หรือติดลบ (ตั้งค่าพัง) ซึ่ง
     /// ต้องเงียบ ไม่ใช่เดาเป็น 0% หรือ 100%
@@ -58,57 +68,70 @@ public enum SpendLedger {
         monthlyUSD: Double? = nil,
         at url: URL = Paths.spendLedger,
         calendar: Calendar = .current
-    ) -> Reading? {
+    ) -> Readings? {
         let budget = monthlyUSD ?? readBudget()
         guard budget > 0, costUSD >= 0, costUSD.isFinite else { return nil }
 
         var state = load(at: url)
         let start = windowStart(containing: now, calendar: calendar)
 
-        // หน้าต่างหมุนแล้ว: ยก `latest` ของทุก session ขึ้นเป็น `base` ใหม่
-        // ยอดที่ใช้ไปในสัปดาห์ก่อนจึงไม่ตามมาถูกนับซ้ำในสัปดาห์นี้
+        // หน้าต่างหมุนแล้ว: ยก `latest` ของทุก session ขึ้นเป็นฐานใหม่ของบานนั้น
+        // ยอดที่ใช้ไปในหน้าต่างก่อนจึงไม่ตามมาถูกนับซ้ำในหน้าต่างนี้
+        //
+        // ต้องหมุน **ก่อน** รับค่าใหม่เข้า `latest` ไม่งั้นเงินที่เพิ่งใช้ในหน้าต่างใหม่
+        // จะถูกยกขึ้นเป็นฐานไปด้วย แล้วหายไปจากยอดทั้งที่เพิ่งจ่าย
         if state.windowStart != start {
             state.windowStart = start
-            for (id, entry) in state.sessions {
-                state.sessions[id] = Entry(base: entry.latest, latest: entry.latest, seen: entry.seen)
-            }
+            for (id, entry) in state.sessions { state.sessions[id]?.base = entry.latest }
+        }
+        // หน้าต่างสั้นเกาะกิจกรรม ไม่ใช่เกาะปฏิทิน — มันเริ่มนับเมื่อมีการใช้ครั้งแรก
+        // หลังบานก่อนหมดอายุ เหมือนหน้าต่าง 5 ชั่วโมงจริงของ Claude ถ้าไปยึดขอบ
+        // ปฏิทิน (เช่นทุก 5 ชม.นับจากเที่ยงคืน) 24 หารด้วย 5 ไม่ลงตัว บานสุดท้าย
+        // ของวันจะสั้นกว่าเพื่อน แล้วขีด pace ของบานนั้นจะโกหก
+        if now.timeIntervalSince(state.sessionStart) >= sessionWindow {
+            state.sessionStart = now
+            for (id, entry) in state.sessions { state.sessions[id]?.sessionBase = entry.latest }
         }
 
         // `total_cost_usd` ของ session เดิมเพิ่มอย่างเดียว — ค่าที่ลดลงแปลว่า
         // Claude Code เริ่มนับใหม่ (เช่น `/clear` ที่ยัง id เดิม) ยึดค่าสูงสุดไว้
         // เป็นทางที่ปลอดภัยกว่าสำหรับสัญญาณเตือนงบ: นับเกินดีกว่านับขาด
-        var entry = state.sessions[sessionID] ?? Entry(base: costUSD, latest: costUSD, seen: now)
+        var entry = state.sessions[sessionID]
+            ?? Entry(base: costUSD, sessionBase: costUSD, latest: costUSD, seen: now)
         entry.latest = max(entry.latest, costUSD)
         entry.base = min(entry.base, entry.latest)
+        entry.sessionBase = min(entry.sessionBase, entry.latest)
         entry.seen = now
         state.sessions[sessionID] = entry
 
         state.sessions = state.sessions.filter { now.timeIntervalSince($0.value.seen) < staleAfter }
         save(state, at: url)
 
-        let spent = state.sessions.values.reduce(0.0) { $0 + max(0, $1.latest - $1.base) }
-        let allowance = weeklyAllowance(monthlyUSD: budget, now: now, calendar: calendar)
-        guard allowance > 0 else { return nil }
+        let days = Double(calendar.range(of: .day, in: .month, for: now)?.count ?? 30)
+        let weekly = reading(
+            spent: state.sessions.values.reduce(0.0) { $0 + max(0, $1.latest - $1.base) },
+            allowance: budget * 7.0 / days,
+            resetsAt: start.addingTimeInterval(window))
+        let session = reading(
+            spent: state.sessions.values.reduce(0.0) { $0 + max(0, $1.latest - $1.sessionBase) },
+            allowance: budget * (sessionWindow / 86_400) / days,
+            resetsAt: state.sessionStart.addingTimeInterval(sessionWindow))
 
-        // ปัดเป็นจำนวนเต็มและตัดที่ 100 — `UsageReader.snap` รับเฉพาะ 0...100
-        // ค่าที่เกินจะถูกทิ้งทั้งบานแล้วกลายเป็น "ไม่รู้" ซึ่งแย่กว่า "เต็ม"
-        let percent = min(100, max(0, Int((spent / allowance * 100).rounded())))
-        return Reading(
-            percent: percent,
-            resetsAt: start.addingTimeInterval(window),
-            spentUSD: spent,
-            allowanceUSD: allowance)
+        guard let weekly, let session else { return nil }
+        return Readings(session: session, weekly: weekly)
     }
 
-    /// งบของสัปดาห์นี้ = งบเดือน × 7 ÷ จำนวนวันจริงของเดือนนั้น
+    /// เปอร์เซ็นต์ที่ `UsageReader.snap` รับได้ — ปัดเป็นจำนวนเต็มและตัดที่ 100
     ///
-    /// หารด้วยจำนวนวันจริง ไม่ใช่ 30 หรือ 4.35 คงที่ — กุมภาพันธ์กับมกราคมให้
-    /// ค่าไม่เท่ากัน และผู้ใช้ที่เอาไปเทียบกับบิลจะเจอส่วนต่างที่อธิบายไม่ได้
-    static func weeklyAllowance(
-        monthlyUSD: Double, now: Date, calendar: Calendar
-    ) -> Double {
-        let days = calendar.range(of: .day, in: .month, for: now)?.count ?? 30
-        return monthlyUSD * 7.0 / Double(days)
+    /// ค่าที่เกิน 100 จะถูก `snap` ทิ้งทั้งบานแล้วกลายเป็น "ไม่รู้" ซึ่งแย่กว่า
+    /// "เต็ม" มาก: คนที่ใช้เกินงบต้องเห็นแถบแดงเต็ม ไม่ใช่แถบว่าง
+    static func reading(spent: Double, allowance: Double, resetsAt: Date) -> Reading? {
+        guard allowance > 0 else { return nil }
+        return Reading(
+            percent: min(100, max(0, Int((spent / allowance * 100).rounded()))),
+            resetsAt: resetsAt,
+            spentUSD: spent,
+            allowanceUSD: allowance)
     }
 
     /// ต้นสัปดาห์ที่หน้าต่างนี้เริ่ม — ตามปฏิทินของเครื่อง
@@ -141,22 +164,27 @@ public enum SpendLedger {
 
     // MARK: - สถานะบนดิสก์
 
+    /// ฐานสองตัวต่อหนึ่ง session เพราะสองหน้าต่างหมุนคนละจังหวะ — `base` เป็นของ
+    /// สัปดาห์ `sessionBase` เป็นของบาน 5 ชั่วโมง ส่วน `latest` ใช้ร่วมกัน
     struct Entry {
         var base: Double
+        var sessionBase: Double
         var latest: Double
         var seen: Date
     }
 
     struct State {
         var windowStart: Date
+        var sessionStart: Date
         var sessions: [String: Entry]
     }
 
     static func load(at url: URL) -> State {
+        let empty = State(windowStart: .distantPast, sessionStart: .distantPast, sessions: [:])
         guard let data = try? Data(contentsOf: url),
             let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let start = (root["window_start"] as? NSNumber)?.doubleValue
-        else { return State(windowStart: .distantPast, sessions: [:]) }
+        else { return empty }
 
         var sessions: [String: Entry] = [:]
         for case let (id, raw as [String: Any]) in root["sessions"] as? [String: Any] ?? [:] {
@@ -164,10 +192,18 @@ public enum SpendLedger {
                 let latest = (raw["latest"] as? NSNumber)?.doubleValue,
                 let seen = (raw["seen"] as? NSNumber)?.doubleValue
             else { continue }
+            // ไฟล์ที่เขียนไว้ก่อนมีบาน 5 ชั่วโมงไม่มี `session_base` — ถือว่าเท่ากับ
+            // `latest` คือเริ่มนับบานสั้นใหม่จากตรงนี้ ไม่ใช่ยกยอดทั้งสัปดาห์มาใส่
+            let sessionBase = (raw["session_base"] as? NSNumber)?.doubleValue ?? latest
             sessions[id] = Entry(
-                base: base, latest: latest, seen: Date(timeIntervalSince1970: seen))
+                base: base, sessionBase: sessionBase, latest: latest,
+                seen: Date(timeIntervalSince1970: seen))
         }
-        return State(windowStart: Date(timeIntervalSince1970: start), sessions: sessions)
+        return State(
+            windowStart: Date(timeIntervalSince1970: start),
+            sessionStart: Date(
+                timeIntervalSince1970: (root["session_start"] as? NSNumber)?.doubleValue ?? 0),
+            sessions: sessions)
     }
 
     static func save(_ state: State, at url: URL) {
@@ -175,12 +211,14 @@ public enum SpendLedger {
         for (id, entry) in state.sessions {
             sessions[id] = [
                 "base": entry.base,
+                "session_base": entry.sessionBase,
                 "latest": entry.latest,
                 "seen": entry.seen.timeIntervalSince1970,
             ]
         }
         let root: [String: Any] = [
             "window_start": state.windowStart.timeIntervalSince1970,
+            "session_start": state.sessionStart.timeIntervalSince1970,
             "sessions": sessions,
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: root, options: [.sortedKeys])

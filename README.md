@@ -301,7 +301,7 @@ The bars at the bottom of the screen have two independent sources, both optional
 
 Both routes above need a Claude.ai subscription. Anthropic reports the 5-hour and 7-day
 quota windows only to Pro/Max accounts, so if your Claude Code authenticates with a
-Console API key there is simply no percentage to show, and the weekly bar stays blank.
+Console API key there is simply no percentage to show, and both bars read `no data`.
 
 For that case the app falls back to a **spend budget**. Claude Code already hands the
 statusline a `cost.total_cost_usd` for the session regardless of how you authenticate;
@@ -311,15 +311,22 @@ the app accumulates that across sessions and divides it by a budget you set:
 echo 3000 > ~/.tamaclaude/budget   # dollars per month
 ```
 
-The weekly bar then shows how much of this week's slice you have spent — the monthly
-figure divided by the number of days in the month, times seven — and the pace marker
-means what it always meant: are you burning faster than the clock. The statusline labels
-it `Budget:` rather than `Weekly:` so the two claims never get confused.
+Both bars then fill with that month's budget cut to their own window — the 7-day row gets
+the monthly figure divided by the days in the month times seven, and the 5-hour row gets
+the same figure cut to five hours. The pace marker means what it always meant: are you
+burning faster than the clock. The statusline labels either row `Budget:` rather than
+`Usage:` or `Weekly:`, so the two claims never get confused.
+
+The two windows are anchored differently on purpose. The weekly one follows the calendar
+week, so you can say when it resets. The 5-hour one starts at your first spend after the
+previous one lapsed — the same way Claude's own session window behaves — because five
+hours does not divide a day evenly and a fixed grid would leave one short window a day
+whose pace marker lies.
 
 Three things to know. The figure is **an estimate Claude Code computes**, not your bill.
 It counts only work done through Claude Code **on this Mac**. And a reported quota always
-wins: on a machine that runs both kinds of session, the bar shows the real percentage
-whenever Anthropic sends one, and the budget only fills the gap.
+wins, per window: on a machine that runs both kinds of session, each row shows the real
+percentage whenever Anthropic sends one, and the budget only fills the gap.
 
 Taking over the statusline slot never changes what you see: your own statusline command is
 handed the same input and its output is printed as is. If you never had one, the app draws
