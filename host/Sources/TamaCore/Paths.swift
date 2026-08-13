@@ -56,6 +56,23 @@ public enum Paths {
             .appendingPathComponent(".statusline-usage-cache")
     }
 
+    /// งบต่อเดือนเป็นดอลลาร์ — ตัวเลขล้วนบรรทัดเดียว ผู้ใช้แก้เองด้วยมือ
+    ///
+    /// แยกจาก `usageCache` เพราะเป็นคนละอายุ: cache ถูกเขียนทับทุกสิบวินาที
+    /// ส่วนงบเป็นค่าที่ผู้ใช้ตั้งแล้วลืมไปเป็นเดือน การอยู่ไฟล์เดียวกันแปลว่า
+    /// วันหนึ่งที่ cache เขียนพลาด งบจะหายไปด้วยโดยไม่มีใครสังเกต
+    public static var budget: URL {
+        stateDir.appendingPathComponent("budget")
+    }
+
+    /// ยอดเงินสะสมรายสัปดาห์ต่อ session — สถานะของ `SpendLedger`
+    ///
+    /// ไม่ใช่ credential แต่เป็น mode 600 เหมือนกัน: มันบอกได้ว่าเครื่องนี้
+    /// ทำงานหนักแค่ไหนและเมื่อไร ซึ่งไม่ใช่เรื่องของผู้ใช้อื่นบนเครื่องเดียวกัน
+    public static var spendLedger: URL {
+        stateDir.appendingPathComponent("spend.json")
+    }
+
     @discardableResult
     public static func ensureStateDir() -> Bool {
         (try? FileManager.default.createDirectory(

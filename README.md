@@ -297,6 +297,30 @@ The bars at the bottom of the screen have two independent sources, both optional
 > To get one: in your browser, open claude.ai while logged in → DevTools → Application →
 > Cookies → `claude.ai` → copy the value of `sessionKey`.
 
+### If you pay per token instead
+
+Both routes above need a Claude.ai subscription. Anthropic reports the 5-hour and 7-day
+quota windows only to Pro/Max accounts, so if your Claude Code authenticates with a
+Console API key there is simply no percentage to show, and the weekly bar stays blank.
+
+For that case the app falls back to a **spend budget**. Claude Code already hands the
+statusline a `cost.total_cost_usd` for the session regardless of how you authenticate;
+the app accumulates that across sessions and divides it by a budget you set:
+
+```bash
+echo 3000 > ~/.tamaclaude/budget   # dollars per month
+```
+
+The weekly bar then shows how much of this week's slice you have spent — the monthly
+figure divided by the number of days in the month, times seven — and the pace marker
+means what it always meant: are you burning faster than the clock. The statusline labels
+it `Budget:` rather than `Weekly:` so the two claims never get confused.
+
+Three things to know. The figure is **an estimate Claude Code computes**, not your bill.
+It counts only work done through Claude Code **on this Mac**. And a reported quota always
+wins: on a machine that runs both kinds of session, the bar shows the real percentage
+whenever Anthropic sends one, and the budget only fills the gap.
+
 Taking over the statusline slot never changes what you see: your own statusline command is
 handed the same input and its output is printed as is. If you never had one, the app draws
 this instead — the same elements, colours, and `~/.claude/statusline-config.txt` as the

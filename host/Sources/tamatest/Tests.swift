@@ -597,6 +597,200 @@ func runAllTests() {
                "no rate_limits means nothing to record")
     }
 
+    suite("a spend budget fills the weekly bar when Anthropic reports no quota") {
+        // ปฏิทิน UTC ตายตัว — ขอบสัปดาห์ของเครื่องที่รันเทสต์ต้องไม่มีผลกับผลลัพธ์
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        func fresh() -> (cache: URL, ledger: URL) {
+            let id = UUID().uuidString
+            let dir = FileManager.default.temporaryDirectory
+            return (dir.appendingPathComponent("usage-\(id)"),
+                    dir.appendingPathComponent("spend-\(id).json"))
+        }
+
+        func payload(session: String, cost: Double, quota: String = "") -> Data {
+            Data(#"{"session_id":"\#(session)","cost":{"total_cost_usd":\#(cost)}\#(quota)}"#.utf8)
+        }
+
+        // งบ $700/สัปดาห์คือ $3000/เดือน ในเดือนที่มี 30 วัน — เทสต์ส่งงบเดือนเข้าไป
+        // ตรงๆ เพื่อไม่ให้ผลลัพธ์ผูกกับจำนวนวันของเดือนที่บังเอิญรันเทสต์
+        let month = 3000.0
+
+        do {
+            let (cache, ledger) = fresh()
+            defer { for u in [cache, ledger] { try? FileManager.default.removeItem(at: u) } }
+
+            let line = UsageWriter.ingest(
+                payload(session: "s1", cost: 350), now: t0, to: cache,
+                ledger: ledger, calendar: cal)
+            let text = try String(contentsOf: cache, encoding: .utf8)
+
+            expect(text.contains("BUDGET_UTILIZATION="), "cost alone is enough to write a bar")
+            expect(!text.contains("WEEKLY_UTILIZATION="),
+                   "the budget never squats in the slot Anthropic's own quota uses")
+            expect(line?.contains("budget") == true,
+                   "the fallback line says budget, not quota — they are different claims")
+        }
+
+        do {
+            // เงินที่ใช้ไปในหน้าต่างเดียวกันของหลาย session ต้องรวมกัน ไม่ใช่ทับกัน
+            let (_, ledger) = fresh()
+            defer { try? FileManager.default.removeItem(at: ledger) }
+
+            let a = SpendLedger.record(
+                sessionID: "a", costUSD: 100, now: t0, monthlyUSD: month,
+                at: ledger, calendar: cal)
+            equal(a?.spentUSD, 0, "the first sighting of a session is its baseline, not spend")
+
+            let a2 = SpendLedger.record(
+                sessionID: "a", costUSD: 160, now: t0, monthlyUSD: month,
+                at: ledger, calendar: cal)
+            equal(a2?.spentUSD, 60, "only the growth since the baseline counts")
+
+            let b = SpendLedger.record(
+                sessionID: "b", costUSD: 40, now: t0, monthlyUSD: month,
+                at: ledger, calendar: cal)
+            equal(b?.spentUSD, 60, "a second session starts at its own baseline too")
+
+            let b2 = SpendLedger.record(
+                sessionID: "b", costUSD: 90, now: t0, monthlyUSD: month,
+                at: ledger, calendar: cal)
+            equal(b2?.spentUSD, 110, "two sessions add up")
+
+            // `/clear` ทำให้ total_cost_usd ตกกลับ — ห้ามให้ยอดสะสมถอยหลังตาม
+            let b3 = SpendLedger.record(
+                sessionID: "b", costUSD: 0, now: t0, monthlyUSD: month,
+                at: ledger, calendar: cal)
+            equal(b3?.spentUSD, 110, "a session whose cost resets does not erase what it spent")
+        }
+
+        do {
+            // สัปดาห์หมุน: ยอดกลับเป็นศูนย์ แต่ session ที่ยังเปิดอยู่ต้องไม่ถูกนับใหม่ทั้งก้อน
+            let (_, ledger) = fresh()
+            defer { try? FileManager.default.removeItem(at: ledger) }
+
+            _ = SpendLedger.record(
+                sessionID: "long", costUSD: 200, now: t0, monthlyUSD: month,
+                at: ledger, calendar: cal)
+            let before = SpendLedger.record(
+                sessionID: "long", costUSD: 500, now: t0, monthlyUSD: month,
+                at: ledger, calendar: cal)
+            equal(before?.spentUSD, 300, "spent this week")
+
+            let nextWeek = t0.addingTimeInterval(TimeInterval(UsageReader.weeklyWindow))
+            let after = SpendLedger.record(
+                sessionID: "long", costUSD: 500, now: nextWeek, monthlyUSD: month,
+                at: ledger, calendar: cal)
+            equal(after?.spentUSD, 0, "last week's spend does not follow the session into this one")
+            expect(after?.resetsAt != before?.resetsAt, "and the window moved")
+        }
+
+        do {
+            // เกินงบต้องเห็น 100% ไม่ใช่ค่าที่ `UsageReader.snap` ทิ้งแล้วกลายเป็น "ไม่รู้"
+            let (_, ledger) = fresh()
+            defer { try? FileManager.default.removeItem(at: ledger) }
+
+            _ = SpendLedger.record(
+                sessionID: "big", costUSD: 0, now: t0, monthlyUSD: month,
+                at: ledger, calendar: cal)
+            let over = SpendLedger.record(
+                sessionID: "big", costUSD: 99_999, now: t0, monthlyUSD: month,
+                at: ledger, calendar: cal)
+            equal(over?.percent, 100, "blowing the budget pins the bar at full")
+
+            expect(
+                SpendLedger.record(
+                    sessionID: "x", costUSD: 10, now: t0, monthlyUSD: 0,
+                    at: ledger, calendar: cal) == nil,
+                "a budget of zero says nothing at all — it does not say 100%")
+        }
+    }
+
+    suite("Anthropic's own quota outranks a self-computed budget") {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("usage-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let both = """
+            WEEKLY_UTILIZATION=20
+            WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
+            BUDGET_UTILIZATION=90
+            BUDGET_RESETS_AT=2023-11-16T00:00:00Z
+            """
+        try both.write(to: url, atomically: true, encoding: .utf8)
+        equal(UsageReader.read(now: t0, from: url)?[1].percent, 20,
+              "reported utilization wins over anything we derived ourselves")
+
+        // พอของจริงหมดอายุ (หน้าต่างหมุนโดยไม่มีใครอัปเดต) งบเข้ามาแทนได้
+        let stale = """
+            WEEKLY_UTILIZATION=20
+            WEEKLY_RESETS_AT=2023-11-14T00:00:00Z
+            BUDGET_UTILIZATION=90
+            BUDGET_RESETS_AT=2023-11-16T00:00:00Z
+            """
+        try stale.write(to: url, atomically: true, encoding: .utf8)
+        equal(UsageReader.read(now: t0, from: url)?[1].percent, 90,
+              "a rolled-over quota window is unknown, so the budget answers instead")
+    }
+
+    suite("the statusline calls a budget a budget") {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("usage-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        var config = StatuslineConfig()
+        config.showWeekly = true  // ปิดไว้ตั้งแต่ต้นทาง — บรรทัดนี้เป็น opt-in
+        let stamp = String(Int(t0.timeIntervalSince1970))
+        let payload = Data(#"{"model":{"display_name":"Opus"}}"#.utf8)
+
+        try """
+            BUDGET_UTILIZATION=58
+            BUDGET_RESETS_AT=2023-11-16T00:00:00Z
+            TIMESTAMP=\(stamp)
+            """.write(to: url, atomically: true, encoding: .utf8)
+        let onBudget = StatuslineRender.line(
+            json: payload, now: t0, config: config, cacheURL: url) ?? ""
+        expect(onBudget.contains("58%"), "a budget-only cache still draws the weekly slot")
+        expect(onBudget.contains("Budget:"),
+               "and names it Budget — calling derived spend Weekly would be a lie")
+
+        try """
+            WEEKLY_UTILIZATION=12
+            WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
+            BUDGET_UTILIZATION=58
+            BUDGET_RESETS_AT=2023-11-16T00:00:00Z
+            TIMESTAMP=\(stamp)
+            """.write(to: url, atomically: true, encoding: .utf8)
+        let onQuota = StatuslineRender.line(
+            json: payload, now: t0, config: config, cacheURL: url) ?? ""
+        expect(onQuota.contains("12%"), "reported quota still wins here too")
+        expect(onQuota.contains("Weekly:") && !onQuota.contains("Budget:"),
+               "the label follows the source, so the bar and the board never disagree")
+    }
+
+    suite("the budget file forgives the way people actually write money") {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("budget-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        for (text, want, why) in [
+            ("3000", 3000.0, "a plain number"),
+            ("$3,000\n", 3000.0, "dollars and thousands separators are noise, not data"),
+            ("  500  ", 500.0, "whitespace"),
+            ("nonsense", SpendLedger.defaultMonthlyUSD, "a typo falls back, it does not zero out"),
+            ("-5", SpendLedger.defaultMonthlyUSD, "neither does a negative"),
+            ("0", SpendLedger.defaultMonthlyUSD, "zero would make every spend 100%"),
+        ] {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            equal(SpendLedger.readBudget(at: url), want, why)
+        }
+
+        try? FileManager.default.removeItem(at: url)
+        equal(SpendLedger.readBudget(at: url), SpendLedger.defaultMonthlyUSD,
+              "no file at all is the common case, not an error")
+    }
+
     suite("usage cache never goes backwards") {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("usage-\(UUID().uuidString)")
