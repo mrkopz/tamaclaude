@@ -25,13 +25,69 @@ public enum UsageReader {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
         let fields = parse(text)
 
-        let session = snap(
-            percent: fields["UTILIZATION"], resets: fields["RESETS_AT"], now: now)
-        let weekly = snap(
-            percent: fields["WEEKLY_UTILIZATION"], resets: fields["WEEKLY_RESETS_AT"], now: now)
+        let sKeys = sessionKeys(fields, now: now)
+        let session = snap(percent: fields[sKeys.percent], resets: fields[sKeys.resets], now: now)
+        // ช่องรายสัปดาห์มีผู้สมัครสองราย และ **ของจริงชนะเสมอ**
+        //
+        // `WEEKLY_*` คือโควตาที่ Anthropic รายงานมา ส่วน `BUDGET_*` คือยอดเงินที่
+        // เราหารด้วยงบของผู้ใช้เอง (ดู `SpendLedger`) การเลือกอยู่ที่นี่ที่เดียว
+        // ไม่ใช่ตอนเขียน เพราะไฟล์นี้มีผู้เขียนหลายราย: session ที่ auth ด้วย
+        // subscription เขียน `WEEKLY_*` ส่วน session ที่ auth ด้วย API key เขียน
+        // `BUDGET_*` และทั้งคู่ทำงานสลับกันบนเครื่องเดียวกันได้ ถ้าตัดสินตอนเขียน
+        // แถบจะสลับความหมายตามว่าใครวาดทีหลัง — ตรงนี้เห็นทั้งสองคีย์พร้อมกัน
+        let keys = weeklyKeys(fields, now: now)
+        let weekly = snap(percent: fields[keys.percent], resets: fields[keys.resets], now: now)
 
         guard session.isKnown || weekly.isKnown else { return nil }
         return [session, weekly]
+    }
+
+    /// ช่องรายสัปดาห์ควรอ่านจากคีย์ชุดไหน — **เจ้าของกฎ "ของจริงชนะเสมอ" ที่เดียว**
+    ///
+    /// `WEEKLY_*` คือโควตาที่ Anthropic รายงานมา ส่วน `BUDGET_*` คือยอดเงินที่เรา
+    /// หารด้วยงบของผู้ใช้เอง (ดู `SpendLedger`) — คนละคำกล่าวอ้างกันโดยสิ้นเชิง
+    /// ADR ของโปรเจกต์ยืนว่า utilization is reported, never derived ค่าที่เรา
+    /// คำนวณเองจึงเข้าได้เฉพาะตอนที่ไม่มีค่าที่รายงานมาให้ใช้
+    ///
+    /// การเลือกอยู่ตอน *อ่าน* ไม่ใช่ตอนเขียน เพราะไฟล์ cache มีผู้เขียนหลายราย:
+    /// session ที่ auth ด้วย subscription เขียน `WEEKLY_*` ส่วน session ที่ auth
+    /// ด้วย API key เขียน `BUDGET_*` ผู้ใช้คนเดียวเปิดทั้งสองแบบพร้อมกันได้ ถ้า
+    /// ตัดสินตอนเขียน แถบจะสลับความหมายตามว่า session ไหนวาดทีหลัง
+    ///
+    /// "ไม่มีค่าที่รายงานมาให้ใช้" รวมถึงหน้าต่างที่หมุนไปแล้วโดยยังไม่มีใครอัปเดต
+    /// cache — `snap` ถือว่าเปอร์เซ็นต์ของหน้าต่างแบบนั้นคือ "ไม่รู้" อยู่แล้ว
+    public static func weeklyKeys(
+        _ fields: [String: String], now: Date
+    ) -> (percent: String, resets: String) {
+        keys(
+            fields, now: now,
+            reported: ("WEEKLY_UTILIZATION", "WEEKLY_RESETS_AT"),
+            derived: ("BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT"))
+    }
+
+    /// ช่อง 5 ชั่วโมง (แถว "Current" บนจอ) — กฎเดียวกับ `weeklyKeys` ทุกประการ
+    public static func sessionKeys(
+        _ fields: [String: String], now: Date
+    ) -> (percent: String, resets: String) {
+        keys(
+            fields, now: now,
+            reported: ("UTILIZATION", "RESETS_AT"),
+            derived: ("BUDGET_UTILIZATION", "BUDGET_RESETS_AT"))
+    }
+
+    static func keys(
+        _ fields: [String: String], now: Date,
+        reported: (String, String), derived: (String, String)
+    ) -> (percent: String, resets: String) {
+        func usable(_ pair: (String, String)) -> Bool {
+            snap(percent: fields[pair.0], resets: fields[pair.1], now: now)
+                .percent != UsageSnap.unknown
+        }
+        if usable(reported) { return reported }
+        // ยอมสลับก็ต่อเมื่อฝั่งงบมีอะไรให้จริงๆ — ไม่งั้นหน้าต่างที่เพิ่งหมุนจะเสีย
+        // สถานะ "resetting" (เปอร์เซ็นต์ไม่รู้ แต่ `remaining == 0` ยังบอกอะไรได้)
+        // แล้วทั้งแถวหายไปจากจอ กลายเป็นนาฬิกาแทน ซึ่งดูเหมือนอุปกรณ์พัง
+        return usable(derived) ? derived : reported
     }
 
     /// เวลาในหน้าต่างเดินไปกี่เปอร์เซ็นต์แล้ว — ตำแหน่งของขีด pace

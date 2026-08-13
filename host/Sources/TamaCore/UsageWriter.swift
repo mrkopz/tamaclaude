@@ -11,11 +11,14 @@ public enum UsageWriter {
     /// เมื่อผู้ใช้ไม่มี statusline เดิมให้ส่งงานต่อ
     @discardableResult
     public static func ingest(
-        _ data: Data, now: Date = Date(), to url: URL = Paths.usageCache
+        _ data: Data, now: Date = Date(), to url: URL = Paths.usageCache,
+        ledger: URL = Paths.spendLedger, calendar: Calendar = .current
     ) -> String? {
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let limits = root["rate_limits"] as? [String: Any]
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
+        // ไม่มี `rate_limits` ไม่ใช่เหตุให้เลิกอีกต่อไป — บัญชีที่ auth ด้วย API key
+        // ของ Console ไม่เคยได้คีย์นี้เลย แต่ payload เดียวกันพก `cost` มาให้
+        let limits = root["rate_limits"] as? [String: Any] ?? [:]
 
         var fields: [(String, String)] = []
         var parts: [String] = []
@@ -38,6 +41,35 @@ public enum UsageWriter {
                 fields.append((resetKey, iso(Date(timeIntervalSince1970: epoch))))
             } else if let epoch = window["resets_at"] as? Int {
                 fields.append((resetKey, iso(Date(timeIntervalSince1970: Double(epoch)))))
+            }
+        }
+
+        // งบเงินเขียนคีย์ของตัวเอง ไม่ไปแย่งช่อง weekly
+        //
+        // เขียนเสมอเมื่อมี `cost` มา ไม่ใช่เขียนเฉพาะตอนช่อง weekly ว่าง เพราะ
+        // ผู้ใช้คนเดียวเปิดได้ทั้ง session ที่ auth ด้วย subscription และ session
+        // ที่ auth ด้วย API key พร้อมกัน — ทั้งสองยิง statusline เข้าไฟล์เดียวกัน
+        // สลับกันไปมา ถ้าตัดสินใจกันตรงนี้ แถบจะกระพริบสลับสองความหมายตามว่า
+        // session ไหนวาดทีหลัง การตัดสินจึงย้ายไปอยู่ที่ `UsageReader` ที่เดียว
+        // ซึ่งเห็นทั้งสองคีย์พร้อมกันและเลือกครั้งเดียว
+        if let id = root["session_id"] as? String,
+            let cost = ((root["cost"] as? [String: Any])?["total_cost_usd"] as? NSNumber)?
+                .doubleValue,
+            let budget = SpendLedger.record(
+                sessionID: id, costUSD: cost, now: now, at: ledger, calendar: calendar)
+        {
+            // ชื่อคีย์ล้อของเดิม: ไม่มีคำนำหน้า = บาน 5 ชั่วโมง, `WEEKLY_` = เจ็ดวัน
+            for (reading, pctKey, resetKey) in [
+                (budget.session, "BUDGET_UTILIZATION", "BUDGET_RESETS_AT"),
+                (budget.weekly, "BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT"),
+            ] {
+                fields.append((pctKey, String(reading.percent)))
+                fields.append((resetKey, iso(reading.resetsAt)))
+            }
+            // บรรทัด fallback บอกว่าเป็นงบ ไม่ใช่โควตา — ผู้ใช้ที่ไม่มี statusline
+            // เดิมจะได้ไม่เข้าใจว่า Anthropic เริ่มรายงานโควตาให้ API key แล้ว
+            if !fields.contains(where: { $0.0 == "UTILIZATION" }) {
+                parts.append("budget \(budget.session.percent)%")
             }
         }
 
@@ -150,7 +182,9 @@ public enum UsageWriter {
         var fresh = Dictionary(uniqueKeysWithValues: incoming)
 
         for (pctKey, resetKey) in [("UTILIZATION", "RESETS_AT"),
-                                   ("WEEKLY_UTILIZATION", "WEEKLY_RESETS_AT")] {
+                                   ("WEEKLY_UTILIZATION", "WEEKLY_RESETS_AT"),
+                                   ("BUDGET_UTILIZATION", "BUDGET_RESETS_AT"),
+                                   ("BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT")] {
             guard let oldPct = existing[pctKey].flatMap(Int.init),
                 let newPct = fresh[pctKey].flatMap(Int.init),
                 existing[resetKey] == fresh[resetKey],  // หน้าต่างเดียวกันเท่านั้นที่เทียบได้
@@ -160,10 +194,21 @@ public enum UsageWriter {
             out = out.map { $0.0 == pctKey ? ($0.0, String(oldPct)) : $0 }
         }
 
+        // คีย์ของงบต้องข้ามรอบที่ไม่มี `cost` มาให้ — `ingestAPI` ไม่เคยมี และ
+        // payload ของ Claude Code รุ่นเก่าก็ไม่มี ถ้าปล่อยให้หายไปตามกฎ `known`
+        // ข้างล่าง แถบงบจะกระพริบตามว่ารอบล่าสุดมาจากทางเข้าไหน
+        for key in ["BUDGET_UTILIZATION", "BUDGET_RESETS_AT",
+                    "BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT"]
+        where fresh[key] == nil {
+            guard let value = existing[key] else { continue }
+            out.append((key, value))
+        }
+
         // คีย์ที่แหล่งอื่นเขียนไว้แต่เราไม่รู้จัก (เช่น PROFILE_NAME, COST_*) ต้องรอดไป
         // ไม่งั้นเราทำลายข้อมูลของเจ้าของร่วมที่เขียนไฟล์เดียวกันนี้
         let known = Set(["UTILIZATION", "RESETS_AT", "WEEKLY_UTILIZATION", "WEEKLY_RESETS_AT",
-                         "TIMESTAMP"])
+                         "BUDGET_UTILIZATION", "BUDGET_RESETS_AT",
+                         "BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT", "TIMESTAMP"])
         for (k, v) in existing.sorted(by: { $0.key < $1.key }) where !known.contains(k) {
             out.append((k, v))
         }

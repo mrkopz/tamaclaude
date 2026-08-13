@@ -134,8 +134,14 @@ public enum StatuslineRender {
         cache: [String: String], config: StatuslineConfig, palette p: Palette,
         now: Date, weekly: Bool
     ) -> String? {
-        let pctKey = weekly ? "WEEKLY_UTILIZATION" : "UTILIZATION"
-        let resetKey = weekly ? "WEEKLY_RESETS_AT" : "RESETS_AT"
+        // ช่องรายสัปดาห์อาจมาจากงบเงินแทนโควตา — กฎการเลือกเป็นของ `UsageReader`
+        // ที่เดียว บรรทัดนี้กับจอต้องตอบตรงกันเสมอ ไม่งั้นผู้ใช้เห็นสองตัวเลข
+        let keys = weekly
+            ? UsageReader.weeklyKeys(cache, now: now)
+            : UsageReader.sessionKeys(cache, now: now)
+        let onBudget = keys.percent.hasPrefix("BUDGET_")
+        let pctKey = keys.percent
+        let resetKey = keys.resets
         let window = weekly ? UsageReader.weeklyWindow : UsageReader.sessionWindow
         // สคริปต์ต้นทางถือว่าตัวเลขที่เก่ากว่า 5 นาทีคือ "ยังไม่รู้" แล้วไปยิงเน็ตเอง
         // เราไม่มีทางยิงเน็ตตรงนี้ (ไม่ถือ credential) แต่ยังใช้เกณฑ์เดียวกันเพื่อไม่ให้
@@ -171,9 +177,11 @@ public enum StatuslineRender {
         }
 
         let icon = weekly ? "⧗" : "⧖"
+        // ป้ายบอกว่าเลขนี้เป็นงบที่เราคำนวณเอง ไม่ใช่โควตาที่ Anthropic รายงานมา —
+        // สองอย่างนี้ตอบคนละคำถาม ผู้ใช้ที่อ่านผิดจะวางแผนงานผิดตาม
         let label = weekly
-            ? (config.showWeeklyLabel ? "Weekly: " : "")
-            : (config.showUsageLabel ? "Usage: " : "")
+            ? (config.showWeeklyLabel ? (onBudget ? "Budget: " : "Weekly: ") : "")
+            : (config.showUsageLabel ? (onBudget ? "Budget: " : "Usage: ") : "")
         return p.wrap(color, "\(icon) \(label)\(percent)%\(bar)\(resetText)")
     }
 

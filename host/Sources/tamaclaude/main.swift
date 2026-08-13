@@ -9,6 +9,7 @@ usage:
   tamaclaude --hook              read one hook event on stdin, forward to the daemon
   tamaclaude --daemon [options]  run the daemon
   tamaclaude --install-hooks     write the hook entries into ~/.claude/settings.json
+                                 (set CLAUDE_CONFIG_DIR to target another account)
   tamaclaude --install-statusline  take over statusLine.command to capture rate_limits
   tamaclaude --remove-statusline   give the statusLine slot back to the previous command
   tamaclaude --usage-cache       read statusline JSON on stdin, write the usage cache
@@ -66,17 +67,22 @@ case "--send":
 
 case "--install-hooks":
     do {
-        try HookInstaller.install()
-        Log.info("hooks installed in \(HookInstaller.settingsPath.path)")
+        // เคารพ CLAUDE_CONFIG_DIR — คนที่แยกบัญชีงานกับส่วนตัวติดตั้งทีละบัญชีได้
+        // ด้วย `CLAUDE_CONFIG_DIR=~/.claude-work tamaclaude --install-hooks`
+        let dir = HookInstaller.configDirFromEnvironment
+        try HookInstaller.install(configDir: dir)
+        Log.info("hooks installed in \(HookInstaller.settingsPath(configDir: dir).path)")
     } catch {
         fail("could not install hooks: \(error)")
     }
 
 case "--install-statusline":
     do {
-        try StatuslineInstaller.install()
-        let prev = StatuslineInstaller.delegatedCommandInScript()
-        Log.info("statusline installed at \(Paths.statusline.path)")
+        let dir = HookInstaller.configDirFromEnvironment
+        try StatuslineInstaller.install(configDir: dir)
+        let prev = StatuslineInstaller.delegatedCommandInScript(configDir: dir)
+        Log.info(
+            "statusline installed at \(StatuslineInstaller.scriptPath(configDir: dir).path)")
         Log.info(prev.map { "delegating rendering to: \($0)" } ?? "no previous statusline to delegate to")
     } catch {
         fail("could not install statusline: \(error)")
@@ -84,7 +90,7 @@ case "--install-statusline":
 
 case "--remove-statusline":
     do {
-        try StatuslineInstaller.uninstall()
+        try StatuslineInstaller.uninstall(configDir: HookInstaller.configDirFromEnvironment)
         Log.info("statusline slot restored")
     } catch {
         fail("could not remove statusline: \(error)")
