@@ -12,7 +12,8 @@ public enum UsageWriter {
     @discardableResult
     public static func ingest(
         _ data: Data, now: Date = Date(), to url: URL = Paths.usageCache,
-        ledger: URL = Paths.spendLedger, calendar: Calendar = .current
+        ledger: URL = Paths.spendLedger, accounts: URL = Paths.budgetAccounts,
+        calendar: Calendar = .current, account: String? = nil
     ) -> String? {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
@@ -56,7 +57,10 @@ public enum UsageWriter {
             let cost = ((root["cost"] as? [String: Any])?["total_cost_usd"] as? NSNumber)?
                 .doubleValue,
             let budget = SpendLedger.record(
-                sessionID: id, costUSD: cost, now: now, at: ledger, calendar: calendar)
+                sessionID: id, costUSD: cost,
+                // `rate_limits` มาด้วย = บัญชีนี้อยู่ในโควตา subscription ไม่ได้จ่ายรายทาง
+                reportsQuota: !limits.isEmpty, account: account,
+                now: now, at: ledger, accounts: accounts, calendar: calendar)
         {
             // ชื่อคีย์ล้อของเดิม: ไม่มีคำนำหน้า = บาน 5 ชั่วโมง, `WEEKLY_` = เจ็ดวัน
             for (reading, pctKey, resetKey) in [

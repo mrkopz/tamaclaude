@@ -15,21 +15,29 @@ import Foundation
 public enum StatuslineInstaller {
     public static var settingsPath: URL { HookInstaller.settingsPath }
 
+    /// ชื่อบัญชีของ config dir หนึ่งอัน — `~/.claude` คือ `claude`
+    ///
+    /// ตัดจุดนำหน้าออกเพื่อให้อ่านออก และเป็นเจ้าของกฎการตั้งชื่อที่เดียว ทั้งชื่อ
+    /// ไฟล์สคริปต์และป้ายที่ติดไปกับทุก session ต้องมาจากที่นี่ ไม่งั้นวันหนึ่ง
+    /// ผู้ใช้จะเขียนชื่อบัญชีลง `budget-accounts` แล้วมันไม่ตรงกับที่ ledger เก็บ
+    public static func accountName(configDir: URL?) -> String {
+        var name = (configDir ?? Paths.home.appendingPathComponent(".claude"))
+            .standardizedFileURL.lastPathComponent
+        while name.hasPrefix(".") { name.removeFirst() }
+        return name.isEmpty ? "alt" : name
+    }
+
     /// สคริปต์ของ config dir หนึ่งอัน — `~/.claude` ใช้ `Paths.statusline` ตามเดิม
     ///
     /// config dir อื่นได้ไฟล์ของตัวเอง เพราะสคริปต์เก็บคำสั่ง statusline เดิมของ
     /// config นั้นไว้ข้างใน (`PREV=`) ถ้าใช้ไฟล์เดียวร่วมกัน การติดตั้งครั้งที่สอง
     /// จะทับ `PREV` ของครั้งแรก แล้ว statusline เดิมของอีกบัญชีหายไปเงียบๆ
     public static func scriptPath(configDir: URL?) -> URL {
-        guard let configDir else { return Paths.statusline }
-        // ตัดจุดนำหน้าออก: config dir ชื่อ `.claude-work` จะได้ไม่กลายเป็น
-        // `statusline-.claude-work.sh` ซึ่งอ่านเหมือนพิมพ์ผิด
-        var name = configDir.standardizedFileURL.lastPathComponent
-        while name.hasPrefix(".") { name.removeFirst() }
+        guard configDir != nil else { return Paths.statusline }
         // ชื่อที่เหลือว่าง (config dir เป็น `/` หรือ `.`) ยังต้องได้ไฟล์ที่ต่างจากของ
         // ดีฟอลต์ ไม่งั้นสองบัญชีจะใช้สคริปต์เดียวกันแล้วทับ PREV ของกันและกัน
         return Paths.stateDir.appendingPathComponent(
-            name.isEmpty ? "statusline-alt.sh" : "statusline-\(name).sh")
+            "statusline-\(accountName(configDir: configDir)).sh")
     }
 
     public enum InstallError: Error, CustomStringConvertible {
@@ -81,7 +89,9 @@ public enum StatuslineInstaller {
             ?? delegatedCommandInScript(configDir: configDir)
 
         Paths.ensureStateDir()
-        try Self.script(binary: binaryPath, delegateTo: previous)
+        try Self.script(
+            binary: binaryPath, delegateTo: previous,
+            account: accountName(configDir: configDir))
             .write(to: script, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes(
             [.posixPermissions: 0o755], ofItemAtPath: script.path)
@@ -152,7 +162,9 @@ public enum StatuslineInstaller {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    public static func script(binary: String, delegateTo previous: String?) -> String {
+    public static func script(
+        binary: String, delegateTo previous: String?, account: String = "claude"
+    ) -> String {
         """
         #!/bin/sh
         # สร้างโดย tamaclaude --install-statusline — แก้ที่ StatuslineInstaller.swift
@@ -164,11 +176,15 @@ public enum StatuslineInstaller {
         # ไม่ว่า binary จะหาย พัง หรือช้า — ทุกทางจึงมี || true และ exit 0 เสมอ
         PREV=\(shellQuote(previous ?? ""))
         BIN=\(shellQuote(binary))
+        # บัญชีที่สคริปต์นี้ประจำอยู่ — Claude Code แยกบัญชีด้วย CLAUDE_CONFIG_DIR
+        # และ payload ไม่ได้บอกว่ามาจากไหน ตัวติดตั้งจึงฝังคำตอบไว้ตั้งแต่ตอนเขียน
+        ACCOUNT=\(shellQuote(account))
 
         input=$(cat)
 
         # เขียน cache แบบเงียบ ๆ ผลลัพธ์ของขั้นนี้ไม่มีผลต่อสิ่งที่ผู้ใช้เห็น
-        fallback=$(printf '%s' "$input" | "$BIN" --usage-cache 2>/dev/null) || fallback=""
+        fallback=$(printf '%s' "$input" \\
+            | TAMACLAUDE_ACCOUNT="$ACCOUNT" "$BIN" --usage-cache 2>/dev/null) || fallback=""
 
         if [ -n "$PREV" ]; then
             printf '%s' "$input" | sh -c "$PREV" || true

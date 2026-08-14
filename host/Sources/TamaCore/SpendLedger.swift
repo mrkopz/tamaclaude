@@ -64,9 +64,12 @@ public enum SpendLedger {
     public static func record(
         sessionID: String,
         costUSD: Double,
+        reportsQuota: Bool = false,
+        account: String? = nil,
         now: Date = Date(),
         monthlyUSD: Double? = nil,
         at url: URL = Paths.spendLedger,
+        accounts: URL = Paths.budgetAccounts,
         calendar: Calendar = .current
     ) -> Readings? {
         let budget = monthlyUSD ?? readBudget()
@@ -102,18 +105,93 @@ public enum SpendLedger {
         entry.base = min(entry.base, entry.latest)
         entry.sessionBase = min(entry.sessionBase, entry.latest)
         entry.seen = now
+        entry.subscription = entry.subscription || reportsQuota
+        // ป้ายล่าสุดชนะ — ผู้ใช้ย้าย session ระหว่างบัญชีไม่ได้ แต่การติดตั้งใหม่
+        // เปลี่ยนชื่อได้ และค่าที่ใหม่กว่าคือค่าที่ตรงกับสิ่งที่อยู่บนดิสก์ตอนนี้
+        if let account { entry.account = account }
         state.sessions[sessionID] = entry
 
         state.sessions = state.sessions.filter { now.timeIntervalSince($0.value.seen) < staleAfter }
         save(state, at: url)
 
+        return readings(
+            of: state, budget: budget, now: now, accounts: accounts, calendar: calendar)
+    }
+
+    /// สถานะปัจจุบันโดยไม่บันทึกอะไรเลย — เส้นทางอ่านล้วน
+    ///
+    /// มีไว้ให้ `UsageReader` เรียกตอนที่ cache ไม่มีค่างบให้ ledger คือแหล่งจริง
+    /// ของตัวเลขนี้ ส่วน cache เป็นแค่ตัวกลางที่ statusline เขียนผ่าน — ผูกการแสดงผล
+    /// ไว้กับตัวกลางแปลว่าลบ cache ทีเดียวแล้วแถบหายจนกว่า statusline จะยอมยิงอีก
+    /// ซึ่งบน surface บางแบบคือนานมาก
+    ///
+    /// **ต้องไม่เขียนไฟล์** — ถูกเรียกจากรอบ publish ของ daemon ซึ่งเกิดบ่อยกว่า
+    /// การใช้งานจริงหลายเท่า การเขียนทุกรอบจะเปลี่ยนหน้าต่างห้าชั่วโมงที่เกาะกิจกรรม
+    /// ให้กลายเป็นหน้าต่างที่เลื่อนตามการวาดจอ ซึ่งไม่มีความหมายอะไรเลย
+    public static func current(
+        now: Date = Date(),
+        monthlyUSD: Double? = nil,
+        at url: URL = Paths.spendLedger,
+        accounts: URL = Paths.budgetAccounts,
+        calendar: Calendar = .current
+    ) -> Readings? {
+        let budget = monthlyUSD ?? readBudget()
+        guard budget > 0 else { return nil }
+        let state = load(at: url)
+        guard !state.sessions.isEmpty else { return nil }
+
+        // หน้าต่างที่หมดอายุแล้วต้องรายงานเป็นบานใหม่ที่ยอดเป็นศูนย์ ไม่ใช่ยอดค้าง
+        // ของบานก่อน — แต่ไม่บันทึกลงดิสก์ รอให้ `record` ทำตอนมีการใช้จริง
+        var view = state
+        let start = windowStart(containing: now, calendar: calendar)
+        if view.windowStart != start {
+            view.windowStart = start
+            for (id, e) in view.sessions { view.sessions[id]?.base = e.latest }
+        }
+        if now.timeIntervalSince(view.sessionStart) >= sessionWindow {
+            view.sessionStart = now
+            for (id, e) in view.sessions { view.sessions[id]?.sessionBase = e.latest }
+        }
+        return readings(
+            of: view, budget: budget, now: now, accounts: accounts, calendar: calendar)
+    }
+
+    /// แปลงสถานะเป็นสองแถวที่จอวาด — เจ้าของสูตรที่เดียว ทั้งเส้นทางอ่านและเขียน
+    static func readings(
+        of state: State, budget: Double, now: Date, accounts: URL, calendar: Calendar
+    ) -> Readings? {
         let days = Double(calendar.range(of: .day, in: .month, for: now)?.count ?? 30)
+
+        // # สองแถวนับคนละขอบเขต เพราะถามคนละคำถาม
+        //
+        // **แถวสั้น (Current) ถามว่า "ตอนนี้ทำงานหนักแค่ไหน"** จึงนับทุก session ทุก
+        // บัญชี รวมงานที่แผนคุ้มค่าใช้จ่ายให้แล้ว มันเป็นมาตรวัดกิจกรรม ไม่ใช่บัญชีเงิน
+        // และมันคือช่องสำรองเท่านั้น — พอโควตาจริงมาถึง `UsageReader` จะเลือกโควตา
+        // แทนทันที ค่านี้จึงมีชีวิตอยู่เฉพาะตอนที่ไม่มีอะไรดีกว่าให้แสดง
+        //
+        // **แถวยาว (Weekly) ถามว่า "จ่ายไปเท่าไร"** จึงนับเฉพาะเงินจริง: ตัด session
+        // ที่อยู่ในโควตาแผนออก (ค่าของมันเป็นตัวเลขสมมติ ผู้ใช้ไม่ได้จ่าย) แล้วตัดต่อ
+        // ด้วยรายชื่อบัญชีที่ผู้ใช้ระบุ เพราะป้ายบัญชีบอกได้แค่ว่า *ใคร* ไม่ได้บอกว่า
+        // *จ่ายไหม*
+        //
+        // ถ้าสองแถวใช้ขอบเขตเดียวกัน ต้องเสียอย่างหนึ่งไป: ขอบเขตกว้างทำให้ยอดเงิน
+        // สูงกว่าความจริง ขอบเขตแคบทำให้งานบนบัญชีที่แผนคุ้มให้หายไปจากจอทั้งที่
+        // เจ้าของเครื่องกำลังทำมันอยู่
+        let all = state.sessions.values
+        let allowed = allowedAccounts(at: accounts)
+        let metered = all.filter {
+            guard !$0.subscription else { return false }
+            // ไม่มีรายชื่อ = นับหมด · มีรายชื่อ = นับเฉพาะที่อยู่ในนั้น
+            // session ที่ยังไม่มีป้าย (บันทึกไว้ก่อนมีฟีเจอร์นี้) ถือว่าไม่อยู่ในรายชื่อ
+            guard let allowed else { return true }
+            return $0.account.map(allowed.contains) ?? false
+        }
         let weekly = reading(
-            spent: state.sessions.values.reduce(0.0) { $0 + max(0, $1.latest - $1.base) },
+            spent: metered.reduce(0.0) { $0 + max(0, $1.latest - $1.base) },
             allowance: budget * 7.0 / days,
-            resetsAt: start.addingTimeInterval(window))
+            resetsAt: state.windowStart.addingTimeInterval(window))
         let session = reading(
-            spent: state.sessions.values.reduce(0.0) { $0 + max(0, $1.latest - $1.sessionBase) },
+            spent: all.reduce(0.0) { $0 + max(0, $1.latest - $1.sessionBase) },
             allowance: budget * (sessionWindow / 86_400) / days,
             resetsAt: state.sessionStart.addingTimeInterval(sessionWindow))
 
@@ -144,6 +222,18 @@ public enum SpendLedger {
             ?? calendar.startOfDay(for: date)
     }
 
+    /// บัญชีที่งบจะนับ — `nil` แปลว่าไม่ได้จำกัด ไม่ใช่ "ไม่มีสักบัญชี"
+    ///
+    /// ไฟล์ว่างเปล่าก็คืน `nil` ด้วย: คนที่สร้างไฟล์แล้วยังไม่ได้พิมพ์อะไรลงไป
+    /// ไม่ได้ตั้งใจจะปิดแถบทั้งอัน
+    public static func allowedAccounts(at url: URL = Paths.budgetAccounts) -> Set<String>? {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let names = text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+        return names.isEmpty ? nil : Set(names)
+    }
+
     /// อ่านงบรายเดือนจากไฟล์ — ตัวเลขล้วน หน่วยดอลลาร์
     ///
     /// ไฟล์ที่อ่านไม่ออกคืนค่า default ไม่ใช่ศูนย์: การพิมพ์ผิดหนึ่งตัวไม่ควร
@@ -171,6 +261,14 @@ public enum SpendLedger {
         var sessionBase: Double
         var latest: Double
         var seen: Date
+        /// session นี้เคยส่ง `rate_limits` มาไหม — คือมัน auth ด้วย subscription
+        ///
+        /// **ติดแล้วติดเลย** เพราะ `rate_limits` โผล่หลัง API response แรกเท่านั้น
+        /// การ render รอบแรกๆ ของ session subscription จึงหน้าตาเหมือน API key
+        /// ถ้าไม่จำไว้ มันจะสลับไปมาแล้วยอดเงินกระพริบตาม
+        var subscription: Bool = false
+        /// บัญชีที่ session นี้มาจาก — ชื่อ config dir ที่ตัวติดตั้งฝังไว้ในสคริปต์
+        var account: String? = nil
     }
 
     struct State {
@@ -197,7 +295,9 @@ public enum SpendLedger {
             let sessionBase = (raw["session_base"] as? NSNumber)?.doubleValue ?? latest
             sessions[id] = Entry(
                 base: base, sessionBase: sessionBase, latest: latest,
-                seen: Date(timeIntervalSince1970: seen))
+                seen: Date(timeIntervalSince1970: seen),
+                subscription: (raw["subscription"] as? NSNumber)?.boolValue ?? false,
+                account: raw["account"] as? String)
         }
         return State(
             windowStart: Date(timeIntervalSince1970: start),
@@ -214,7 +314,9 @@ public enum SpendLedger {
                 "session_base": entry.sessionBase,
                 "latest": entry.latest,
                 "seen": entry.seen.timeIntervalSince1970,
-            ]
+                "subscription": entry.subscription,
+                "account": entry.account as Any,
+            ].compactMapValues { $0 is NSNull ? nil : $0 }
         }
         let root: [String: Any] = [
             "window_start": state.windowStart.timeIntervalSince1970,

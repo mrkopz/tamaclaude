@@ -134,11 +134,22 @@ public final class Daemon {
     }
 
     /// ส่งเมื่อภาพเปลี่ยนจริงเท่านั้น — ไม่งั้นบอร์ดโดนยิงทุกวินาทีโดยเปล่าประโยชน์
+    /// รอบก่อนตัดโควตาทิ้งไปหรือเปล่า — ใช้ลง log เฉพาะตอนสถานะพลิก
+    private var quotaDropped = false
+
     private func publish() {
         let now = Date()
         var snapshot = store.snapshot(now: now)
         snapshot.usage = UsageReader.read(now: now)
-        guard let data = try? snapshot.encoded() else { return }
+        // บอกครั้งเดียวตอนสถานะเปลี่ยน ไม่ใช่ทุกรอบ publish — publish เกิดบ่อยกว่า
+        // การใช้งานจริงมาก การลงทุกรอบจะกลบ log ทั้งไฟล์
+        var dropped = false
+        guard let data = try? snapshot.encoded(note: { message in
+            dropped = true
+            if !self.quotaDropped { Log.info(message) }
+        }) else { return }
+        if quotaDropped && !dropped { Log.info("snapshot fits again — the quota is back") }
+        quotaDropped = dropped
         guard data != lastSent else { return }
         lastSent = data
         Log.debug("publish \(snapshot.sessions.map { "\($0.project):\($0.state.rawValue)" })"
