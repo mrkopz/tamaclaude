@@ -357,6 +357,28 @@ What the board cannot say is which row belongs to which account; the statusline 
 instead, labelling each row `Usage:` / `Weekly:` when it is a reported quota and `Budget:`
 when it is derived.
 
+### Which account the money belongs to
+
+`cost.total_cost_usd` arrives for every session, including ones covered by a Claude.ai
+plan — where it is a notional "this is what it would have cost", not money that left an
+account. Counting those against a budget meant for real spend makes the bar read high.
+
+Two things keep them apart. A payload carrying `rate_limits` comes from a session inside a
+plan, so that session stops counting (the flag sticks, because `rate_limits` only appears
+after the first API response). And each wrapper script tags its own account — the config
+directory's name, so `~/.claude-work` is `claude-work` — which is the more reliable signal,
+since it does not depend on what a given Claude Code surface chooses to send.
+
+Name the accounts whose spend is real and the budget counts only those:
+
+```bash
+echo claude-work > ~/.tamaclaude/budget-accounts   # one name per line
+```
+
+With no such file the budget counts every account not known to be on a plan, which is what
+a single-account machine wants. The tag says *which* account, never *whether it pays* —
+only you know that, which is why the list is yours to write.
+
 Three things to know. The figure is **an estimate Claude Code computes**, not your bill.
 It counts only work done through Claude Code **on this Mac**. And nothing here invents a
 number: when a row has no source at all it reads `no data` rather than guessing zero.

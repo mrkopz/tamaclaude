@@ -130,7 +130,11 @@ case "--usage-cache":
     // เพราะ exit code ที่ไม่ใช่ 0 จะไปโผล่เป็นบรรทัด statusline ที่พังของผู้ใช้
     let stdin = FileHandle.standardInput.readDataToEndOfFile()
     let target = cacheTarget(args)
-    let short = UsageWriter.ingest(stdin, to: target)
+    // สคริปต์ที่ตัวติดตั้งเขียนไว้บอกมาว่ามันประจำบัญชีไหน — payload ไม่ได้บอก
+    let short = UsageWriter.ingest(
+        stdin, to: target,
+        account: ProcessInfo.processInfo.environment["TAMACLAUDE_ACCOUNT"]
+            .flatMap { $0.isEmpty ? nil : $0 })
     // เขียน cache ก่อนแล้วค่อยวาด — บรรทัดที่วาดต้องเห็นตัวเลขของ render รอบนี้ ไม่ใช่รอบก่อน
     // ถ้าวาดไม่ออก (payload อ่านไม่ได้) ยังเหลือบรรทัดสั้นแบบเดิมไว้ ดีกว่าไม่มีอะไรเลย
     if let line = StatuslineRender.line(json: stdin, cacheURL: target) ?? short { print(line) }

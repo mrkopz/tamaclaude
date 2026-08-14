@@ -924,6 +924,45 @@ func runAllTests() {
               "the read path filters the same way the write path does")
     }
 
+    suite("the budget counts only the accounts you name") {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let id = UUID().uuidString
+        let ledger = FileManager.default.temporaryDirectory.appendingPathComponent("a-\(id).json")
+        let list = FileManager.default.temporaryDirectory.appendingPathComponent("acc-\(id)")
+        defer { for u in [ledger, list] { try? FileManager.default.removeItem(at: u) } }
+        let month = 3100.0  // สัปดาห์ $700
+
+        for (sid, acct, cost) in [("w1", "claude-work", 70.0), ("p1", "claude", 210.0)] {
+            _ = SpendLedger.record(
+                sessionID: sid, costUSD: 0, account: acct, now: t0,
+                monthlyUSD: month, at: ledger, calendar: cal)
+            _ = SpendLedger.record(
+                sessionID: sid, costUSD: cost, account: acct, now: t0,
+                monthlyUSD: month, at: ledger, calendar: cal)
+        }
+
+        // ยังไม่มีรายชื่อ = ไม่จำกัด นับทั้งสองบัญชี
+        equal(SpendLedger.current(now: t0, monthlyUSD: month, at: ledger, calendar: cal)?
+                .weekly.spentUSD, 280,
+              "with no list, every account that pays per token counts")
+
+        // ป้ายบัญชีต้องมาจากที่เดียวกับชื่อไฟล์สคริปต์ ไม่งั้นผู้ใช้พิมพ์ตามที่เห็นแล้วไม่ตรง
+        equal(StatuslineInstaller.accountName(
+                configDir: URL(fileURLWithPath: "/Users/x/.claude-work", isDirectory: true)),
+              "claude-work", "the name the user would type is the name the ledger stores")
+        equal(StatuslineInstaller.accountName(configDir: nil), "claude",
+              "and the default config dir has a name too")
+
+        try "claude-work\n".write(to: list, atomically: true, encoding: .utf8)
+        equal(SpendLedger.allowedAccounts(at: list), Set(["claude-work"]), "the list parses")
+
+        // ไฟล์ว่าง/มีแต่คอมเมนต์ = ยังไม่ได้ตั้งใจจำกัด ไม่ใช่ปิดแถบทั้งอัน
+        try "# ยังไม่ได้เลือก\n\n".write(to: list, atomically: true, encoding: .utf8)
+        expect(SpendLedger.allowedAccounts(at: list) == nil,
+               "a file with nothing but comments is not a decision to exclude everything")
+    }
+
     suite("the budget file forgives the way people actually write money") {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("budget-\(UUID().uuidString)")

@@ -65,6 +65,7 @@ public enum SpendLedger {
         sessionID: String,
         costUSD: Double,
         reportsQuota: Bool = false,
+        account: String? = nil,
         now: Date = Date(),
         monthlyUSD: Double? = nil,
         at url: URL = Paths.spendLedger,
@@ -104,6 +105,9 @@ public enum SpendLedger {
         entry.sessionBase = min(entry.sessionBase, entry.latest)
         entry.seen = now
         entry.subscription = entry.subscription || reportsQuota
+        // ป้ายล่าสุดชนะ — ผู้ใช้ย้าย session ระหว่างบัญชีไม่ได้ แต่การติดตั้งใหม่
+        // เปลี่ยนชื่อได้ และค่าที่ใหม่กว่าคือค่าที่ตรงกับสิ่งที่อยู่บนดิสก์ตอนนี้
+        if let account { entry.account = account }
         state.sessions[sessionID] = entry
 
         state.sessions = state.sessions.filter { now.timeIntervalSince($0.value.seen) < staleAfter }
@@ -157,7 +161,14 @@ public enum SpendLedger {
         // อยู่ในโควตา subscription เป็นตัวเลขสมมติว่า "ถ้าจ่ายรายทางจะเท่านี้"
         // ผู้ใช้ไม่ได้จ่ายมันจริง การเอามารวมในงบที่ตั้งไว้คุมเงินจริงคือการปนสอง
         // สกุลเงินที่ไม่เท่ากันเข้าด้วยกัน แล้วแถบจะสูงกว่าความจริงตลอด
-        let metered = state.sessions.values.filter { !$0.subscription }
+        let allowed = allowedAccounts()
+        let metered = state.sessions.values.filter {
+            guard !$0.subscription else { return false }
+            // ไม่มีรายชื่อ = นับหมด · มีรายชื่อ = นับเฉพาะที่อยู่ในนั้น
+            // session ที่ยังไม่มีป้าย (บันทึกไว้ก่อนมีฟีเจอร์นี้) ถือว่าไม่อยู่ในรายชื่อ
+            guard let allowed else { return true }
+            return $0.account.map(allowed.contains) ?? false
+        }
         let weekly = reading(
             spent: metered.reduce(0.0) { $0 + max(0, $1.latest - $1.base) },
             allowance: budget * 7.0 / days,
@@ -194,6 +205,18 @@ public enum SpendLedger {
             ?? calendar.startOfDay(for: date)
     }
 
+    /// บัญชีที่งบจะนับ — `nil` แปลว่าไม่ได้จำกัด ไม่ใช่ "ไม่มีสักบัญชี"
+    ///
+    /// ไฟล์ว่างเปล่าก็คืน `nil` ด้วย: คนที่สร้างไฟล์แล้วยังไม่ได้พิมพ์อะไรลงไป
+    /// ไม่ได้ตั้งใจจะปิดแถบทั้งอัน
+    public static func allowedAccounts(at url: URL = Paths.budgetAccounts) -> Set<String>? {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        let names = text.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+        return names.isEmpty ? nil : Set(names)
+    }
+
     /// อ่านงบรายเดือนจากไฟล์ — ตัวเลขล้วน หน่วยดอลลาร์
     ///
     /// ไฟล์ที่อ่านไม่ออกคืนค่า default ไม่ใช่ศูนย์: การพิมพ์ผิดหนึ่งตัวไม่ควร
@@ -227,6 +250,8 @@ public enum SpendLedger {
         /// การ render รอบแรกๆ ของ session subscription จึงหน้าตาเหมือน API key
         /// ถ้าไม่จำไว้ มันจะสลับไปมาแล้วยอดเงินกระพริบตาม
         var subscription: Bool = false
+        /// บัญชีที่ session นี้มาจาก — ชื่อ config dir ที่ตัวติดตั้งฝังไว้ในสคริปต์
+        var account: String? = nil
     }
 
     struct State {
@@ -254,7 +279,8 @@ public enum SpendLedger {
             sessions[id] = Entry(
                 base: base, sessionBase: sessionBase, latest: latest,
                 seen: Date(timeIntervalSince1970: seen),
-                subscription: (raw["subscription"] as? NSNumber)?.boolValue ?? false)
+                subscription: (raw["subscription"] as? NSNumber)?.boolValue ?? false,
+                account: raw["account"] as? String)
         }
         return State(
             windowStart: Date(timeIntervalSince1970: start),
@@ -272,7 +298,8 @@ public enum SpendLedger {
                 "latest": entry.latest,
                 "seen": entry.seen.timeIntervalSince1970,
                 "subscription": entry.subscription,
-            ]
+                "account": entry.account as Any,
+            ].compactMapValues { $0 is NSNull ? nil : $0 }
         }
         let root: [String: Any] = [
             "window_start": state.windowStart.timeIntervalSince1970,
