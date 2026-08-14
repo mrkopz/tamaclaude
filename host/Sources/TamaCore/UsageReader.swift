@@ -158,6 +158,9 @@ public enum UsageReader {
         return Date(timeIntervalSince1970: seconds)
     }
 
+    /// เปิดให้ `--usage-print` เรียกได้ — ตัวไล่ปัญหาต้องเห็นสิ่งที่ตัวอ่านเห็น
+    public static func parseForDiagnostics(_ text: String) -> [String: String] { parse(text) }
+
     static func parse(_ text: String) -> [String: String] {
         var out: [String: String] = [:]
         for line in text.split(whereSeparator: \.isNewline) {

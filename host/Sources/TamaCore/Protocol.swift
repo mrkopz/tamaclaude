@@ -260,7 +260,14 @@ extension Snapshot {
     /// encode แล้วบีบข้อความให้พอดี `maxBytes` — ไม่มี chunking บนสาย
     /// ลำดับการตัด: body ของ card → title ของ card → ตัด card ทิ้งจากใบล่างสุด
     /// sessions ไม่เคยถูกตัดทิ้ง เพราะมันคือสิ่งที่จอนี้มีไว้แสดง
-    public func encoded(maxBytes: Int = Wire.maxPayload) throws -> Data {
+    /// `note` ถูกเรียกเมื่อมีอะไรถูกตัดทิ้งเพื่อให้พอดีสาย — ผู้เรียกเอาไปลง log ได้
+    ///
+    /// การตัดโควตาเงียบๆ คือสาเหตุที่ "แถบหายไปจากจอ" วินิจฉัยยากมาก: บอร์ดได้
+    /// snapshot ครบทุกวินาที ไม่มี error ที่ไหนสักที่ แต่แผงโควตาไม่โผล่ และไม่มี
+    /// อะไรบอกว่าทำไม ค่าเริ่มต้นเป็น `nil` เพื่อให้เทสต์ไม่ต้องรับรู้เรื่องนี้
+    public func encoded(
+        maxBytes: Int = Wire.maxPayload, note: ((String) -> Void)? = nil
+    ) throws -> Data {
         let encoder = Wire.encoder()
         var copy = self
         var data = try encoder.encode(copy)
@@ -291,8 +298,10 @@ extension Snapshot {
         // โควตาตกก่อน session — session คือเหตุผลที่จอนี้มีอยู่ ส่วนโควตายังดูได้จาก
         // statusline บนจอคอม การหายไปของมันจึงไม่ทำให้อุปกรณ์ไร้ประโยชน์
         if copy.usage != nil {
+            let was = data.count
             copy.usage = nil
             data = try encoder.encode(copy)
+            note?("snapshot \(was)B over \(maxBytes)B — dropped the quota to fit")
             if data.count <= maxBytes { return data }
         }
         return data

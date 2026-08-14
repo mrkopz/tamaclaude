@@ -13,6 +13,7 @@ usage:
   tamaclaude --install-statusline  take over statusLine.command to capture rate_limits
   tamaclaude --remove-statusline   give the statusLine slot back to the previous command
   tamaclaude --usage-cache       read statusline JSON on stdin, write the usage cache
+  tamaclaude --usage-print       show what the board would receive, and where it came from
   tamaclaude --usage-poll        ask claude.ai for the quota once, write the cache, exit
   tamaclaude --send <json>       send one hand-written event (for testing)
 
@@ -95,6 +96,34 @@ case "--remove-statusline":
     } catch {
         fail("could not remove statusline: \(error)")
     }
+
+case "--usage-print":
+    // สิ่งที่บอร์ดจะได้รับตอนนี้ — ไล่ที่มาของแต่ละแถวให้เห็นว่าใครตอบ
+    //
+    // มีเพราะเคยไล่จับ "แถบหายไปจากจอ" แล้วแยกไม่ออกว่า cache ว่าง, ledger ว่าง,
+    // หรือ snapshot ถูกบีบจนโควตาหลุด — สามอย่างนี้หน้าตาเหมือนกันหมดจากข้างนอก
+    let stamp = Date()
+    let fields = (try? String(contentsOf: Paths.usageCache, encoding: .utf8))
+        .map(UsageReader.parseForDiagnostics) ?? [:]
+    print("cache   \(Paths.usageCache.path)")
+    print("        \(fields.isEmpty ? "ว่าง/ไม่มีไฟล์" : fields.keys.sorted().joined(separator: " "))")
+    print("budget  \(SpendLedger.readBudget()) USD/month")
+    if let l = SpendLedger.current(now: stamp) {
+        print("ledger  5h \(l.session.percent)% ($\(String(format: "%.4f", l.session.spentUSD))"
+            + "/$\(String(format: "%.2f", l.session.allowanceUSD)))"
+            + "  ·  weekly \(l.weekly.percent)% ($\(String(format: "%.4f", l.weekly.spentUSD))"
+            + "/$\(String(format: "%.2f", l.weekly.allowanceUSD)))")
+    } else {
+        print("ledger  ไม่มีอะไรให้ (ไม่มีไฟล์ ไม่มี session หรืองบเป็นศูนย์)")
+    }
+    if let rows = UsageReader.read(now: stamp) {
+        for (i, r) in rows.enumerated() {
+            print("row \(i)   percent \(r.percent)  remaining \(r.remaining)s")
+        }
+    } else {
+        print("row     nil — บอร์ดจะกลับไปเป็นนาฬิกา")
+    }
+    exit(0)
 
 case "--usage-cache":
     // เรียกจาก statusline.sh เท่านั้น — ต้องไม่ตายและไม่บ่นไม่ว่า stdin จะเป็นอะไร
