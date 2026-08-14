@@ -883,6 +883,47 @@ func runAllTests() {
         equal(try Data(contentsOf: ledger), before, "reading never mutates the ledger")
     }
 
+    suite("only the account that actually pays per token counts toward the budget") {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let ledger = FileManager.default.temporaryDirectory
+            .appendingPathComponent("meter-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: ledger) }
+        let month = 3100.0  // เดือน 31 วัน → สัปดาห์ $700
+
+        // session ที่จ่ายตาม token — ไม่เคยมี rate_limits มาด้วย
+        _ = SpendLedger.record(
+            sessionID: "api", costUSD: 0, reportsQuota: false, now: t0,
+            monthlyUSD: month, at: ledger, calendar: cal)
+        let paid = SpendLedger.record(
+            sessionID: "api", costUSD: 35, reportsQuota: false, now: t0,
+            monthlyUSD: month, at: ledger, calendar: cal)
+        equal(paid?.weekly.spentUSD, 35, "an API-key session's spend is real money")
+
+        // session ที่อยู่ในโควตา subscription — cost เป็นตัวเลขสมมติ ต้องไม่ถูกนับ
+        _ = SpendLedger.record(
+            sessionID: "sub", costUSD: 0, reportsQuota: true, now: t0,
+            monthlyUSD: month, at: ledger, calendar: cal)
+        let mixed = SpendLedger.record(
+            sessionID: "sub", costUSD: 900, reportsQuota: true, now: t0,
+            monthlyUSD: month, at: ledger, calendar: cal)
+        equal(mixed?.weekly.spentUSD, 35,
+              "a subscription session adds nothing — the user never paid that")
+
+        // ธงติดแล้วติดเลย: rate_limits โผล่หลัง response แรก การ render รอบก่อนหน้า
+        // จึงหน้าตาเหมือน API key ถ้าไม่จำไว้ ยอดจะกระพริบตามรอบวาด
+        let later = SpendLedger.record(
+            sessionID: "sub", costUSD: 950, reportsQuota: false, now: t0,
+            monthlyUSD: month, at: ledger, calendar: cal)
+        equal(later?.weekly.spentUSD, 35,
+              "and it stays excluded even when a later render omits rate_limits")
+
+        // เส้นทางอ่านต้องใช้กฎเดียวกัน ไม่ใช่คนละสูตร
+        equal(SpendLedger.current(now: t0, monthlyUSD: month, at: ledger, calendar: cal)?
+                .weekly.spentUSD, 35,
+              "the read path filters the same way the write path does")
+    }
+
     suite("the budget file forgives the way people actually write money") {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("budget-\(UUID().uuidString)")

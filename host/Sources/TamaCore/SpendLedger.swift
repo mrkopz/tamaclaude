@@ -64,6 +64,7 @@ public enum SpendLedger {
     public static func record(
         sessionID: String,
         costUSD: Double,
+        reportsQuota: Bool = false,
         now: Date = Date(),
         monthlyUSD: Double? = nil,
         at url: URL = Paths.spendLedger,
@@ -102,6 +103,7 @@ public enum SpendLedger {
         entry.base = min(entry.base, entry.latest)
         entry.sessionBase = min(entry.sessionBase, entry.latest)
         entry.seen = now
+        entry.subscription = entry.subscription || reportsQuota
         state.sessions[sessionID] = entry
 
         state.sessions = state.sessions.filter { now.timeIntervalSince($0.value.seen) < staleAfter }
@@ -151,12 +153,17 @@ public enum SpendLedger {
         of state: State, budget: Double, now: Date, calendar: Calendar
     ) -> Readings? {
         let days = Double(calendar.range(of: .day, in: .month, for: now)?.count ?? 30)
+        // นับเฉพาะ session ที่จ่ายตาม token จริง — `total_cost_usd` ของ session ที่
+        // อยู่ในโควตา subscription เป็นตัวเลขสมมติว่า "ถ้าจ่ายรายทางจะเท่านี้"
+        // ผู้ใช้ไม่ได้จ่ายมันจริง การเอามารวมในงบที่ตั้งไว้คุมเงินจริงคือการปนสอง
+        // สกุลเงินที่ไม่เท่ากันเข้าด้วยกัน แล้วแถบจะสูงกว่าความจริงตลอด
+        let metered = state.sessions.values.filter { !$0.subscription }
         let weekly = reading(
-            spent: state.sessions.values.reduce(0.0) { $0 + max(0, $1.latest - $1.base) },
+            spent: metered.reduce(0.0) { $0 + max(0, $1.latest - $1.base) },
             allowance: budget * 7.0 / days,
             resetsAt: state.windowStart.addingTimeInterval(window))
         let session = reading(
-            spent: state.sessions.values.reduce(0.0) { $0 + max(0, $1.latest - $1.sessionBase) },
+            spent: metered.reduce(0.0) { $0 + max(0, $1.latest - $1.sessionBase) },
             allowance: budget * (sessionWindow / 86_400) / days,
             resetsAt: state.sessionStart.addingTimeInterval(sessionWindow))
 
@@ -214,6 +221,12 @@ public enum SpendLedger {
         var sessionBase: Double
         var latest: Double
         var seen: Date
+        /// session นี้เคยส่ง `rate_limits` มาไหม — คือมัน auth ด้วย subscription
+        ///
+        /// **ติดแล้วติดเลย** เพราะ `rate_limits` โผล่หลัง API response แรกเท่านั้น
+        /// การ render รอบแรกๆ ของ session subscription จึงหน้าตาเหมือน API key
+        /// ถ้าไม่จำไว้ มันจะสลับไปมาแล้วยอดเงินกระพริบตาม
+        var subscription: Bool = false
     }
 
     struct State {
@@ -240,7 +253,8 @@ public enum SpendLedger {
             let sessionBase = (raw["session_base"] as? NSNumber)?.doubleValue ?? latest
             sessions[id] = Entry(
                 base: base, sessionBase: sessionBase, latest: latest,
-                seen: Date(timeIntervalSince1970: seen))
+                seen: Date(timeIntervalSince1970: seen),
+                subscription: (raw["subscription"] as? NSNumber)?.boolValue ?? false)
         }
         return State(
             windowStart: Date(timeIntervalSince1970: start),
@@ -257,6 +271,7 @@ public enum SpendLedger {
                 "session_base": entry.sessionBase,
                 "latest": entry.latest,
                 "seen": entry.seen.timeIntervalSince1970,
+                "subscription": entry.subscription,
             ]
         }
         let root: [String: Any] = [
