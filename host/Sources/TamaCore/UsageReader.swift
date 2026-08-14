@@ -23,10 +23,11 @@ public enum UsageReader {
     /// ซึ่งบอร์ดตีความว่าให้กลับไปเป็นนาฬิกา — โครงเปล่าดูเหมือนอุปกรณ์พัง
     public static func read(
         now: Date = Date(), from url: URL = Paths.usageCache,
-        ledger: URL = Paths.spendLedger, calendar: Calendar = .current
+        ledger: URL = Paths.spendLedger, accounts: URL = Paths.budgetAccounts,
+        calendar: Calendar = .current
     ) -> [UsageSnap]? {
         var fields = (try? String(contentsOf: url, encoding: .utf8)).map(parse) ?? [:]
-        fillBudget(&fields, now: now, ledger: ledger, calendar: calendar)
+        fillBudget(&fields, now: now, ledger: ledger, accounts: accounts, calendar: calendar)
 
         let sKeys = sessionKeys(fields, now: now)
         let session = snap(percent: fields[sKeys.percent], resets: fields[sKeys.resets], now: now)
@@ -49,7 +50,8 @@ public enum UsageReader {
     ///
     /// ไม่แตะคีย์ของโควตาที่รายงานมา ตรงนั้นไม่มีทางเดาจาก ledger ได้เลย
     static func fillBudget(
-        _ fields: inout [String: String], now: Date, ledger: URL, calendar: Calendar
+        _ fields: inout [String: String], now: Date, ledger: URL, accounts: URL,
+        calendar: Calendar
     ) {
         let pairs = [("BUDGET_UTILIZATION", "BUDGET_RESETS_AT"),
                      ("BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT")]
@@ -58,7 +60,8 @@ public enum UsageReader {
                 == UsageSnap.unknown
         }
         guard missing,
-            let readings = SpendLedger.current(now: now, at: ledger, calendar: calendar)
+            let readings = SpendLedger.current(
+                now: now, at: ledger, accounts: accounts, calendar: calendar)
         else { return }
 
         for (reading, pair) in zip([readings.session, readings.weekly], pairs) {

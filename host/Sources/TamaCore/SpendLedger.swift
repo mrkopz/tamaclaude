@@ -69,6 +69,7 @@ public enum SpendLedger {
         now: Date = Date(),
         monthlyUSD: Double? = nil,
         at url: URL = Paths.spendLedger,
+        accounts: URL = Paths.budgetAccounts,
         calendar: Calendar = .current
     ) -> Readings? {
         let budget = monthlyUSD ?? readBudget()
@@ -113,7 +114,8 @@ public enum SpendLedger {
         state.sessions = state.sessions.filter { now.timeIntervalSince($0.value.seen) < staleAfter }
         save(state, at: url)
 
-        return readings(of: state, budget: budget, now: now, calendar: calendar)
+        return readings(
+            of: state, budget: budget, now: now, accounts: accounts, calendar: calendar)
     }
 
     /// สถานะปัจจุบันโดยไม่บันทึกอะไรเลย — เส้นทางอ่านล้วน
@@ -130,6 +132,7 @@ public enum SpendLedger {
         now: Date = Date(),
         monthlyUSD: Double? = nil,
         at url: URL = Paths.spendLedger,
+        accounts: URL = Paths.budgetAccounts,
         calendar: Calendar = .current
     ) -> Readings? {
         let budget = monthlyUSD ?? readBudget()
@@ -149,20 +152,34 @@ public enum SpendLedger {
             view.sessionStart = now
             for (id, e) in view.sessions { view.sessions[id]?.sessionBase = e.latest }
         }
-        return readings(of: view, budget: budget, now: now, calendar: calendar)
+        return readings(
+            of: view, budget: budget, now: now, accounts: accounts, calendar: calendar)
     }
 
     /// แปลงสถานะเป็นสองแถวที่จอวาด — เจ้าของสูตรที่เดียว ทั้งเส้นทางอ่านและเขียน
     static func readings(
-        of state: State, budget: Double, now: Date, calendar: Calendar
+        of state: State, budget: Double, now: Date, accounts: URL, calendar: Calendar
     ) -> Readings? {
         let days = Double(calendar.range(of: .day, in: .month, for: now)?.count ?? 30)
-        // นับเฉพาะ session ที่จ่ายตาม token จริง — `total_cost_usd` ของ session ที่
-        // อยู่ในโควตา subscription เป็นตัวเลขสมมติว่า "ถ้าจ่ายรายทางจะเท่านี้"
-        // ผู้ใช้ไม่ได้จ่ายมันจริง การเอามารวมในงบที่ตั้งไว้คุมเงินจริงคือการปนสอง
-        // สกุลเงินที่ไม่เท่ากันเข้าด้วยกัน แล้วแถบจะสูงกว่าความจริงตลอด
-        let allowed = allowedAccounts()
-        let metered = state.sessions.values.filter {
+
+        // # สองแถวนับคนละขอบเขต เพราะถามคนละคำถาม
+        //
+        // **แถวสั้น (Current) ถามว่า "ตอนนี้ทำงานหนักแค่ไหน"** จึงนับทุก session ทุก
+        // บัญชี รวมงานที่แผนคุ้มค่าใช้จ่ายให้แล้ว มันเป็นมาตรวัดกิจกรรม ไม่ใช่บัญชีเงิน
+        // และมันคือช่องสำรองเท่านั้น — พอโควตาจริงมาถึง `UsageReader` จะเลือกโควตา
+        // แทนทันที ค่านี้จึงมีชีวิตอยู่เฉพาะตอนที่ไม่มีอะไรดีกว่าให้แสดง
+        //
+        // **แถวยาว (Weekly) ถามว่า "จ่ายไปเท่าไร"** จึงนับเฉพาะเงินจริง: ตัด session
+        // ที่อยู่ในโควตาแผนออก (ค่าของมันเป็นตัวเลขสมมติ ผู้ใช้ไม่ได้จ่าย) แล้วตัดต่อ
+        // ด้วยรายชื่อบัญชีที่ผู้ใช้ระบุ เพราะป้ายบัญชีบอกได้แค่ว่า *ใคร* ไม่ได้บอกว่า
+        // *จ่ายไหม*
+        //
+        // ถ้าสองแถวใช้ขอบเขตเดียวกัน ต้องเสียอย่างหนึ่งไป: ขอบเขตกว้างทำให้ยอดเงิน
+        // สูงกว่าความจริง ขอบเขตแคบทำให้งานบนบัญชีที่แผนคุ้มให้หายไปจากจอทั้งที่
+        // เจ้าของเครื่องกำลังทำมันอยู่
+        let all = state.sessions.values
+        let allowed = allowedAccounts(at: accounts)
+        let metered = all.filter {
             guard !$0.subscription else { return false }
             // ไม่มีรายชื่อ = นับหมด · มีรายชื่อ = นับเฉพาะที่อยู่ในนั้น
             // session ที่ยังไม่มีป้าย (บันทึกไว้ก่อนมีฟีเจอร์นี้) ถือว่าไม่อยู่ในรายชื่อ
@@ -174,7 +191,7 @@ public enum SpendLedger {
             allowance: budget * 7.0 / days,
             resetsAt: state.windowStart.addingTimeInterval(window))
         let session = reading(
-            spent: metered.reduce(0.0) { $0 + max(0, $1.latest - $1.sessionBase) },
+            spent: all.reduce(0.0) { $0 + max(0, $1.latest - $1.sessionBase) },
             allowance: budget * (sessionWindow / 86_400) / days,
             resetsAt: state.sessionStart.addingTimeInterval(sessionWindow))
 

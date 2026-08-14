@@ -5,6 +5,8 @@ let t0 = Date(timeIntervalSince1970: 1_700_000_000)
 /// ledger ที่ไม่มีอยู่จริง — `UsageReader.read` เติมค่างบจาก ledger เมื่อ cache ว่าง
 /// ซึ่งถูกต้องตอนใช้งานจริง แต่เทสต์ที่ตรวจพฤติกรรมของ cache ต้องไม่ไปอ่านของเครื่อง
 let noLedger = URL(fileURLWithPath: "/nonexistent/tamatest-no-ledger.json")
+/// เช่นเดียวกัน: รายชื่อบัญชีของเครื่องที่รันเทสต์ต้องไม่มีผลกับผลลัพธ์
+let noAccounts = URL(fileURLWithPath: "/nonexistent/tamatest-no-accounts")
 
 func event(
     _ name: String,
@@ -649,28 +651,28 @@ func runAllTests() {
 
             let a = SpendLedger.record(
                 sessionID: "a", costUSD: 100, now: t0, monthlyUSD: month,
-                at: ledger, calendar: cal)
+                at: ledger, accounts: noAccounts, calendar: cal)
             equal(a?.weekly.spentUSD, 0, "the first sighting of a session is its baseline, not spend")
 
             let a2 = SpendLedger.record(
                 sessionID: "a", costUSD: 160, now: t0, monthlyUSD: month,
-                at: ledger, calendar: cal)
+                at: ledger, accounts: noAccounts, calendar: cal)
             equal(a2?.weekly.spentUSD, 60, "only the growth since the baseline counts")
 
             let b = SpendLedger.record(
                 sessionID: "b", costUSD: 40, now: t0, monthlyUSD: month,
-                at: ledger, calendar: cal)
+                at: ledger, accounts: noAccounts, calendar: cal)
             equal(b?.weekly.spentUSD, 60, "a second session starts at its own baseline too")
 
             let b2 = SpendLedger.record(
                 sessionID: "b", costUSD: 90, now: t0, monthlyUSD: month,
-                at: ledger, calendar: cal)
+                at: ledger, accounts: noAccounts, calendar: cal)
             equal(b2?.weekly.spentUSD, 110, "two sessions add up")
 
             // `/clear` ทำให้ total_cost_usd ตกกลับ — ห้ามให้ยอดสะสมถอยหลังตาม
             let b3 = SpendLedger.record(
                 sessionID: "b", costUSD: 0, now: t0, monthlyUSD: month,
-                at: ledger, calendar: cal)
+                at: ledger, accounts: noAccounts, calendar: cal)
             equal(b3?.weekly.spentUSD, 110, "a session whose cost resets does not erase what it spent")
         }
 
@@ -681,16 +683,16 @@ func runAllTests() {
 
             _ = SpendLedger.record(
                 sessionID: "long", costUSD: 200, now: t0, monthlyUSD: month,
-                at: ledger, calendar: cal)
+                at: ledger, accounts: noAccounts, calendar: cal)
             let before = SpendLedger.record(
                 sessionID: "long", costUSD: 500, now: t0, monthlyUSD: month,
-                at: ledger, calendar: cal)
+                at: ledger, accounts: noAccounts, calendar: cal)
             equal(before?.weekly.spentUSD, 300, "spent this week")
 
             let nextWeek = t0.addingTimeInterval(TimeInterval(UsageReader.weeklyWindow))
             let after = SpendLedger.record(
                 sessionID: "long", costUSD: 500, now: nextWeek, monthlyUSD: month,
-                at: ledger, calendar: cal)
+                at: ledger, accounts: noAccounts, calendar: cal)
             equal(after?.weekly.spentUSD, 0, "last week's spend does not follow the session into this one")
             expect(after?.weekly.resetsAt != before?.weekly.resetsAt, "and the window moved")
         }
@@ -702,16 +704,16 @@ func runAllTests() {
 
             _ = SpendLedger.record(
                 sessionID: "big", costUSD: 0, now: t0, monthlyUSD: month,
-                at: ledger, calendar: cal)
+                at: ledger, accounts: noAccounts, calendar: cal)
             let over = SpendLedger.record(
                 sessionID: "big", costUSD: 99_999, now: t0, monthlyUSD: month,
-                at: ledger, calendar: cal)
+                at: ledger, accounts: noAccounts, calendar: cal)
             equal(over?.weekly.percent, 100, "blowing the budget pins the bar at full")
 
             expect(
                 SpendLedger.record(
                     sessionID: "x", costUSD: 10, now: t0, monthlyUSD: 0,
-                    at: ledger, calendar: cal) == nil,
+                    at: ledger, accounts: noAccounts, calendar: cal) == nil,
                 "a budget of zero says nothing at all — it does not say 100%")
         }
     }
@@ -733,7 +735,7 @@ func runAllTests() {
             BUDGET_WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """
         try both.write(to: url, atomically: true, encoding: .utf8)
-        let rows = UsageReader.read(now: t0, from: url, ledger: noLedger)
+        let rows = UsageReader.read(now: t0, from: url, ledger: noLedger, accounts: noAccounts)
         equal(rows?[0].percent, 9,
               "the 5h row shows the subscription quota Anthropic reported")
         equal(rows?[1].percent, 90,
@@ -747,7 +749,7 @@ func runAllTests() {
             WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """
         try quotaOnly.write(to: url, atomically: true, encoding: .utf8)
-        equal(UsageReader.read(now: t0, from: url, ledger: noLedger)?[1].percent, 20,
+        equal(UsageReader.read(now: t0, from: url, ledger: noLedger, accounts: noAccounts)?[1].percent, 20,
               "with no budget to show, the weekly row falls back to the reported window")
 
         // มีแต่งบ — แถวบนต้องไม่ว่าง ต้องตกมาที่งบห้าชั่วโมง
@@ -758,7 +760,7 @@ func runAllTests() {
             BUDGET_WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """
         try budgetOnly.write(to: url, atomically: true, encoding: .utf8)
-        equal(UsageReader.read(now: t0, from: url, ledger: noLedger)?[0].percent, 44,
+        equal(UsageReader.read(now: t0, from: url, ledger: noLedger, accounts: noAccounts)?[0].percent, 44,
               "and with no reported quota, the 5h row falls back to the budget")
 
         // หน้าต่างที่หมุนแล้วยังต้องไม่ทำให้แถวหายไปทั้งแถว
@@ -769,7 +771,7 @@ func runAllTests() {
             WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """
         try rolled.write(to: url, atomically: true, encoding: .utf8)
-        equal(UsageReader.read(now: t0, from: url, ledger: noLedger)?[1].percent, 20,
+        equal(UsageReader.read(now: t0, from: url, ledger: noLedger, accounts: noAccounts)?[1].percent, 20,
               "a rolled budget window steps aside for the one that still has a percent")
     }
 
@@ -852,12 +854,12 @@ func runAllTests() {
 
         // งบ $3100/เดือน ในเดือน 31 วัน = $100/วัน → สัปดาห์ $700, ห้าชั่วโมง $20.83
         _ = SpendLedger.record(
-            sessionID: "s", costUSD: 0, now: t0, monthlyUSD: 3100, at: ledger, calendar: cal)
+            sessionID: "s", costUSD: 0, now: t0, monthlyUSD: 3100, at: ledger, accounts: noAccounts, calendar: cal)
         _ = SpendLedger.record(
-            sessionID: "s", costUSD: 70, now: t0, monthlyUSD: 3100, at: ledger, calendar: cal)
+            sessionID: "s", costUSD: 70, now: t0, monthlyUSD: 3100, at: ledger, accounts: noAccounts, calendar: cal)
 
         // ไม่มีไฟล์ cache เลย — เมื่อก่อนคืน nil แล้วจอกลับไปเป็นนาฬิกา
-        let rows = UsageReader.read(now: t0, from: cache, ledger: ledger, calendar: cal)
+        let rows = UsageReader.read(now: t0, from: cache, ledger: ledger, accounts: noAccounts, calendar: cal)
         equal(rows?[1].percent, 10, "the weekly bar comes back from the ledger with no cache at all")
         equal(rows?[0].percent, 100, "and so does the 5h bar, pinned because $70 blew past $20.83")
 
@@ -866,7 +868,7 @@ func runAllTests() {
             BUDGET_WEEKLY_UTILIZATION=55
             BUDGET_WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """.write(to: cache, atomically: true, encoding: .utf8)
-        equal(UsageReader.read(now: t0, from: cache, ledger: ledger, calendar: cal)?[1].percent, 55,
+        equal(UsageReader.read(now: t0, from: cache, ledger: ledger, accounts: noAccounts, calendar: cal)?[1].percent, 55,
               "a usable cached value still wins — the ledger only fills gaps")
 
         // หน้าต่างที่หมดอายุใน cache ถือว่าไม่มีค่า ledger จึงเข้าแทนได้
@@ -874,12 +876,12 @@ func runAllTests() {
             BUDGET_WEEKLY_UTILIZATION=55
             BUDGET_WEEKLY_RESETS_AT=2023-11-13T00:00:00Z
             """.write(to: cache, atomically: true, encoding: .utf8)
-        equal(UsageReader.read(now: t0, from: cache, ledger: ledger, calendar: cal)?[1].percent, 10,
+        equal(UsageReader.read(now: t0, from: cache, ledger: ledger, accounts: noAccounts, calendar: cal)?[1].percent, 10,
               "an expired cached window steps aside for the ledger's current one")
 
         // อ่านแล้วต้องไม่เขียนอะไรกลับ — ledger ต้องเหมือนเดิมทุกไบต์
         let before = try Data(contentsOf: ledger)
-        _ = UsageReader.read(now: t0, from: cache, ledger: ledger, calendar: cal)
+        _ = UsageReader.read(now: t0, from: cache, ledger: ledger, accounts: noAccounts, calendar: cal)
         equal(try Data(contentsOf: ledger), before, "reading never mutates the ledger")
     }
 
@@ -894,19 +896,19 @@ func runAllTests() {
         // session ที่จ่ายตาม token — ไม่เคยมี rate_limits มาด้วย
         _ = SpendLedger.record(
             sessionID: "api", costUSD: 0, reportsQuota: false, now: t0,
-            monthlyUSD: month, at: ledger, calendar: cal)
+            monthlyUSD: month, at: ledger, accounts: noAccounts, calendar: cal)
         let paid = SpendLedger.record(
             sessionID: "api", costUSD: 35, reportsQuota: false, now: t0,
-            monthlyUSD: month, at: ledger, calendar: cal)
+            monthlyUSD: month, at: ledger, accounts: noAccounts, calendar: cal)
         equal(paid?.weekly.spentUSD, 35, "an API-key session's spend is real money")
 
         // session ที่อยู่ในโควตา subscription — cost เป็นตัวเลขสมมติ ต้องไม่ถูกนับ
         _ = SpendLedger.record(
             sessionID: "sub", costUSD: 0, reportsQuota: true, now: t0,
-            monthlyUSD: month, at: ledger, calendar: cal)
+            monthlyUSD: month, at: ledger, accounts: noAccounts, calendar: cal)
         let mixed = SpendLedger.record(
             sessionID: "sub", costUSD: 900, reportsQuota: true, now: t0,
-            monthlyUSD: month, at: ledger, calendar: cal)
+            monthlyUSD: month, at: ledger, accounts: noAccounts, calendar: cal)
         equal(mixed?.weekly.spentUSD, 35,
               "a subscription session adds nothing — the user never paid that")
 
@@ -914,12 +916,12 @@ func runAllTests() {
         // จึงหน้าตาเหมือน API key ถ้าไม่จำไว้ ยอดจะกระพริบตามรอบวาด
         let later = SpendLedger.record(
             sessionID: "sub", costUSD: 950, reportsQuota: false, now: t0,
-            monthlyUSD: month, at: ledger, calendar: cal)
+            monthlyUSD: month, at: ledger, accounts: noAccounts, calendar: cal)
         equal(later?.weekly.spentUSD, 35,
               "and it stays excluded even when a later render omits rate_limits")
 
         // เส้นทางอ่านต้องใช้กฎเดียวกัน ไม่ใช่คนละสูตร
-        equal(SpendLedger.current(now: t0, monthlyUSD: month, at: ledger, calendar: cal)?
+        equal(SpendLedger.current(now: t0, monthlyUSD: month, at: ledger, accounts: noAccounts, calendar: cal)?
                 .weekly.spentUSD, 35,
               "the read path filters the same way the write path does")
     }
@@ -936,14 +938,14 @@ func runAllTests() {
         for (sid, acct, cost) in [("w1", "claude-work", 70.0), ("p1", "claude", 210.0)] {
             _ = SpendLedger.record(
                 sessionID: sid, costUSD: 0, account: acct, now: t0,
-                monthlyUSD: month, at: ledger, calendar: cal)
+                monthlyUSD: month, at: ledger, accounts: noAccounts, calendar: cal)
             _ = SpendLedger.record(
                 sessionID: sid, costUSD: cost, account: acct, now: t0,
-                monthlyUSD: month, at: ledger, calendar: cal)
+                monthlyUSD: month, at: ledger, accounts: noAccounts, calendar: cal)
         }
 
         // ยังไม่มีรายชื่อ = ไม่จำกัด นับทั้งสองบัญชี
-        equal(SpendLedger.current(now: t0, monthlyUSD: month, at: ledger, calendar: cal)?
+        equal(SpendLedger.current(now: t0, monthlyUSD: month, at: ledger, accounts: noAccounts, calendar: cal)?
                 .weekly.spentUSD, 280,
               "with no list, every account that pays per token counts")
 
@@ -1234,7 +1236,7 @@ func runAllTests() {
             .appendingPathComponent("usage-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: url) }
 
-        expect(UsageReader.read(now: t0, from: url, ledger: noLedger) == nil, "a missing file shows no panel")
+        expect(UsageReader.read(now: t0, from: url, ledger: noLedger, accounts: noAccounts) == nil, "a missing file shows no panel")
 
         try Data("""
             UTILIZATION=35
@@ -1243,7 +1245,7 @@ func runAllTests() {
             WEEKLY_RESETS_AT=2023-11-16T07:00:00Z
             TIMESTAMP=1700000000
             """.utf8).write(to: url)
-        let rows = UsageReader.read(now: t0, from: url, ledger: noLedger)
+        let rows = UsageReader.read(now: t0, from: url, ledger: noLedger, accounts: noAccounts)
         equal(rows?.count, 2, "always two rows when there is anything to show")
         equal(rows?[0].percent, 35, "session percent survives")
         // t0 คือ 2023-11-14T22:13:20Z — เหลือ 1h31m40s ปัดลงเป็น 1h31m
@@ -1253,7 +1255,7 @@ func runAllTests() {
 
         // หน้าต่างหมุนไปแล้ว: เปอร์เซ็นต์ที่ค้างอยู่ผิดแน่นอน ค่าที่ถูกคือ \"ไม่รู้\"
         try Data("UTILIZATION=90\nRESETS_AT=2023-11-14T00:00:00Z\n".utf8).write(to: url)
-        let rolled = UsageReader.read(now: t0, from: url, ledger: noLedger)
+        let rolled = UsageReader.read(now: t0, from: url, ledger: noLedger, accounts: noAccounts)
         equal(rolled?[0].percent, UsageSnap.unknown, "a rolled window forgets its percent")
         equal(rolled?[0].remaining, 0, "and reads as resetting")
         equal(rolled?[1].isKnown, false, "the window that was never there stays unknown")
@@ -1261,7 +1263,7 @@ func runAllTests() {
         // ไม่มี TTL — ค่าเก่าคือค่าที่ถูก ตราบใดที่ยังไม่ถึงเวลารีเซ็ต
         try Data("UTILIZATION=12\nRESETS_AT=2023-11-15T03:00:00Z\nTIMESTAMP=1\n".utf8)
             .write(to: url)
-        equal(UsageReader.read(now: t0, from: url, ledger: noLedger)?[0].percent, 12,
+        equal(UsageReader.read(now: t0, from: url, ledger: noLedger, accounts: noAccounts)?[0].percent, 12,
               "an ancient TIMESTAMP does not invalidate a percent")
     }
 

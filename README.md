@@ -369,7 +369,13 @@ after the first API response). And each wrapper script tags its own account — 
 directory's name, so `~/.claude-work` is `claude-work` — which is the more reliable signal,
 since it does not depend on what a given Claude Code surface chooses to send.
 
-Name the accounts whose spend is real and the budget counts only those:
+The two rows count differently, because they answer different questions. The 5-hour row
+asks *how hard is this machine working right now*, so it counts every session on every
+account — it is a gauge of activity, and it only appears at all when no reported quota has
+arrived to take its place. The weekly row asks *how much has been spent*, so it counts only
+money that really left an account.
+
+Name the accounts whose spend is real and the weekly row counts only those:
 
 ```bash
 echo claude-work > ~/.tamaclaude/budget-accounts   # one name per line
