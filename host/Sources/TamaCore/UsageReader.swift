@@ -21,25 +21,53 @@ public enum UsageReader {
     ///
     /// คืน `nil` เมื่อไม่มีอะไรจะบอกเลย (ไฟล์หาย/อ่านไม่ได้/ไม่มีคีย์ที่รู้จักสักตัว)
     /// ซึ่งบอร์ดตีความว่าให้กลับไปเป็นนาฬิกา — โครงเปล่าดูเหมือนอุปกรณ์พัง
-    public static func read(now: Date = Date(), from url: URL = Paths.usageCache) -> [UsageSnap]? {
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        let fields = parse(text)
+    public static func read(
+        now: Date = Date(), from url: URL = Paths.usageCache,
+        ledger: URL = Paths.spendLedger, calendar: Calendar = .current
+    ) -> [UsageSnap]? {
+        var fields = (try? String(contentsOf: url, encoding: .utf8)).map(parse) ?? [:]
+        fillBudget(&fields, now: now, ledger: ledger, calendar: calendar)
 
         let sKeys = sessionKeys(fields, now: now)
         let session = snap(percent: fields[sKeys.percent], resets: fields[sKeys.resets], now: now)
-        // ช่องรายสัปดาห์มีผู้สมัครสองราย และ **ของจริงชนะเสมอ**
-        //
-        // `WEEKLY_*` คือโควตาที่ Anthropic รายงานมา ส่วน `BUDGET_*` คือยอดเงินที่
-        // เราหารด้วยงบของผู้ใช้เอง (ดู `SpendLedger`) การเลือกอยู่ที่นี่ที่เดียว
-        // ไม่ใช่ตอนเขียน เพราะไฟล์นี้มีผู้เขียนหลายราย: session ที่ auth ด้วย
-        // subscription เขียน `WEEKLY_*` ส่วน session ที่ auth ด้วย API key เขียน
-        // `BUDGET_*` และทั้งคู่ทำงานสลับกันบนเครื่องเดียวกันได้ ถ้าตัดสินตอนเขียน
-        // แถบจะสลับความหมายตามว่าใครวาดทีหลัง — ตรงนี้เห็นทั้งสองคีย์พร้อมกัน
         let keys = weeklyKeys(fields, now: now)
         let weekly = snap(percent: fields[keys.percent], resets: fields[keys.resets], now: now)
 
         guard session.isKnown || weekly.isKnown else { return nil }
         return [session, weekly]
+    }
+
+    /// เติมค่างบจาก `SpendLedger` เมื่อ cache ไม่มีค่าที่ใช้ได้ให้
+    ///
+    /// cache เป็น **ตัวกลาง** ไม่ใช่แหล่งข้อมูลของงบ — statusline เป็นตัวเดียวที่
+    /// เขียนมัน และมันยิงไม่สม่ำเสมอบน surface บางแบบ ผูกการแสดงผลไว้กับตัวกลาง
+    /// แปลว่าลบไฟล์ทีเดียวแล้วแถบหายจนกว่า statusline จะยอมยิงอีก ทั้งที่ยอดเงิน
+    /// ยังอยู่ครบใน ledger
+    ///
+    /// เติมเฉพาะช่องที่ว่างหรือหมดอายุ ไม่ทับของที่ใช้ได้อยู่ — กติกา "ห้ามถอยหลัง"
+    /// ของ `UsageWriter.merge` ทำงานบน cache และต้องไม่ถูกลัดผ่าน
+    ///
+    /// ไม่แตะคีย์ของโควตาที่รายงานมา ตรงนั้นไม่มีทางเดาจาก ledger ได้เลย
+    static func fillBudget(
+        _ fields: inout [String: String], now: Date, ledger: URL, calendar: Calendar
+    ) {
+        let pairs = [("BUDGET_UTILIZATION", "BUDGET_RESETS_AT"),
+                     ("BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT")]
+        let missing = pairs.contains { pct, reset in
+            snap(percent: fields[pct], resets: fields[reset], now: now).percent
+                == UsageSnap.unknown
+        }
+        guard missing,
+            let readings = SpendLedger.current(now: now, at: ledger, calendar: calendar)
+        else { return }
+
+        for (reading, pair) in zip([readings.session, readings.weekly], pairs) {
+            guard snap(percent: fields[pair.0], resets: fields[pair.1], now: now).percent
+                == UsageSnap.unknown
+            else { continue }
+            fields[pair.0] = String(reading.percent)
+            fields[pair.1] = UsageWriter.iso(reading.resetsAt)
+        }
     }
 
     /// # จอมีสองแถว บัญชีมีสองใบ — แถวละใบ

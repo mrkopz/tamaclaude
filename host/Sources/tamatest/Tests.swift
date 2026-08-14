@@ -2,6 +2,9 @@ import Foundation
 import TamaCore
 
 let t0 = Date(timeIntervalSince1970: 1_700_000_000)
+/// ledger ที่ไม่มีอยู่จริง — `UsageReader.read` เติมค่างบจาก ledger เมื่อ cache ว่าง
+/// ซึ่งถูกต้องตอนใช้งานจริง แต่เทสต์ที่ตรวจพฤติกรรมของ cache ต้องไม่ไปอ่านของเครื่อง
+let noLedger = URL(fileURLWithPath: "/nonexistent/tamatest-no-ledger.json")
 
 func event(
     _ name: String,
@@ -730,7 +733,7 @@ func runAllTests() {
             BUDGET_WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """
         try both.write(to: url, atomically: true, encoding: .utf8)
-        let rows = UsageReader.read(now: t0, from: url)
+        let rows = UsageReader.read(now: t0, from: url, ledger: noLedger)
         equal(rows?[0].percent, 9,
               "the 5h row shows the subscription quota Anthropic reported")
         equal(rows?[1].percent, 90,
@@ -744,7 +747,7 @@ func runAllTests() {
             WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """
         try quotaOnly.write(to: url, atomically: true, encoding: .utf8)
-        equal(UsageReader.read(now: t0, from: url)?[1].percent, 20,
+        equal(UsageReader.read(now: t0, from: url, ledger: noLedger)?[1].percent, 20,
               "with no budget to show, the weekly row falls back to the reported window")
 
         // มีแต่งบ — แถวบนต้องไม่ว่าง ต้องตกมาที่งบห้าชั่วโมง
@@ -755,7 +758,7 @@ func runAllTests() {
             BUDGET_WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """
         try budgetOnly.write(to: url, atomically: true, encoding: .utf8)
-        equal(UsageReader.read(now: t0, from: url)?[0].percent, 44,
+        equal(UsageReader.read(now: t0, from: url, ledger: noLedger)?[0].percent, 44,
               "and with no reported quota, the 5h row falls back to the budget")
 
         // หน้าต่างที่หมุนแล้วยังต้องไม่ทำให้แถวหายไปทั้งแถว
@@ -766,7 +769,7 @@ func runAllTests() {
             WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """
         try rolled.write(to: url, atomically: true, encoding: .utf8)
-        equal(UsageReader.read(now: t0, from: url)?[1].percent, 20,
+        equal(UsageReader.read(now: t0, from: url, ledger: noLedger)?[1].percent, 20,
               "a rolled budget window steps aside for the one that still has a percent")
     }
 
@@ -837,6 +840,47 @@ func runAllTests() {
             configDir: URL(fileURLWithPath: "/Users/x/.", isDirectory: true))
         expect(odd != StatuslineInstaller.scriptPath(configDir: nil),
                "even a config dir with no usable name gets its own file")
+    }
+
+    suite("the budget survives a cache that is missing or stale") {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(secondsFromGMT: 0)!
+        let id = UUID().uuidString
+        let cache = FileManager.default.temporaryDirectory.appendingPathComponent("c-\(id)")
+        let ledger = FileManager.default.temporaryDirectory.appendingPathComponent("l-\(id).json")
+        defer { for u in [cache, ledger] { try? FileManager.default.removeItem(at: u) } }
+
+        // งบ $3100/เดือน ในเดือน 31 วัน = $100/วัน → สัปดาห์ $700, ห้าชั่วโมง $20.83
+        _ = SpendLedger.record(
+            sessionID: "s", costUSD: 0, now: t0, monthlyUSD: 3100, at: ledger, calendar: cal)
+        _ = SpendLedger.record(
+            sessionID: "s", costUSD: 70, now: t0, monthlyUSD: 3100, at: ledger, calendar: cal)
+
+        // ไม่มีไฟล์ cache เลย — เมื่อก่อนคืน nil แล้วจอกลับไปเป็นนาฬิกา
+        let rows = UsageReader.read(now: t0, from: cache, ledger: ledger, calendar: cal)
+        equal(rows?[1].percent, 10, "the weekly bar comes back from the ledger with no cache at all")
+        equal(rows?[0].percent, 100, "and so does the 5h bar, pinned because $70 blew past $20.83")
+
+        // cache ที่มีของจริงอยู่แล้วต้องไม่ถูก ledger ทับ — กติกาห้ามถอยหลังอยู่ที่ cache
+        try """
+            BUDGET_WEEKLY_UTILIZATION=55
+            BUDGET_WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
+            """.write(to: cache, atomically: true, encoding: .utf8)
+        equal(UsageReader.read(now: t0, from: cache, ledger: ledger, calendar: cal)?[1].percent, 55,
+              "a usable cached value still wins — the ledger only fills gaps")
+
+        // หน้าต่างที่หมดอายุใน cache ถือว่าไม่มีค่า ledger จึงเข้าแทนได้
+        try """
+            BUDGET_WEEKLY_UTILIZATION=55
+            BUDGET_WEEKLY_RESETS_AT=2023-11-13T00:00:00Z
+            """.write(to: cache, atomically: true, encoding: .utf8)
+        equal(UsageReader.read(now: t0, from: cache, ledger: ledger, calendar: cal)?[1].percent, 10,
+              "an expired cached window steps aside for the ledger's current one")
+
+        // อ่านแล้วต้องไม่เขียนอะไรกลับ — ledger ต้องเหมือนเดิมทุกไบต์
+        let before = try Data(contentsOf: ledger)
+        _ = UsageReader.read(now: t0, from: cache, ledger: ledger, calendar: cal)
+        equal(try Data(contentsOf: ledger), before, "reading never mutates the ledger")
     }
 
     suite("the budget file forgives the way people actually write money") {
@@ -1110,7 +1154,7 @@ func runAllTests() {
             .appendingPathComponent("usage-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: url) }
 
-        expect(UsageReader.read(now: t0, from: url) == nil, "a missing file shows no panel")
+        expect(UsageReader.read(now: t0, from: url, ledger: noLedger) == nil, "a missing file shows no panel")
 
         try Data("""
             UTILIZATION=35
@@ -1119,7 +1163,7 @@ func runAllTests() {
             WEEKLY_RESETS_AT=2023-11-16T07:00:00Z
             TIMESTAMP=1700000000
             """.utf8).write(to: url)
-        let rows = UsageReader.read(now: t0, from: url)
+        let rows = UsageReader.read(now: t0, from: url, ledger: noLedger)
         equal(rows?.count, 2, "always two rows when there is anything to show")
         equal(rows?[0].percent, 35, "session percent survives")
         // t0 คือ 2023-11-14T22:13:20Z — เหลือ 1h31m40s ปัดลงเป็น 1h31m
@@ -1129,7 +1173,7 @@ func runAllTests() {
 
         // หน้าต่างหมุนไปแล้ว: เปอร์เซ็นต์ที่ค้างอยู่ผิดแน่นอน ค่าที่ถูกคือ \"ไม่รู้\"
         try Data("UTILIZATION=90\nRESETS_AT=2023-11-14T00:00:00Z\n".utf8).write(to: url)
-        let rolled = UsageReader.read(now: t0, from: url)
+        let rolled = UsageReader.read(now: t0, from: url, ledger: noLedger)
         equal(rolled?[0].percent, UsageSnap.unknown, "a rolled window forgets its percent")
         equal(rolled?[0].remaining, 0, "and reads as resetting")
         equal(rolled?[1].isKnown, false, "the window that was never there stays unknown")
@@ -1137,7 +1181,7 @@ func runAllTests() {
         // ไม่มี TTL — ค่าเก่าคือค่าที่ถูก ตราบใดที่ยังไม่ถึงเวลารีเซ็ต
         try Data("UTILIZATION=12\nRESETS_AT=2023-11-15T03:00:00Z\nTIMESTAMP=1\n".utf8)
             .write(to: url)
-        equal(UsageReader.read(now: t0, from: url)?[0].percent, 12,
+        equal(UsageReader.read(now: t0, from: url, ledger: noLedger)?[0].percent, 12,
               "an ancient TIMESTAMP does not invalidate a percent")
     }
 

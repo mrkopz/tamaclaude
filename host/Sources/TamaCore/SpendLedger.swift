@@ -107,11 +107,54 @@ public enum SpendLedger {
         state.sessions = state.sessions.filter { now.timeIntervalSince($0.value.seen) < staleAfter }
         save(state, at: url)
 
+        return readings(of: state, budget: budget, now: now, calendar: calendar)
+    }
+
+    /// สถานะปัจจุบันโดยไม่บันทึกอะไรเลย — เส้นทางอ่านล้วน
+    ///
+    /// มีไว้ให้ `UsageReader` เรียกตอนที่ cache ไม่มีค่างบให้ ledger คือแหล่งจริง
+    /// ของตัวเลขนี้ ส่วน cache เป็นแค่ตัวกลางที่ statusline เขียนผ่าน — ผูกการแสดงผล
+    /// ไว้กับตัวกลางแปลว่าลบ cache ทีเดียวแล้วแถบหายจนกว่า statusline จะยอมยิงอีก
+    /// ซึ่งบน surface บางแบบคือนานมาก
+    ///
+    /// **ต้องไม่เขียนไฟล์** — ถูกเรียกจากรอบ publish ของ daemon ซึ่งเกิดบ่อยกว่า
+    /// การใช้งานจริงหลายเท่า การเขียนทุกรอบจะเปลี่ยนหน้าต่างห้าชั่วโมงที่เกาะกิจกรรม
+    /// ให้กลายเป็นหน้าต่างที่เลื่อนตามการวาดจอ ซึ่งไม่มีความหมายอะไรเลย
+    public static func current(
+        now: Date = Date(),
+        monthlyUSD: Double? = nil,
+        at url: URL = Paths.spendLedger,
+        calendar: Calendar = .current
+    ) -> Readings? {
+        let budget = monthlyUSD ?? readBudget()
+        guard budget > 0 else { return nil }
+        let state = load(at: url)
+        guard !state.sessions.isEmpty else { return nil }
+
+        // หน้าต่างที่หมดอายุแล้วต้องรายงานเป็นบานใหม่ที่ยอดเป็นศูนย์ ไม่ใช่ยอดค้าง
+        // ของบานก่อน — แต่ไม่บันทึกลงดิสก์ รอให้ `record` ทำตอนมีการใช้จริง
+        var view = state
+        let start = windowStart(containing: now, calendar: calendar)
+        if view.windowStart != start {
+            view.windowStart = start
+            for (id, e) in view.sessions { view.sessions[id]?.base = e.latest }
+        }
+        if now.timeIntervalSince(view.sessionStart) >= sessionWindow {
+            view.sessionStart = now
+            for (id, e) in view.sessions { view.sessions[id]?.sessionBase = e.latest }
+        }
+        return readings(of: view, budget: budget, now: now, calendar: calendar)
+    }
+
+    /// แปลงสถานะเป็นสองแถวที่จอวาด — เจ้าของสูตรที่เดียว ทั้งเส้นทางอ่านและเขียน
+    static func readings(
+        of state: State, budget: Double, now: Date, calendar: Calendar
+    ) -> Readings? {
         let days = Double(calendar.range(of: .day, in: .month, for: now)?.count ?? 30)
         let weekly = reading(
             spent: state.sessions.values.reduce(0.0) { $0 + max(0, $1.latest - $1.base) },
             allowance: budget * 7.0 / days,
-            resetsAt: start.addingTimeInterval(window))
+            resetsAt: state.windowStart.addingTimeInterval(window))
         let session = reading(
             spent: state.sessions.values.reduce(0.0) { $0 + max(0, $1.latest - $1.sessionBase) },
             allowance: budget * (sessionWindow / 86_400) / days,
