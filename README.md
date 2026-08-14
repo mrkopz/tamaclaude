@@ -337,10 +337,29 @@ previous one lapsed — the same way Claude's own session window behaves — bec
 hours does not divide a day evenly and a fixed grid would leave one short window a day
 whose pace marker lies.
 
+### One row per account
+
+A Mac can run both kinds of session, and the screen has two rows, so each row leans a
+different way rather than both applying one rule:
+
+| Row | Label on screen | First choice | Falls back to |
+|:--|:--|:--|:--|
+| 0 | `Current` | the reported 5-hour quota | the 5-hour budget |
+| 1 | `Weekly` | the weekly budget | the reported 7-day quota |
+
+If both rules preferred the reported quota, a subscription account would take both rows
+and the API-key account's spend would be invisible. This way a machine running both shows
+one of each, and a machine running only one still fills both rows.
+
+The labels compiled into the board stay truthful either way — row 0 really is a five-hour
+window and row 1 really is a seven-day one, so both pace markers are computed correctly.
+What the board cannot say is which row belongs to which account; the statusline says it
+instead, labelling each row `Usage:` / `Weekly:` when it is a reported quota and `Budget:`
+when it is derived.
+
 Three things to know. The figure is **an estimate Claude Code computes**, not your bill.
-It counts only work done through Claude Code **on this Mac**. And a reported quota always
-wins, per window: on a machine that runs both kinds of session, each row shows the real
-percentage whenever Anthropic sends one, and the budget only fills the gap.
+It counts only work done through Claude Code **on this Mac**. And nothing here invents a
+number: when a row has no source at all it reads `no data` rather than guessing zero.
 
 Taking over the statusline slot never changes what you see: your own statusline command is
 handed the same input and its output is printed as is. If you never had one, the app draws

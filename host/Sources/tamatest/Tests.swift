@@ -713,31 +713,61 @@ func runAllTests() {
         }
     }
 
-    suite("Anthropic's own quota outranks a self-computed budget") {
+    suite("the two rows carry the two accounts, one each") {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("usage-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: url) }
 
+        // ทั้งสองบัญชีมีข้อมูลพร้อมกัน — จอต้องแสดงคนละแถว ไม่ใช่ให้ใบหนึ่งกินทั้งคู่
         let both = """
+            UTILIZATION=9
+            RESETS_AT=2023-11-15T00:00:00Z
             WEEKLY_UTILIZATION=20
             WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
+            BUDGET_UTILIZATION=44
+            BUDGET_RESETS_AT=2023-11-15T00:00:00Z
             BUDGET_WEEKLY_UTILIZATION=90
             BUDGET_WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """
         try both.write(to: url, atomically: true, encoding: .utf8)
-        equal(UsageReader.read(now: t0, from: url)?[1].percent, 20,
-              "reported utilization wins over anything we derived ourselves")
+        let rows = UsageReader.read(now: t0, from: url)
+        equal(rows?[0].percent, 9,
+              "the 5h row shows the subscription quota Anthropic reported")
+        equal(rows?[1].percent, 90,
+              "and the weekly row shows the spend budget, so the API-key account stays visible")
 
-        // พอของจริงหมดอายุ (หน้าต่างหมุนโดยไม่มีใครอัปเดต) งบเข้ามาแทนได้
-        let stale = """
+        // มีแต่บัญชีที่รายงานโควตา — แถวล่างต้องไม่ว่าง ต้องตกมาที่โควตาเจ็ดวัน
+        let quotaOnly = """
+            UTILIZATION=9
+            RESETS_AT=2023-11-15T00:00:00Z
             WEEKLY_UTILIZATION=20
-            WEEKLY_RESETS_AT=2023-11-14T00:00:00Z
+            WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
+            """
+        try quotaOnly.write(to: url, atomically: true, encoding: .utf8)
+        equal(UsageReader.read(now: t0, from: url)?[1].percent, 20,
+              "with no budget to show, the weekly row falls back to the reported window")
+
+        // มีแต่งบ — แถวบนต้องไม่ว่าง ต้องตกมาที่งบห้าชั่วโมง
+        let budgetOnly = """
+            BUDGET_UTILIZATION=44
+            BUDGET_RESETS_AT=2023-11-15T00:00:00Z
             BUDGET_WEEKLY_UTILIZATION=90
             BUDGET_WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
             """
-        try stale.write(to: url, atomically: true, encoding: .utf8)
-        equal(UsageReader.read(now: t0, from: url)?[1].percent, 90,
-              "a rolled-over quota window is unknown, so the budget answers instead")
+        try budgetOnly.write(to: url, atomically: true, encoding: .utf8)
+        equal(UsageReader.read(now: t0, from: url)?[0].percent, 44,
+              "and with no reported quota, the 5h row falls back to the budget")
+
+        // หน้าต่างที่หมุนแล้วยังต้องไม่ทำให้แถวหายไปทั้งแถว
+        let rolled = """
+            BUDGET_WEEKLY_UTILIZATION=90
+            BUDGET_WEEKLY_RESETS_AT=2023-11-14T00:00:00Z
+            WEEKLY_UTILIZATION=20
+            WEEKLY_RESETS_AT=2023-11-16T00:00:00Z
+            """
+        try rolled.write(to: url, atomically: true, encoding: .utf8)
+        equal(UsageReader.read(now: t0, from: url)?[1].percent, 20,
+              "a rolled budget window steps aside for the one that still has a percent")
     }
 
     suite("the statusline calls a budget a budget") {

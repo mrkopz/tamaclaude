@@ -42,52 +42,67 @@ public enum UsageReader {
         return [session, weekly]
     }
 
-    /// ช่องรายสัปดาห์ควรอ่านจากคีย์ชุดไหน — **เจ้าของกฎ "ของจริงชนะเสมอ" ที่เดียว**
+    /// # จอมีสองแถว บัญชีมีสองใบ — แถวละใบ
     ///
-    /// `WEEKLY_*` คือโควตาที่ Anthropic รายงานมา ส่วน `BUDGET_*` คือยอดเงินที่เรา
-    /// หารด้วยงบของผู้ใช้เอง (ดู `SpendLedger`) — คนละคำกล่าวอ้างกันโดยสิ้นเชิง
-    /// ADR ของโปรเจกต์ยืนว่า utilization is reported, never derived ค่าที่เรา
-    /// คำนวณเองจึงเข้าได้เฉพาะตอนที่ไม่มีค่าที่รายงานมาให้ใช้
+    /// เครื่องเดียวรันได้ทั้ง session ที่ auth ด้วย subscription (เขียน `UTILIZATION`
+    /// / `WEEKLY_*` ที่ Anthropic รายงานมา) และ session ที่ auth ด้วย API key ของ
+    /// Console (เขียน `BUDGET_*` ที่เราหารเอง — ดู `SpendLedger`) ถ้าทั้งสองแถวยึด
+    /// กฎเดียวกันว่า "ของที่รายงานมาชนะ" บัญชีที่มี subscription จะกินทั้งสองแถว
+    /// แล้วเจ้าของเครื่องมองไม่เห็นเลยว่างานฝั่งบริษัทใช้ไปเท่าไร
     ///
-    /// การเลือกอยู่ตอน *อ่าน* ไม่ใช่ตอนเขียน เพราะไฟล์ cache มีผู้เขียนหลายราย:
-    /// session ที่ auth ด้วย subscription เขียน `WEEKLY_*` ส่วน session ที่ auth
-    /// ด้วย API key เขียน `BUDGET_*` ผู้ใช้คนเดียวเปิดทั้งสองแบบพร้อมกันได้ ถ้า
-    /// ตัดสินตอนเขียน แถบจะสลับความหมายตามว่า session ไหนวาดทีหลัง
+    /// แต่ละแถวจึงมี **ลำดับความสำคัญของตัวเอง** ไม่ใช่กฎกลางข้อเดียว:
     ///
-    /// "ไม่มีค่าที่รายงานมาให้ใช้" รวมถึงหน้าต่างที่หมุนไปแล้วโดยยังไม่มีใครอัปเดต
-    /// cache — `snap` ถือว่าเปอร์เซ็นต์ของหน้าต่างแบบนั้นคือ "ไม่รู้" อยู่แล้ว
+    /// | แถว | ป้ายบนจอ | ตัวเลือกแรก | ตัวสำรอง |
+    /// |:--|:--|:--|:--|
+    /// | 0 | Current | โควตา 5 ชม. ที่รายงานมา | งบ 5 ชม. |
+    /// | 1 | Weekly | งบรายสัปดาห์ | โควตา 7 วันที่รายงานมา |
+    ///
+    /// การจับคู่แบบนี้ทำให้ **ป้ายที่คอมไพล์ไว้ในเฟิร์มแวร์ยังพูดความจริง**: แถว 0
+    /// เป็นหน้าต่างห้าชั่วโมงจริง แถว 1 เป็นหน้าต่างเจ็ดวันจริง ขีด pace ของทั้งคู่
+    /// จึงคำนวณถูกโดยไม่ต้องแตะเฟิร์มแวร์ สิ่งที่จอบอกไม่ได้คือ *แถวไหนของบัญชีไหน* —
+    /// บรรทัด statusline บอกแทนด้วยป้าย `Usage:` กับ `Budget:` (ดู `StatuslineRender`)
+    ///
+    /// ไม่ขัดกับ ADR "utilization is reported, never derived" — ตรงนั้นห้าม *กุ*
+    /// ตัวเลขขึ้นมาเองเมื่อไม่มีของจริง ที่นี่มีของจริงสองก้อนคนละบัญชี แล้วเลือกว่า
+    /// ช่องไหนโชว์ก้อนไหน ไม่มีอะไรถูกเดาขึ้นมา
+    ///
+    /// การเลือกอยู่ตอน *อ่าน* ไม่ใช่ตอนเขียน เพราะ cache มีผู้เขียนหลายราย ถ้าตัดสิน
+    /// ตอนเขียน แถบจะสลับความหมายตามว่า session ไหนวาดทีหลัง
+    ///
+    /// "ใช้ไม่ได้" รวมถึงหน้าต่างที่หมุนไปแล้วโดยยังไม่มีใครอัปเดต cache — `snap`
+    /// ถือว่าเปอร์เซ็นต์ของหน้าต่างแบบนั้นคือ "ไม่รู้" อยู่แล้ว
     public static func weeklyKeys(
         _ fields: [String: String], now: Date
     ) -> (percent: String, resets: String) {
         keys(
             fields, now: now,
-            reported: ("WEEKLY_UTILIZATION", "WEEKLY_RESETS_AT"),
-            derived: ("BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT"))
+            first: ("BUDGET_WEEKLY_UTILIZATION", "BUDGET_WEEKLY_RESETS_AT"),
+            second: ("WEEKLY_UTILIZATION", "WEEKLY_RESETS_AT"))
     }
 
-    /// ช่อง 5 ชั่วโมง (แถว "Current" บนจอ) — กฎเดียวกับ `weeklyKeys` ทุกประการ
+    /// ช่อง 5 ชั่วโมง (แถว "Current") — ของที่รายงานมาก่อน ดูตารางใน `weeklyKeys`
     public static func sessionKeys(
         _ fields: [String: String], now: Date
     ) -> (percent: String, resets: String) {
         keys(
             fields, now: now,
-            reported: ("UTILIZATION", "RESETS_AT"),
-            derived: ("BUDGET_UTILIZATION", "BUDGET_RESETS_AT"))
+            first: ("UTILIZATION", "RESETS_AT"),
+            second: ("BUDGET_UTILIZATION", "BUDGET_RESETS_AT"))
     }
 
     static func keys(
         _ fields: [String: String], now: Date,
-        reported: (String, String), derived: (String, String)
+        first: (String, String), second: (String, String)
     ) -> (percent: String, resets: String) {
         func usable(_ pair: (String, String)) -> Bool {
             snap(percent: fields[pair.0], resets: fields[pair.1], now: now)
                 .percent != UsageSnap.unknown
         }
-        if usable(reported) { return reported }
-        // ยอมสลับก็ต่อเมื่อฝั่งงบมีอะไรให้จริงๆ — ไม่งั้นหน้าต่างที่เพิ่งหมุนจะเสีย
+        if usable(first) { return first }
+        // ตกมาตัวสำรองก็ต่อเมื่อมันมีอะไรให้จริงๆ — ไม่งั้นหน้าต่างที่เพิ่งหมุนจะเสีย
         // สถานะ "resetting" (เปอร์เซ็นต์ไม่รู้ แต่ `remaining == 0` ยังบอกอะไรได้)
         // แล้วทั้งแถวหายไปจากจอ กลายเป็นนาฬิกาแทน ซึ่งดูเหมือนอุปกรณ์พัง
-        return usable(derived) ? derived : reported
+        return usable(second) ? second : first
     }
 
     /// เวลาในหน้าต่างเดินไปกี่เปอร์เซ็นต์แล้ว — ตำแหน่งของขีด pace
